@@ -23,11 +23,15 @@ ARM64_URL = "https://github.com/wanywhn/asterinas.git"
 
 
 def git(*args: str, capture: bool = False) -> subprocess.CompletedProcess:
+    from proxy import get_proxy_env
+    import os
+    env = {**os.environ.copy(), **get_proxy_env()}
     return subprocess.run(
         ["git", *args],
         cwd=PROJECT_ROOT,
         capture_output=capture,
         text=True,
+        env=env,
     )
 
 

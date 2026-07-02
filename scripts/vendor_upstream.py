@@ -53,11 +53,14 @@ UPSTREAM_FILES = ["Cargo.lock", "Makefile", "OSDK.toml",
 
 
 def git(*args: str, **kw) -> subprocess.CompletedProcess:
+    from proxy import get_proxy_env
+    env = {**os.environ.copy(), **get_proxy_env()}
     return subprocess.run(
         ["git", *args],
         cwd=PROJECT_ROOT,
         capture_output=kw.get("capture", False),
         text=True,
+        env=env,
     )
 
 

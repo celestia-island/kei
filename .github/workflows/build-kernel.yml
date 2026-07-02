@@ -1,0 +1,31 @@
+name: Build kei Kernel
+on:
+  workflow_dispatch:
+    inputs:
+      board:
+        description: 'Board name'
+        required: true
+        default: 'nanopi-r3s'
+
+jobs:
+  build-kernel:
+    runs-on: ubuntu-24.04-arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src, rustc-dev, llvm-tools-preview
+          targets: aarch64-unknown-none
+
+      - name: Setup and build
+        run: |
+          chmod +x scripts/*.sh
+          ./scripts/setup.sh
+          ./scripts/build.sh ${{ inputs.board }}
+
+      - name: Upload kernel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kei-${{ inputs.board }}-kernel
+          path: output/${{ inputs.board }}/kei-kernel.bin

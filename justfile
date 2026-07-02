@@ -1,106 +1,59 @@
 # kei — build commands
 # Usage: just <recipe>
 
-set unstable
-set shell := ["bash", "-c"]
-set windows-shell := ["wsl.exe", "bash", "-c"]
-set lists
-
-import "./celestia-devtools.just"
+set positional-arguments := true
 
 default: build
 
-# ── Environment ─────────────────────────────────────────────
+# ── Setup ──────────────────────────────────────────────────
 
-# Inspect the build environment: host kind, WSL2 distros (on Windows),
-# selected distro, and container backend. Pre-flight check before build.
-env-check:
-    {{python_cmd}} scripts/check_env.py
-
-# ── Vendoring (Apple LLVM model: pin + periodically absorb) ──
-
+# Full setup: fetch upstream, extract patches, apply, prepare workspace
 setup:
-    {{python_cmd}} scripts/setup.py
+    ./scripts/setup.sh
 
-vendor:
-    {{python_cmd}} scripts/vendor_upstream.py
-
-vendor-ref REF:
-    {{python_cmd}} scripts/vendor_upstream.py {{REF}}
-
-pull-arm64:
-    {{python_cmd}} scripts/pull_arm64.py
-
-pull-arm64-ref REF:
-    {{python_cmd}} scripts/pull_arm64.py {{REF}}
-
-versions:
-    @echo "=== Upstream asterinas ==="
-    @cat .vendored-upstream 2>/dev/null || echo "  (not vendored yet — run 'just vendor')"
-    @echo ""
-    @echo "=== ARM64 source ==="
-    @cat .vendored-arm64 2>/dev/null || echo "  (not pulled yet — run 'just pull-arm64')"
+# Update from upstream (rebase patches)
+update:
+    ./scripts/update.sh
 
 # ── Build ──────────────────────────────────────────────────
 
+# Build kei kernel for default board (nanopi-r3s)
 build:
-    just cache-guard
-    {{python_cmd}} scripts/build.py nanopi-r3s
+    ./scripts/build.sh nanopi-r3s
 
+# Build for specific board
 build-board BOARD:
-    just cache-guard
-    {{python_cmd}} scripts/build.py {{BOARD}}
+    ./scripts/build.sh {{BOARD}}
 
-build-arch ARCH:
-    just cache-guard
-    cargo osdk build --target {{ARCH}}-unknown-none --release
-
-# Format Rust + Markdown docs
-fmt:
-    cargo fmt --all
-    just fmt-markdown
-
-fmt-check:
-    cargo fmt --all -- --check
-    just fmt-markdown --check
-
+# Build all BSP crates (host check only)
 check-bsp:
     cd bsp && cargo check
 
-initramfs:
-    {{python_cmd}} scripts/initramfs.py --arch aarch64
-
-initramfs-force:
-    {{python_cmd}} scripts/initramfs.py --arch aarch64 --force
-
 # ── Test ───────────────────────────────────────────────────
 
-test-all:
-    {{python_cmd}} scripts/test_all_arch.py
+# Boot kernel in QEMU arm64 virt machine
+test:
+    ./scripts/test.sh nanopi-r3s
 
-test-arch ARCH:
-    {{python_cmd}} scripts/test_all_arch.py {{ARCH}}
-
-test BOARD="nanopi-r3s":
-    {{python_cmd}} scripts/test.py {{BOARD}}
-
+# Run ktest unit tests for BSP crates
 test-bsp:
     cd bsp && cargo test
 
 # ── Utilities ──────────────────────────────────────────────
 
+# List supported boards
 list-boards:
     ls configs/*.toml | grep -v default | xargs -I{} basename {} .toml
 
-list-arch:
-    @echo "x86_64      (upstream Tier 1)"
-    @echo "aarch64     (via wanywhn arm64-support, PR #3270)"
-    @echo "riscv64     (upstream Tier 2)"
-    @echo "loongarch64 (upstream Tier 3)"
-
+# Clean build artifacts
 clean:
-    rm -rf build/ output/
+    rm -rf vendor/ build/ output/
     cargo clean
 
+# Generate patches from current vendor/ state
+gen-patches:
+    ./scripts/gen-patches.sh
+
+# Enter build environment shell
 dev-shell:
-    {{python_cmd}} scripts/dev_shell.py
+    ./scripts/dev-shell.sh

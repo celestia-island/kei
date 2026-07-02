@@ -1,0 +1,26 @@
+# ARM64 architecture patch series for Asterinas/kei.
+#
+# Generated from: wanywhn/asterinas (branch: arm64-support)
+#                diff against asterinas/asterinas (main)
+#
+# To add patches:
+#   1. Place .patch files in this directory
+#   2. List them here in order
+#   3. Run 'just gen-patches' to auto-populate
+#
+# To apply:
+#   cd vendor/asterinas && quilt push -a
+#
+# Each patch file should be a standard unified diff produced by
+# `git format-patch` or `git diff`.
+
+# ARM64 architecture support — core changes
+# TODO: generate these from wanywhn/asterinas diff after 'just setup'
+# 0001-ostd-add-aarch64-arch-module.patch
+# 0002-kernel-add-aarch64-arch-module.patch
+# 0003-add-aarch64-toolchain-target.patch
+# 0004-aarch64-gicv3-interrupt-controller.patch
+# 0005-aarch64-page-tables-mmu.patch
+# 0006-aarch64-context-switching.patch
+# 0007-aarch64-exception-handling.patch
+# 0008-aarch64-timer.patch

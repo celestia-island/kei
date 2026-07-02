@@ -13,27 +13,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
       - run: cd bsp && cargo check
 
-  check-vendored-versions:
+  list-patches:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Show vendored upstream versions
-        run: |
-          echo "=== Upstream asterinas ==="
-          cat .vendored-upstream 2>/dev/null || echo "  (not vendored yet)"
-          echo ""
-          echo "=== ARM64 source ==="
-          cat .vendored-arm64 2>/dev/null || echo "  (not pulled yet)"
-
-  fmt:
-    runs-on: ubuntu-latest
-    env:
-      # Override rust-toolchain.toml so fmt uses stable (nightly's rustfmt
-      # is not always available for pinned toolchains).
-      RUSTUP_TOOLCHAIN: stable
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-      - run: cargo fmt --all -- --check
+      - run: |
+          echo "=== ARM64 Patches ==="
+          cat patches/arm64/series 2>/dev/null | grep -v '^#' | grep -v '^$' || echo "  (empty)"

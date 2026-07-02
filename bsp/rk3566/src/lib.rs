@@ -17,14 +17,12 @@
 #![no_std]
 #![feature(asm_const)]
 
-extern crate alloc;
-
-pub mod ethernet;
 pub mod gpio;
-pub mod i2c;
-pub mod spi;
+pub mod ethernet;
 pub mod uart;
 pub mod watchdog;
+pub mod spi;
+pub mod i2c;
 
 /// Initialize all RK3566 platform devices.
 ///

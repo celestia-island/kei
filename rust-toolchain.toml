@@ -1,7 +1,7 @@
 [toolchain]
-# nightly required: ostd uses #![feature(alloc_error_handler, allocator_api,
-# min_specialization, ...)] — bare-metal OS features not on stable yet.
-channel = "nightly-2026-05-01"
+# Matches upstream asterinas toolchain: nightly-2026-04-03
+# For ARM64 bare-metal target: aarch64-unknown-none
+channel = "nightly-2026-04-03"
 components = ["rust-src", "rustc-dev", "llvm-tools-preview"]
 targets = [
     "aarch64-unknown-none",

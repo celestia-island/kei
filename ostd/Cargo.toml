@@ -60,6 +60,12 @@ iced-x86 = { version = "1.21.0", default-features = false, features = [
 tdx-guest = { version = "0.2.4", optional = true }
 unwinding = { version = "=0.2.8", default-features = false, features = ["fde-gnu-eh-frame-hdr", "hide-trace", "panic", "personality", "unwinder"] }
 
+[target.aarch64-unknown-none.dependencies]
+fdt = { version = "0.1.5", features = ["pretty-printing"] }
+unwinding = { version = "=0.2.8", default-features = false, features = ["fde-static", "hide-trace", "panic", "personality", "unwinder"] }
+tock-registers = "0.9"
+arm-gic = "0.8.1"
+
 [target.riscv64imac-unknown-none-elf.dependencies]
 riscv = { version = "0.15.0", features = ["s-mode"] }
 sbi-rt = "0.0.3"

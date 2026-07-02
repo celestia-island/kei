@@ -53,6 +53,12 @@ build-arch ARCH:
 check-bsp:
     cd bsp && cargo check
 
+initramfs:
+    {{python_cmd}} scripts/initramfs.py --arch aarch64
+
+initramfs-force:
+    {{python_cmd}} scripts/initramfs.py --arch aarch64 --force
+
 # ── Test ───────────────────────────────────────────────────
 
 test-all:

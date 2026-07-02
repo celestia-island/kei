@@ -72,14 +72,23 @@ def main() -> int:
         return 1
 
     cf.blank()
-    cf.step("[1/4] Board config loaded")
+    cf.step("[1/5] Board config loaded")
     cf.info(f"  Target: {rust_target}")
     cf.info(f"  Arch:   {arch}")
 
+    # Ensure initramfs exists (cargo osdk build requires it)
     cf.blank()
-    cf.step("[2/4] Building kernel via cargo osdk")
+    cf.step("[2/5] Preparing initramfs")
+    initramfs_script = PROJECT_ROOT / "scripts" / "initramfs.py"
+    subprocess.run(
+        [sys.executable, str(initramfs_script), "--arch", arch],
+        check=False,
+    )
+
+    cf.blank()
+    cf.step("[3/5] Building kernel via cargo osdk")
     result = subprocess.run(
-        ["cargo", "osdk", "build", "--target", rust_target, "--profile", profile],
+        ["cargo", "osdk", "build", "--target-arch", arch, "--profile", profile],
         cwd=PROJECT_ROOT,
     )
     if result.returncode != 0:
@@ -88,7 +97,7 @@ def main() -> int:
         return 1
 
     cf.blank()
-    cf.step("[3/4] Copying build artifacts")
+    cf.step("[4/5] Copying build artifacts")
     kernel_paths = [
         PROJECT_ROOT / "target" / rust_target / profile / "kei-kernel",
         PROJECT_ROOT / "target" / rust_target / profile / "kei-kernel.bin",
@@ -104,7 +113,7 @@ def main() -> int:
         cf.warn("  Kernel binary not found at expected paths")
 
     cf.blank()
-    cf.step("[4/4] Compiling device tree")
+    cf.step("[5/5] Compiling device tree")
     dtc = shutil.which("dtc")
     dtb_name = config.get("kernel", {}).get("dtb", "")
     if dtc and dtb_name:

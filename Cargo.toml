@@ -285,3 +285,12 @@ lto = true
 panic = "abort"
 # set codegen-units as the smallest number
 codegen-units = 1
+
+# ── Patch: redirect published crates to local workspace versions ──
+# Without this, some transitive dependencies pull ostd from crates.io,
+# which lacks aarch64 support and causes duplicate compilation.
+[patch.crates-io]
+ostd = { path = "ostd" }
+ostd-pod = { path = "ostd/libs/ostd-pod" }
+ostd-macros = { path = "ostd/libs/ostd-macros" }
+ostd-test = { path = "ostd/libs/ostd-test" }

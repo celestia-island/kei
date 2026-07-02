@@ -16,8 +16,8 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-license = "MPL-2.0"
-description = "kei — Asterinas ARM64 Distribution"
+license = "SySL-1.0"
+description = "kei — Asterinas ARM64 kernel distribution"
 repository = "https://github.com/celestia-island/kei"
 
 # ── Build profiles ──────────────────────────────────────────

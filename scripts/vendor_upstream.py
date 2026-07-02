@@ -40,13 +40,15 @@ OUR_PATHS = [
     "README.md",
     "rust-toolchain.toml",
     "clippy.toml",
+    "deny.toml",
+    "Cargo.toml",  # Merged: upstream base + kei bsp/ members
 ]
 
 # Directories refreshed from upstream on each vendor
 UPSTREAM_DIRS = ["ostd", "kernel", "osdk", "test", "tools"]
 
-# Root-level files tracked from upstream
-UPSTREAM_FILES = ["Cargo.toml", "Cargo.lock", "Makefile", "OSDK.toml",
+# Root-level files tracked from upstream (Cargo.toml gets merged, not replaced)
+UPSTREAM_FILES = ["Cargo.lock", "Makefile", "OSDK.toml",
                   "Components.toml", "VERSION"]
 
 

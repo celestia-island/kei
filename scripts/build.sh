@@ -1,83 +1,104 @@
 #!/usr/bin/env bash
-# kei — build Asterinas kernel for target board
-# Usage: ./scripts/build.sh <board> [--release]
+# kei — build kernel for target board
+#
+# In the fork model, kei IS the kernel source tree. There is no vendor/
+# directory. The ostd/, kernel/, and osdk/ directories live at the repo root.
+# This script runs `cargo osdk build` directly in the kei tree.
+#
+# Usage: ./scripts/build.sh <board> [profile]
 set -euo pipefail
 
 BOARD="${1:-nanopi-r3s}"
 PROFILE="${2:-release}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-ASTERINAS_DIR="$PROJECT_ROOT/vendor/asterinas"
 OUTPUT_DIR="$PROJECT_ROOT/output/$BOARD"
 
 echo "=== kei build: $BOARD ($PROFILE) ==="
 
-# Check setup
-if [ ! -d "$ASTERINAS_DIR" ]; then
-    echo "ERROR: vendor/asterinas not found. Run 'just setup' first."
+# ── Verify kei is populated ───────────────────────────────────
+
+if [ ! -d "$PROJECT_ROOT/ostd" ] || [ ! -d "$PROJECT_ROOT/kernel" ]; then
+    echo "ERROR: kei tree not populated."
+    echo "  This skeleton repo doesn't contain the asterinas source yet."
+    echo "  Run 'just setup && just sync' to fetch and merge upstream."
     exit 1
 fi
 
 mkdir -p "$OUTPUT_DIR"
 
 # ── Load board config ────────────────────────────────────────
+
 CONFIG_FILE="$PROJECT_ROOT/configs/$BOARD.toml"
 if [ -f "$CONFIG_FILE" ]; then
     echo "[1/4] Loading board config: $CONFIG_FILE"
-    # Extract values (simple grep-based; a proper parser TBD)
-    ARCH=$(grep 'arch' "$CONFIG_FILE" | head -1 | cut -d'"' -f2)
+    ARCH=$(grep '^arch' "$CONFIG_FILE" | head -1 | cut -d'"' -f2)
     BSP=$(grep 'bsp_crate' "$CONFIG_FILE" | head -1 | cut -d'"' -f2)
+    DTB_NAME=$(grep '^dtb' "$CONFIG_FILE" | head -1 | cut -d'"' -f2)
 else
     echo "WARNING: config not found, using defaults"
     ARCH="aarch64"
     BSP="bsp-rk3566"
+    DTB_NAME=""
 fi
 
-RUST_TARGET="${ARCH}-unknown-none"
+# Map arch to Rust target triple
+case "$ARCH" in
+    x86_64)      RUST_TARGET="x86_64-unknown-none" ;;
+    aarch64)     RUST_TARGET="aarch64-unknown-none" ;;
+    riscv64)     RUST_TARGET="riscv64imac-unknown-none-elf" ;;
+    loongarch64) RUST_TARGET="loongarch64-unknown-none-softfloat" ;;
+    *) echo "ERROR: unknown arch '$ARCH'"; exit 1 ;;
+esac
+
 echo "  Target: $RUST_TARGET"
 echo "  BSP:    $BSP"
 
-# ── Copy BSP into Asterinas workspace ────────────────────────
-echo "[2/4] Linking BSP crates into kernel workspace..."
-# TODO: add BSP crate to $ASTERINAS_DIR/Cargo.toml workspace members
-#       or use a separate overlay workspace
-
 # ── Build kernel ─────────────────────────────────────────────
-echo "[3/4] Building Asterinas kernel..."
-(cd "$ASTERINAS_DIR" && \
-    cargo osdk build \
-        --target "$RUST_TARGET" \
-        --profile "$PROFILE" \
-        --bsp "$BSP" \
-        2>&1) || {
+
+echo "[2/4] Building kernel via cargo osdk..."
+cd "$PROJECT_ROOT"
+cargo osdk build \
+    --target "$RUST_TARGET" \
+    --profile "$PROFILE" \
+    2>&1 || {
     echo "ERROR: kernel build failed."
-    echo "  TIP: check that ARM64 patches are applied (just gen-patches)"
-    echo "  TIP: check that RUST_TARGET=$RUST_TARGET is in rust-toolchain.toml"
+    echo "  TIP: verify ostd/src/arch/aarch64/ exists (just sync)"
+    echo "  TIP: verify $RUST_TARGET is in rust-toolchain.toml"
     exit 1
 }
 
 # ── Copy artifacts ───────────────────────────────────────────
-echo "[4/4] Copying build artifacts..."
-# TODO: locate the actual binary from cargo osdk output
-# For now, assume typical output paths
-if [ -f "$ASTERINAS_DIR/target/$RUST_TARGET/$PROFILE/kei-kernel" ]; then
-    cp "$ASTERINAS_DIR/target/$RUST_TARGET/$PROFILE/kei-kernel" \
-       "$OUTPUT_DIR/kei-kernel.bin"
+
+echo "[3/4] Copying build artifacts..."
+KERNEL_BIN="$PROJECT_ROOT/target/$RUST_TARGET/$PROFILE/kei-kernel"
+if [ -f "$KERNEL_BIN" ]; then
+    cp "$KERNEL_BIN" "$OUTPUT_DIR/kei-kernel.bin"
+    echo "  Kernel: $OUTPUT_DIR/kei-kernel.bin"
+elif [ -f "${KERNEL_BIN}.bin" ]; then
+    cp "${KERNEL_BIN}.bin" "$OUTPUT_DIR/kei-kernel.bin"
+    echo "  Kernel: $OUTPUT_DIR/kei-kernel.bin"
+else
+    echo "  WARNING: kernel binary not found at expected path"
+    echo "  Check target/$RUST_TARGET/$PROFILE/ for the output"
 fi
 
-# Copy device tree
-DTB_SRC="$PROJECT_ROOT/board/$BOARD/device-tree"
-if [ -d "$DTB_SRC" ] && [ -f "$DTB_SRC"/*.dts ]; then
-    echo "  Device tree source found in $DTB_SRC"
-    # TODO: compile .dts → .dtb (requires dtc)
-    # dtc -I dts -O dtb -o "$OUTPUT_DIR/board.dtb" "$DTB_SRC"/*.dts
+# ── Compile device tree ──────────────────────────────────────
+
+echo "[4/4] Compiling device tree..."
+if [ -n "$DTB_NAME" ] && command -v dtc >/dev/null 2>&1; then
+    DTB_SRC="$PROJECT_ROOT/board/$BOARD/device-tree"
+    if ls "$DTB_SRC"/*.dts >/dev/null 2>&1; then
+        dtc -I dts -O dtb -o "$OUTPUT_DIR/board.dtb" "$DTB_SRC"/*.dts 2>/dev/null || true
+        echo "  DTB: $OUTPUT_DIR/board.dtb"
+    fi
+else
+    echo "  (dtc not available or no DTB configured — skipping)"
 fi
 
 echo ""
 echo "=== Build complete ==="
-echo "  Kernel: $OUTPUT_DIR/kei-kernel.bin"
-echo "  DTB:    $OUTPUT_DIR/board.dtb"
+echo "  Output: $OUTPUT_DIR/"
 echo ""
-echo "  Next: copy to aris for firmware packaging"
+echo "  Next: feed into aris for firmware packaging"
 echo "    cp output/$BOARD/kei-kernel.bin ../aris/output/$BOARD/Image"
-echo "    cp output/$BOARD/board.dtb     ../aris/output/$BOARD/"

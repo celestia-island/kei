@@ -1,63 +1,76 @@
 # ARM64 Support Status
 
-## Upstream
+## Upstream Tracking
 
-| Item | Status |
-|------|--------|
+### PR #3270 — "Add the initial Arm64 support"
+
+| Field | Value |
+|------|-------|
 | PR | [asterinas#3270](https://github.com/asterinas/asterinas/pull/3270) |
 | Author | [@wanywhn](https://github.com/wanywhn) |
 | Branch | [wanywhn/asterinas:arm64-support](https://github.com/wanywhn/asterinas/tree/arm64-support) |
-| Review | In progress |
-| Estimated merge | 2026 Q3-Q4 |
+| State | OPEN, not merged |
+| Mergeable | ❌ Dirty (conflicts with current main) |
+| Size | +4,475 / -49 lines, 80 files, 29 commits |
+| Code origin | LLM-generated (author confirmed) |
+| Author commitment | Will NOT maintain long-term |
+| Upstream takeover | @lrh2000 plans to integrate with his own arm port |
 
-## What's Included (arm64-support branch)
+### What the PR Adds
 
-| Component | Status | Notes |
-|-----------|--------|-------|
-| `ostd/src/arch/aarch64/` | ✅ | Architecture module |
-| GICv3 interrupt controller | ✅ | ARM Generic Interrupt Controller v3 |
-| ARM MMU / page tables | ✅ | 4-level paging, TTBR0/1 |
-| Exception handling | ✅ | EL1h synchronous/IRQ/FIQ/SError |
-| Context switching | ✅ | Task switching, FPU save/restore |
-| Generic Timer | ✅ | ARM architected timer (EL1 physical) |
-| UART console | ✅ | PL011 / 8250_DW |
-| Device tree (FDT) | ✅ | Basic DT parsing |
-| SMP / multi-core | ⚠️ | PSCI-based, WIP |
-| VirtIO drivers | ⚠️ | Network and block, limited testing |
+**OSTD (`ostd/src/arch/aarch64/`):**
+- `boot/` — BSP entry, boot page tables
+- `mm/` — ARM64 page tables (4-level paging), MMU setup
+- `task/` — Context switching, FPU/SIMD save/restore
+- `irq/` — GICv3 interrupt controller (uses third-party crate)
+- `timer/` — ARM Generic Timer (EL1 physical)
+- `trap/` — EL1 exception handling (sync/IRQ/FIQ/SError)
+- `cpu/` — CPU features, SMP via PSCI
+- `iommu/` — IOMMU stub
+- `device/` — Device discovery via FDT
+- `io/` — MMIO abstraction
+- `power.rs` — PSCI power management (shutdown/reboot)
+- `serial.rs` — PL011 UART console
 
-## kei Additions (on top of arm64-support)
+**Kernel (`kernel/src/arch/aarch64/`):**
+- Process / thread support
+- Syscall table (EL0 → EL1)
+- TLS handling (TPIDR_EL0)
+- PCI enumeration
+- VirtIO support
+- TLB flush bugfix in `KVirtArea::drop()`
 
-| Component | Status | Notes |
-|-----------|--------|-------|
-| `bsp/rk3566/` — GPIO | 🔲 | Rockchip GRF pinctrl |
-| `bsp/rk3566/` — Ethernet | 🔲 | stmmac / RK GMAC |
-| `bsp/rk3566/` — WDT | 🔲 | DW watchdog timer |
-| `bsp/rk3566/` — SPI/I2C | 🔲 | DW SSI / RK3x I2C |
-| `bsp/bcm2711/` | 🔲 | Raspberry Pi 4 |
-| `bsp/jh7110/` | 🔲 | VisionFive 2 (RISC-V) |
+**OSDK:**
+- Raw ARM64 `Image` format for QEMU Linux boot protocol
+- Arm64 QEMU scheme in `OSDK.toml`
+- GitHub Actions CI for arm64 lint + compile
 
-## Build Target
+## kei's Strategy
 
-```
-Architecture:  aarch64
-Target triple: aarch64-unknown-none
-Toolchain:     nightly-2026-04-03
-Components:    rust-src, rustc-dev, llvm-tools-preview
-Kernel binary: ELF, stripped
-Boot method:   U-Boot (via booti)
-```
+kei merges this branch via git (not patches). This means:
 
-## Testing
+1. The full `ostd/src/arch/aarch64/` tree exists in kei's repo
+2. We can modify any file directly
+3. Upstream sync is `git merge`, not `quilt push`
+4. When upstream eventually merges a different arm64 implementation, we
+   rebase our BSP on top of the new arch code
 
-| Platform | Status | Notes |
-|----------|--------|-------|
-| QEMU virt (arm64) | 🔲 | Boot to console, basic driver test |
-| QEMU virt (arm64) + VirtIO | 🔲 | Network and block device test |
-| NanoPi R3S (RK3566) | 🔲 | Physical boot test |
-| OrangePi 3B (RK3566) | 🔲 | Second board validation |
+## Known Issues in the arm64-support Branch
 
-## Merge Strategy
+| Issue | Severity | kei Action |
+|-------|----------|------------|
+| All code LLM-generated | High | M2 audit: review every file, fix artifacts |
+| Third-party GICv3 crate | Medium | Replace with in-tree driver |
+| QEMU-only testing | High | Real hardware boot on NanoPi R3S |
+| No SMP/multi-core | Medium | Add PSCI secondary CPU bring-up |
+| Stale (behind upstream main) | Low | Regular sync rebase |
+| LLM-style verbose comments | Low | Clean up during audit |
 
-1. `wanywhn/asterinas:arm64-support` → `asterinas/asterinas:main` (upstream merge)
-2. Once merged, kei switches from fork to official release
-3. kei continues to maintain BSP crates and board configs as an add-on layer
+## QEMU Test Matrix
+
+| QEMU Machine | CPU | RAM | Boot | Notes |
+|-------------|-----|-----|------|-------|
+| virt | cortex-a55 | 2GB | ✅ | Primary test target |
+| virt | cortex-a72 | 2GB | 🔲 | Validate across ARM cores |
+| virt | max | 4GB | 🔲 | Enable all ARM features |
+| sbsa-ref | max | 4GB | 🔲 | Server-style boot |

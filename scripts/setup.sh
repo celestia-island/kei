@@ -1,79 +1,70 @@
 #!/usr/bin/env bash
-# kei — fetch Asterinas upstream, generate & apply ARM64 patches
-# Run once after cloning kei.
+# kei — initial setup
+#
+# kei is a downstream fork of asterinas/asterinas. This script prepares
+# the development environment by ensuring the upstream sources are
+# fetched and the arm64 branch is merged.
+#
+# Unlike the old patch-based approach, kei uses git merge to track
+# both upstream asterinas and the wanywhn arm64-support branch.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-VENDOR_DIR="$PROJECT_ROOT/vendor"
-ASTERINAS_DIR="$VENDOR_DIR/asterinas"
+
+cd "$PROJECT_ROOT"
 
 echo "=== kei setup ==="
 
-# ── Fetch upstream Asterinas ─────────────────────────────────
-echo "[1/3] Fetching upstream Asterinas..."
-if [ -d "$ASTERINAS_DIR" ]; then
-    echo "  Already exists: $ASTERINAS_DIR"
-    echo "  Run 'just update' to pull latest, or 'rm -rf $ASTERINAS_DIR' to re-fetch."
+# ── Verify git remotes ────────────────────────────────────────
+
+echo "[1/3] Verifying git remotes..."
+
+if ! git remote get-url upstream >/dev/null 2>&1; then
+    git remote add upstream "https://github.com/asterinas/asterinas.git"
+    echo "  Added remote: upstream"
 else
-    mkdir -p "$VENDOR_DIR"
-    git clone --depth 1 --branch main \
-        https://github.com/asterinas/asterinas.git \
-        "$ASTERINAS_DIR"
-    echo "  Cloned asterinas/asterinas (main)"
+    echo "  upstream remote exists"
 fi
 
-# ── Fetch ARM64 fork (wanywhn/asterinas) ────────────────────
-echo "[2/3] Fetching ARM64 support branch..."
-ARM64_DIR="$VENDOR_DIR/asterinas-arm64"
-
-if [ ! -d "$ARM64_DIR" ]; then
-    git clone --depth 1 --branch arm64-support \
-        https://github.com/wanywhn/asterinas.git \
-        "$ARM64_DIR"
-    echo "  Cloned wanywhn/asterinas (arm64-support)"
+if ! git remote get-url arm64 >/dev/null 2>&1; then
+    git remote add arm64 "https://github.com/wanywhn/asterinas.git"
+    echo "  Added remote: arm64"
 else
-    (cd "$ARM64_DIR" && git pull --ff-only origin arm64-support 2>/dev/null || true)
-    echo "  Updated wanywhn/asterinas (arm64-support)"
+    echo "  arm64 remote exists"
 fi
 
-# ── Generate patches ─────────────────────────────────────────
-echo "[3/3] Generating ARM64 patches..."
-PATCHES_DIR="$PROJECT_ROOT/patches/arm64"
-mkdir -p "$PATCHES_DIR"
+# ── Fetch branches ────────────────────────────────────────────
 
-# Diff: upstream main vs wanywhn arm64-support
-# Focus on: ostd/src/arch/ (new aarch64), kernel/src/arch/ (new aarch64),
-#           changes to ostd/src/lib.rs, kernel/src/lib.rs, Cargo.toml, etc.
-(cd "$ASTERINAS_DIR" && git fetch "$ARM64_DIR" arm64-support:refs/heads/tmp-arm64 2>/dev/null || true)
+echo "[2/3] Fetching upstream branches..."
+git fetch upstream main --depth=50 2>/dev/null || {
+    echo "  WARNING: could not fetch upstream/main (offline?)"
+}
+echo "  upstream/main: $(git rev-parse --short upstream/main 2>/dev/null || echo 'not fetched')"
 
-# Generate one patch per logical change
-# TODO: refine this to produce clean, split patches (e.g. via git format-patch)
-echo "  TODO: extract patches from wanywhn/asterinas diff"
-echo "  For now, check patches/arm64/series for manual patch list"
-echo "  Run 'just gen-patches' to regenerate from vendor/ state"
+git fetch arm64 arm64-support --depth=50 2>/dev/null || {
+    echo "  WARNING: could not fetch arm64/arm64-support (offline?)"
+}
+echo "  arm64/arm64-support: $(git rev-parse --short arm64/arm64-support 2>/dev/null || echo 'not fetched')"
 
-# ── Apply patches ────────────────────────────────────────────
-if [ -f "$PATCHES_DIR/series" ] && [ -s "$PATCHES_DIR/series" ]; then
-    echo "  Applying patches..."
-    (cd "$ASTERINAS_DIR" && quilt push -a 2>/dev/null) || {
-        echo "  Warning: automatic patch apply failed."
-        echo "  Apply manually: cd $ASTERINAS_DIR && quilt push -a"
-    }
+# ── Verify workspace ──────────────────────────────────────────
+
+echo "[3/3] Verifying workspace..."
+
+if [ -d "ostd" ] && [ -d "kernel" ]; then
+    echo "  ostd/ and kernel/ directories present"
 else
-    echo "  No patches to apply (patches/arm64/series is empty or missing)"
-    echo "  Run 'just gen-patches' once patches are ready"
+    echo "  NOTE: This is a kei skeleton repo."
+    echo "  To populate with full asterinas source:"
+    echo "    git fetch upstream main"
+    echo "    git checkout upstream/main -- ostd/ kernel/ osdk/ test/ tools/"
+    echo "    git fetch arm64 arm64-support"
+    echo "    git merge arm64/arm64-support"
 fi
 
-# ── Link BSP crates into Asterinas workspace ─────────────────
 echo ""
 echo "=== Setup complete ==="
 echo ""
-echo "  Upstream:   $ASTERINAS_DIR"
-echo "  ARM64 fork: $ARM64_DIR"
-echo "  Patches:    $PATCHES_DIR"
-echo ""
-echo "  Next steps:"
-echo "    1. Generate patches: just gen-patches"
-echo "    2. Build kernel:     just build"
-echo "    3. Test in QEMU:     just test"
+echo "  Sync with upstream:  just sync"
+echo "  Build kernel:        just build"
+echo "  Test all archs:      just test-all"

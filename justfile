@@ -5,19 +5,19 @@ set positional-arguments := true
 
 default: build
 
-# ── Setup ──────────────────────────────────────────────────
+# ── Setup & Sync ───────────────────────────────────────────
 
-# Full setup: fetch upstream, extract patches, apply, prepare workspace
+# Initial setup: configure remotes, fetch upstreams
 setup:
     ./scripts/setup.sh
 
-# Update from upstream (rebase patches)
-update:
-    ./scripts/update.sh
+# Sync with upstream asterinas + arm64-support (git merge, not patches)
+sync:
+    ./scripts/sync-upstream.sh
 
 # ── Build ──────────────────────────────────────────────────
 
-# Build kei kernel for default board (nanopi-r3s)
+# Build kei kernel for default board (nanopi-r3s, aarch64)
 build:
     ./scripts/build.sh nanopi-r3s
 
@@ -25,17 +25,29 @@ build:
 build-board BOARD:
     ./scripts/build.sh {{BOARD}}
 
-# Build all BSP crates (host check only)
+# Build for a specific architecture (raw, no board)
+build-arch ARCH:
+    cargo osdk build --target {{ARCH}}-unknown-none --release
+
+# Check all BSP crates (host, no kernel deps)
 check-bsp:
     cd bsp && cargo check
 
 # ── Test ───────────────────────────────────────────────────
 
-# Boot kernel in QEMU arm64 virt machine
-test:
-    ./scripts/test.sh nanopi-r3s
+# Boot-test ALL architectures in QEMU (x86_64, aarch64, riscv64, loongarch64)
+test-all:
+    ./scripts/test-all-arch.sh
 
-# Run ktest unit tests for BSP crates
+# Test one specific architecture
+test-arch ARCH:
+    ./scripts/test-all-arch.sh {{ARCH}}
+
+# Test on a specific board's QEMU config
+test BOARD="nanopi-r3s":
+    ./scripts/test.sh {{BOARD}}
+
+# Run ktest unit tests for BSP
 test-bsp:
     cd bsp && cargo test
 
@@ -45,14 +57,17 @@ test-bsp:
 list-boards:
     ls configs/*.toml | grep -v default | xargs -I{} basename {} .toml
 
+# List supported architectures
+list-arch:
+    @echo "x86_64      (upstream Tier 1)"
+    @echo "aarch64     (via wanywhn arm64-support, PR #3270)"
+    @echo "riscv64     (upstream Tier 2)"
+    @echo "loongarch64 (upstream Tier 3)"
+
 # Clean build artifacts
 clean:
-    rm -rf vendor/ build/ output/
+    rm -rf build/ output/
     cargo clean
-
-# Generate patches from current vendor/ state
-gen-patches:
-    ./scripts/gen-patches.sh
 
 # Enter build environment shell
 dev-shell:

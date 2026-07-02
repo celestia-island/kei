@@ -453,12 +453,17 @@ impl_frame_meta_for!(MetaPageMeta);
 pub(crate) unsafe fn init() -> Segment<MetaPageMeta> {
     let max_paddr = {
         let regions = &crate::boot::EARLY_INFO.get().unwrap().memory_regions;
-        regions
+        crate::early_println!("[meta] memory regions count: {}", regions.len());
+        for (i, r) in regions.iter().enumerate() {
+            crate::early_println!("[meta] region {}: base={:#x} len={:#x} typ={:?}", i, r.base(), r.len(), r.typ());
+        }
+        let max = regions
             .iter()
             .filter(|r| r.typ().is_physical())
             .map(|r| r.base() + r.len())
-            .max()
-            .unwrap()
+            .max();
+        crate::early_println!("[meta] max_paddr = {:?}", max);
+        max.expect("no physical memory region found")
     };
 
     info!(

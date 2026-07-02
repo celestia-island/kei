@@ -28,7 +28,16 @@ pub fn __ostd_panic_handler(info: &core::panic::PanicInfo) -> ! {
 
     IN_PANIC.store(true);
 
-    early_println!("Non-resettable panic! {:#?}", info);
+    // Print panic info in parts to avoid formatting issues
+    if let Some(location) = info.location() {
+        early_println!(
+            "[PANIC] {}:{}:{}",
+            location.file(),
+            location.line(),
+            location.column()
+        );
+    }
+    early_println!("[PANIC] message: {}", info.message());
 
     print_stack_trace();
     abort();

@@ -77,10 +77,10 @@ pub use self::{error::Error, prelude::Result};
 // make inter-initialization-dependencies more clear and reduce usages of
 // boot stage only global variables.
 unsafe fn init() {
+    crate::early_println!("[ostd] init: enable_cpu_features");
     arch::enable_cpu_features();
 
-    // SAFETY: This function is called only once, before `allocator::init`
-    // and after memory regions are initialized.
+    crate::early_println!("[ostd] init: init_early_allocator");
     unsafe { mm::frame::allocator::init_early_allocator() };
 
     #[cfg(target_arch = "x86_64")]
@@ -91,26 +91,30 @@ unsafe fn init() {
     #[cfg(not(target_arch = "x86_64"))]
     arch::serial::init();
 
+    crate::early_println!("[ostd] init: log::init");
     log::init();
 
-    // SAFETY:
-    //  1. They are only called once in the boot context of the BSP.
-    //  2. The number of CPUs are available because ACPI has been initialized.
-    //  3. CPU-local storage has NOT been used.
+    crate::early_println!("[ostd] init: cpu::init_on_bsp");
     unsafe { cpu::init_on_bsp() };
 
-    // SAFETY: We are on the BSP and APs are not yet started.
+    crate::early_println!("[ostd] init: frame::meta::init");
     let meta_pages = unsafe { mm::frame::meta::init() };
-    // The frame allocator should be initialized immediately after the metadata
-    // is initialized. Otherwise the boot page table can't allocate frames.
-    // SAFETY: This function is called only once.
+
+    crate::early_println!("[ostd] init: frame::allocator::init");
     unsafe { mm::frame::allocator::init() };
 
+    crate::early_println!("[ostd] init: kspace::init_kernel_page_table");
     mm::kspace::init_kernel_page_table(meta_pages);
 
-    // SAFETY: This function is called only once on the BSP.
+    crate::early_println!("[ostd] init: kspace::activate_kernel_page_table");
     unsafe { mm::kspace::activate_kernel_page_table() };
 
+    // Reinitialize serial port with linear mapping address (the identity
+    // mapping from the boot page table is no longer valid).
+    crate::early_println!("[ostd] init: serial reinit");
+    arch::serial::reinit_with_linear_mapping();
+
+    crate::early_println!("[ostd] init: sync::init");
     sync::init();
 
     boot::init_after_heap();

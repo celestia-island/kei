@@ -147,6 +147,8 @@ pub fn handle_pending_signal(user_ctx: &mut UserContext, ctx: &Context) {
             {
                 #[cfg(target_arch = "x86_64")]
                 const SYSCALL_INSTR_LEN: usize = 2; // syscall
+                #[cfg(target_arch = "aarch64")]
+                const SYSCALL_INSTR_LEN: usize = 4; // svc #0
                 #[cfg(target_arch = "riscv64")]
                 const SYSCALL_INSTR_LEN: usize = 4; // ecall
                 #[cfg(target_arch = "loongarch64")]
@@ -383,10 +385,16 @@ pub fn handle_user_signal(
 
             const UC_FP_XSTATE: u64 = 1 << 0;
             ucontext.uc_flags = UC_FP_XSTATE;
-        } else if #[cfg(target_arch = "riscv64")] {
-            // Reference:
-            // <https://elixir.bootlin.com/linux/v6.17.5/source/arch/riscv/include/uapi/asm/ptrace.h#L94-L98>,
-            // <https://elixir.bootlin.com/linux/v6.17.5/source/arch/riscv/include/uapi/asm/ptrace.h#L69-L77>.
+        } else if #[cfg(any(target_arch = "aarch64", target_arch = "riscv64"))] {
+            // ARM64 and RISC-V: FPU context placed after ucontext_t on the signal stack.
+            // Reference (aarch64):
+            //   https://elixir.bootlin.com/linux/v6.15.7/source/arch/arm64/kernel/signal.c
+            // Reference (riscv):
+            //   https://elixir.bootlin.com/linux/v6.17.5/source/arch/riscv/include/uapi/asm/ptrace.h
+            #[cfg(target_arch = "aarch64")]
+            const FP_STATE_SIZE: usize =
+                size_of::<ostd::arch::cpu::context::FpuContext>();
+            #[cfg(not(target_arch = "aarch64"))]
             const FP_STATE_SIZE: usize =
                 size_of::<ostd::arch::cpu::context::QFpuContext>() + 3 * size_of::<u32>();
 
@@ -439,7 +447,7 @@ pub fn handle_user_signal(
     cfg_if::cfg_if! {
         if #[cfg(target_arch = "x86_64")] {
             stack_pointer = write_u64_to_user_stack(stack_pointer, retaddr as u64)?;
-        } else if #[cfg(any(target_arch = "riscv64", target_arch = "loongarch64"))] {
+        } else if #[cfg(any(target_arch = "aarch64", target_arch = "riscv64", target_arch = "loongarch64"))] {
             user_ctx.set_ra(retaddr);
         } else {
             compile_error!("unsupported target");

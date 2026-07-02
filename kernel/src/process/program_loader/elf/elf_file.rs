@@ -251,6 +251,8 @@ struct HeaderPt2_64 {
 fn check_elf_header(elf_header: &ElfHeader) -> Result<()> {
     #[cfg(target_arch = "x86_64")]
     const EXPECTED_ELF_MACHINE: header::Machine = header::Machine::X86_64;
+    #[cfg(target_arch = "aarch64")]
+    const EXPECTED_ELF_MACHINE: header::Machine = header::Machine::AArch64;
     #[cfg(target_arch = "riscv64")]
     const EXPECTED_ELF_MACHINE: header::Machine = header::Machine::RISC_V;
     // Reference: <https://loongson.github.io/LoongArch-Documentation/LoongArch-ELF-ABI-EN.html#_e_machine_identifies_the_machine>

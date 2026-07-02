@@ -313,10 +313,14 @@ impl FpuContext {
     }
 
     /// Loads CPU's FPU context from this instance.
-    pub fn load(&mut self) {
+    pub fn load(&self) {
         // SAFETY: The pointer to self is valid and the LDP instructions
         // load 16-byte SIMD register values from aligned memory.
-        unsafe { fpu_load(self) };
+        // Takes &self (not &mut self) to satisfy the UserReg trait's
+        // restore_to_cpu(&self) signature. The FPU registers are restored
+        // from the memory at self, which is a read-only operation on the
+        // struct itself — the CPU's FP state is what changes, not the struct.
+        unsafe { fpu_load(self as *const Self as *mut Self) };
     }
 
     /// Returns the FPU context as a byte slice.

@@ -27,7 +27,6 @@ macro_rules! __log_prefix {
 }
 
 #[cfg_attr(target_arch = "x86_64", path = "arch/x86/mod.rs")]
-#[cfg_attr(target_arch = "aarch64", path = "arch/aarch64/mod.rs")]
 #[cfg_attr(target_arch = "riscv64", path = "arch/riscv/mod.rs")]
 #[cfg_attr(target_arch = "loongarch64", path = "arch/loongarch/mod.rs")]
 pub mod arch;
@@ -77,10 +76,10 @@ pub use self::{error::Error, prelude::Result};
 // make inter-initialization-dependencies more clear and reduce usages of
 // boot stage only global variables.
 unsafe fn init() {
-    crate::early_println!("[ostd] init: enable_cpu_features");
     arch::enable_cpu_features();
 
-    crate::early_println!("[ostd] init: init_early_allocator");
+    // SAFETY: This function is called only once, before `allocator::init`
+    // and after memory regions are initialized.
     unsafe { mm::frame::allocator::init_early_allocator() };
 
     #[cfg(target_arch = "x86_64")]
@@ -91,33 +90,31 @@ unsafe fn init() {
     #[cfg(not(target_arch = "x86_64"))]
     arch::serial::init();
 
-    crate::early_println!("[ostd] init: log::init");
     log::init();
 
-    crate::early_println!("[ostd] init: cpu::init_on_bsp");
+    // SAFETY:
+    //  1. They are only called once in the boot context of the BSP.
+    //  2. The number of CPUs are available because ACPI has been initialized.
+    //  3. CPU-local storage has NOT been used.
     unsafe { cpu::init_on_bsp() };
 
-    crate::early_println!("[ostd] init: frame::meta::init");
+    // SAFETY: We are on the BSP and APs are not yet started.
     let meta_pages = unsafe { mm::frame::meta::init() };
-
-    crate::early_println!("[ostd] init: frame::allocator::init");
+    // The frame allocator should be initialized immediately after the metadata
+    // is initialized. Otherwise the boot page table can't allocate frames.
+    // SAFETY: This function is called only once.
     unsafe { mm::frame::allocator::init() };
 
-    crate::early_println!("[ostd] init: kspace::init_kernel_page_table");
     mm::kspace::init_kernel_page_table(meta_pages);
 
-    crate::early_println!("[ostd] init: kspace::activate_kernel_page_table");
+    // SAFETY: This function is called only once on the BSP.
     unsafe { mm::kspace::activate_kernel_page_table() };
 
-    // Serial port is reinitialized inside activate_kernel_page_table
-    // for aarch64 (the identity mapping is gone after the switch).
-    crate::early_println!("[ostd] init: sync::init");
     sync::init();
 
-    crate::early_println!("[ostd] init: boot::init_after_heap");
     boot::init_after_heap();
 
-    crate::early_println!("[ostd] init: arch::late_init_on_bsp");
+    // SAFETY: This function is called only once on the BSP.
     unsafe { arch::late_init_on_bsp() };
 
     #[cfg(target_arch = "x86_64")]
@@ -125,20 +122,19 @@ unsafe fn init() {
         arch::serial::init();
     });
 
-    crate::early_println!("[ostd] init: smp::init");
     smp::init();
 
-    crate::early_println!("[ostd] init: boot_pt::dismiss");
+    // SAFETY:
+    // 1. The kernel page table is activated on the BSP.
+    // 2. The function is called only once on the BSP.
+    // 3. No remaining `with_borrow` invocations from now.
     unsafe { mm::page_table::boot_pt::dismiss() };
 
-    crate::early_println!("[ostd] init: irq::enable_local");
     arch::irq::enable_local();
 
-    crate::early_println!("[ostd] init: invoke_ffi_init_funcs");
     invoke_ffi_init_funcs();
 
     IN_BOOTSTRAP_CONTEXT.store(false, Ordering::Relaxed);
-    crate::early_println!("[ostd] init: DONE");
 }
 
 /// Indicates whether the kernel is in bootstrap context.

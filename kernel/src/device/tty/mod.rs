@@ -211,7 +211,7 @@ impl<D: TtyDriver> Tty<D> {
 
         // TODO: Add support for timeout.
         let is_nonblocking = status_flags.contains(StatusFlags::O_NONBLOCK);
-        let len = if is_nonblocking || self.driver.can_push() {
+        let len = if is_nonblocking {
             self.driver.push_output(&buf[..write_len])?
         } else {
             self.wait_events(IoEvents::OUT, None, || {

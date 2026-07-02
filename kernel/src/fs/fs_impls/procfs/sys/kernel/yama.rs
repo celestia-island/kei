@@ -27,7 +27,7 @@ impl YamaDirOps {
         // Reference:
         // <https://elixir.bootlin.com/linux/v6.16.5/source/security/yama/yama_lsm.c#L463>
         // <https://elixir.bootlin.com/linux/v6.16.5/source/fs/proc/proc_sysctl.c#L978>
-        ProcDir::new(Self, parent, mkmod!(a + rx))
+        ProcDir::new(Self, parent, mkmod!(a+rx))
     }
 
     const STATIC_ENTRIES: &'static [StaticEntry] = &[(
@@ -66,7 +66,7 @@ struct PtraceScopeFileOps;
 impl PtraceScopeFileOps {
     pub fn new_inode(parent: Weak<dyn Inode>) -> Arc<dyn Inode> {
         // Reference: <https://elixir.bootlin.com/linux/v6.16.5/source/security/yama/yama_lsm.c#L455>
-        ProcFile::new(Self, parent, mkmod!(a + r, u + w))
+        ProcFile::new(Self, parent, mkmod!(a+r, u+w))
     }
 }
 

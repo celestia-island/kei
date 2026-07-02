@@ -33,7 +33,7 @@ impl PidDirOps {
     pub fn new_inode(pid_entry: Arc<PidEntry>, parent: Weak<dyn Inode>) -> Arc<dyn Inode> {
         let this = Self(TidDirOps::new(pid_entry));
         // Reference: <https://elixir.bootlin.com/linux/v6.16.5/source/fs/proc/base.c#L3493>
-        ProcDir::new(this, parent, mkmod!(a + rx))
+        ProcDir::new(this, parent, mkmod!(a+rx))
     }
 
     pub(super) fn pid_entry(&self) -> &Arc<PidEntry> {

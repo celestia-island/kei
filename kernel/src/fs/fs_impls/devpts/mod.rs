@@ -163,7 +163,7 @@ impl RootInode {
             slaves: RwLock::new(SlotVec::new()),
             metadata: RwLock::new(Metadata::new_dir(
                 ROOT_INO,
-                mkmod!(a + rx, u + w),
+                mkmod!(a+rx, u+w),
                 BLOCK_SIZE,
                 sb.container_dev_id,
             )),

@@ -254,19 +254,19 @@ mod test {
 
     #[ktest]
     fn mkmod_and_chmod() {
-        let mode0 = mkmod!(a + rw);
+        let mode0 = mkmod!(a+rw);
         assert!(mode0.bits() == 0o666);
 
-        let mode1 = chmod!(mode0, u + x);
+        let mode1 = chmod!(mode0, u+x);
         assert!(mode1.bits() == 0o766);
 
-        let mode2 = mkmod!(a + rw, u + x);
+        let mode2 = mkmod!(a+rw, u+x);
         assert!(mode2.bits() == 0o766);
 
-        let mode3 = chmod!(mode2, ug - wx);
+        let mode3 = chmod!(mode2, ug-wx);
         assert!(mode3.bits() == 0o446);
 
-        let mode4 = chmod!(mode3, o = rx);
+        let mode4 = chmod!(mode3, o=rx);
         assert!(mode4.bits() == 0o445);
 
         let mode5 = chmod!(mode4, u=, g=, o=);

@@ -206,11 +206,7 @@ pub struct ucontext_t {
 
 /// Reference: <https://elixir.bootlin.com/linux/v6.15.7/source/arch/riscv/include/uapi/asm/ucontext.h>
 /// Reference: <https://elixir.bootlin.com/linux/v6.15.7/source/arch/loongarch/include/uapi/asm/ucontext.h>
-#[cfg(any(
-    target_arch = "aarch64",
-    target_arch = "riscv64",
-    target_arch = "loongarch64"
-))]
+#[cfg(any(target_arch = "riscv64", target_arch = "loongarch64"))]
 #[padding_struct]
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod)]
@@ -228,11 +224,7 @@ pub struct ucontext_t {
 // derive the `Default` implementation once that is done.
 //
 // See <https://github.com/rust-lang/rust/issues/61415>.
-#[cfg(any(
-    target_arch = "aarch64",
-    target_arch = "riscv64",
-    target_arch = "loongarch64"
-))]
+#[cfg(any(target_arch = "riscv64", target_arch = "loongarch64"))]
 impl Default for ucontext_t {
     fn default() -> Self {
         Self {

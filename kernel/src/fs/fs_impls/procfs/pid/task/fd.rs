@@ -38,7 +38,7 @@ impl<T: FdOps> FdDirOps<T> {
             },
             parent,
             // Reference: <https://elixir.bootlin.com/linux/v6.16.5/source/fs/proc/base.c#L3317>
-            mkmod!(u + rx),
+            mkmod!(u+rx),
         )
     }
 }
@@ -193,10 +193,10 @@ impl FdOps for FileSymOps {
         // Reference: <https://elixir.bootlin.com/linux/v6.16.5/source/fs/proc/fd.c#L127-L141>
         let mut mode = mkmod!(a=);
         if access_mode.is_readable() {
-            mode = chmod!(mode, u + rx);
+            mode = chmod!(mode, u+rx);
         }
         if access_mode.is_writable() {
-            mode = chmod!(mode, u + wx);
+            mode = chmod!(mode, u+wx);
         }
 
         ProcSym::new(
@@ -275,7 +275,7 @@ impl FdOps for FileInfoOps {
             },
             parent,
             // Reference: <https://elixir.bootlin.com/linux/v6.16.5/source/fs/proc/fd.c#L383>.
-            mkmod!(a + r),
+            mkmod!(a+r),
         )
     }
 

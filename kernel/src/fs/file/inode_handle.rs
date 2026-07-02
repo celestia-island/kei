@@ -95,9 +95,6 @@ impl InodeHandle {
             return (open_file.as_ref(), is_offset_aware);
         }
 
-        // Fallback: use the inode directly. This happens when the char device
-        // lookup failed during open (device not registered or ID mismatch).
-        #[cfg(target_arch = "aarch64")]
         let inode = self.path.inode();
         let is_offset_aware = inode.type_().is_seekable();
         (inode.as_ref(), is_offset_aware)
@@ -283,19 +280,8 @@ impl FileLike for InodeHandle {
             return_errno_with_message!(Errno::EBADF, "the file is not opened writable");
         }
 
-        let status_flags = self.status_flags();
-
-        // When open_file (PerOpenFileOps) is set, call write_at directly through
-        // the PerOpenFileOps trait object to avoid vtable upcast issues that can
-        // lose method bindings on aarch64.
-        if let Some(ref open_file) = self.open_file {
-            let offset_aware = open_file.is_offset_aware();
-            if !offset_aware {
-                return open_file.direct_write(reader, status_flags);
-            }
-        }
-
         let (file_ops, is_offset_aware) = self.file_ops_and_is_offset_aware();
+        let status_flags = self.status_flags();
 
         if !is_offset_aware {
             return file_ops.write_at(0, reader, status_flags);
@@ -544,12 +530,6 @@ pub enum SeekFrom {
 /// operations that are not purely inode-backed, such as state and operations for
 /// devices, pipes, namespace files, and procfs files.
 pub trait PerOpenFileOps: Pollable + FileOps + Any + Send + Sync + 'static {
-    /// Direct write bypass — calls the device-specific write path.
-    /// Used to avoid vtable dispatch issues with inherited trait methods.
-    fn direct_write(&self, reader: &mut VmReader, status_flags: StatusFlags) -> Result<usize> {
-        self.write_at(0, reader, status_flags)
-    }
-
     /// Checks whether the `seek()` operation should fail.
     fn check_seekable(&self) -> Result<()>;
 

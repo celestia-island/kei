@@ -39,7 +39,7 @@ impl SockFs {
     pub fn new_path() -> Path {
         let socket_inode = Arc::new(Self::singleton().alloc_inode(
             PseudoInodeType::Socket,
-            mkmod!(a + rwx),
+            mkmod!(a+rwx),
             Uid::new_root(),
             Gid::new_root(),
         ));

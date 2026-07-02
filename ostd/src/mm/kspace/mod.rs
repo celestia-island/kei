@@ -104,8 +104,6 @@ pub fn kernel_loaded_offset() -> usize {
 
 #[cfg(target_arch = "x86_64")]
 const KERNEL_CODE_BASE_VADDR: usize = 0xffff_ffff_8000_0000;
-#[cfg(target_arch = "aarch64")]
-const KERNEL_CODE_BASE_VADDR: usize = 0xffff_8000_0000_0000;
 #[cfg(target_arch = "riscv64")]
 const KERNEL_CODE_BASE_VADDR: usize = 0xffff_ffff_0000_0000;
 #[cfg(target_arch = "loongarch64")]
@@ -224,29 +222,32 @@ pub(crate) enum MappedItemRef<'a> {
 /// This function should be called before:
 ///  - any initializer that modifies the kernel page table.
 pub fn init_kernel_page_table(meta_pages: Segment<MetaPageMeta>) {
-    crate::early_println!("[kpt] init_kernel_page_table: start");
+    info!("Initializing the kernel page table");
+
+    // Start to initialize the kernel page table.
     let kpt = PageTable::<KernelPtConfig>::new_kernel_page_table();
     let preempt_guard = disable_preempt();
 
+    // In LoongArch64, we don't need to do linear mappings for the kernel because of DMW0.
     #[cfg(not(target_arch = "loongarch64"))]
+    // Do linear mappings for the kernel.
     {
-        crate::early_println!("[kpt] linear mapping");
         let max_paddr = crate::mm::frame::max_paddr();
         let from = LINEAR_MAPPING_BASE_VADDR..LINEAR_MAPPING_BASE_VADDR + max_paddr;
         let prop = PageProperty {
-            flags: PageFlags::RWX,
+            flags: PageFlags::RW,
             cache: CachePolicy::Writeback,
             priv_flags: PrivilegedPageFlags::GLOBAL,
         };
         let mut cursor = kpt.cursor_mut(&preempt_guard, &from).unwrap();
         for (pa, level) in largest_pages::<KernelPtConfig>(from.start, 0, max_paddr) {
+            // SAFETY: we are doing the linear mapping for the kernel.
             unsafe { cursor.map(MappedItem::Untracked(pa, level, prop)) };
         }
-        crate::early_println!("[kpt] linear mapping done");
     }
 
+    // Map the metadata pages.
     {
-        crate::early_println!("[kpt] metadata mapping");
         let start_va = mapping::frame_to_meta::<PagingConsts>(0);
         let from = start_va..start_va + meta_pages.size();
         let prop = PageProperty {
@@ -255,21 +256,23 @@ pub fn init_kernel_page_table(meta_pages: Segment<MetaPageMeta>) {
             priv_flags: PrivilegedPageFlags::GLOBAL,
         };
         let mut cursor = kpt.cursor_mut(&preempt_guard, &from).unwrap();
+        // We use untracked mapping so that we can benefit from huge pages.
+        // We won't unmap them anyway, so there's no leaking problem yet.
+        // TODO: support tracked huge page mapping.
         let pa_range = meta_pages.into_raw();
         for (pa, level) in
             largest_pages::<KernelPtConfig>(from.start, pa_range.start, pa_range.len())
         {
+            // SAFETY: We are doing the metadata mappings for the kernel.
             unsafe { cursor.map(MappedItem::Untracked(pa, level, prop)) };
         }
-        crate::early_println!("[kpt] metadata mapping done");
     }
 
-    // The kernel code is already mapped by the linear mapping above with RWX.
-    // No separate kernel code mapping is needed for aarch64 since the kernel
-    // runs in the linear mapping address space.
-    #[cfg(not(any(target_arch = "loongarch64", target_arch = "aarch64")))]
+    // In LoongArch64, we don't need to do linear mappings for the kernel code because of DMW0.
+    #[cfg(not(target_arch = "loongarch64"))]
+    // Map for the kernel code itself.
+    // TODO: set separated permissions for each segments in the kernel.
     {
-        crate::early_println!("[kpt] kernel code mapping");
         let regions = &crate::boot::EARLY_INFO.get().unwrap().memory_regions;
         let region = regions
             .iter()
@@ -284,13 +287,12 @@ pub fn init_kernel_page_table(meta_pages: Segment<MetaPageMeta>) {
         };
         let mut cursor = kpt.cursor_mut(&preempt_guard, &from).unwrap();
         for (pa, level) in largest_pages::<KernelPtConfig>(from.start, region.base(), from.len()) {
+            // SAFETY: we are doing the kernel code mapping.
             unsafe { cursor.map(MappedItem::Untracked(pa, level, prop)) };
         }
-        crate::early_println!("[kpt] kernel code mapping done");
     }
 
     KERNEL_PAGE_TABLE.call_once(|| kpt);
-    crate::early_println!("[kpt] init_kernel_page_table: done");
 }
 
 /// Activates the kernel page table.
@@ -310,10 +312,4 @@ pub unsafe fn activate_kernel_page_table() {
         kpt.first_activate_unchecked();
         crate::arch::mm::tlb_flush_all_including_global();
     }
-
-    // After the page table switch, the identity mapping for the UART
-    // (0x09000000) is gone. Reinitialize the serial port to use the
-    // linear mapping address before any console output.
-    #[cfg(target_arch = "aarch64")]
-    crate::arch::serial::reinit_with_linear_mapping();
 }

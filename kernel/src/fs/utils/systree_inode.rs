@@ -114,7 +114,7 @@ pub(in crate::fs) trait SysTreeInodeTy: Send + Sync + 'static {
         let node_kind = SysTreeNodeKind::Symlink(symlink);
         let ino = ino::from_node_kind(&node_kind);
         let metadata = Self::new_metadata(ino, InodeType::SymLink, sb);
-        let mode = mkmod!(a + rwx);
+        let mode = mkmod!(a+rwx);
         Self::new_arc(node_kind, metadata, mode, parent)
     }
 

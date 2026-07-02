@@ -19,7 +19,6 @@ pub struct ElfHeaders {
     loadable_phdrs: Vec<LoadablePhdr>,
     max_load_align: usize,
     interp_phdr: Option<InterpPhdr>,
-    tls_phdr: Option<TlsPhdr>,
 }
 
 impl ElfHeaders {
@@ -64,7 +63,6 @@ impl ElfHeaders {
         let mut loadable_phdrs = Vec::with_capacity(ph_count as usize);
         let mut max_load_align = PAGE_SIZE;
         let mut interp_phdr = None;
-        let mut tls_phdr = None;
         for index in 0..ph_count {
             let program_header =
                 program::parse_program_header(input, header, index).map_err(|_| {
@@ -92,9 +90,6 @@ impl ElfHeaders {
                     // Like Linux, we only handle the first interpreter program header.
                     interp_phdr = Some(InterpPhdr::parse(&ph64)?);
                 }
-                Ok(program::Type::Tls) if tls_phdr.is_none() => {
-                    tls_phdr = Some(TlsPhdr::parse(&ph64));
-                }
                 _ => (),
             }
         }
@@ -107,7 +102,6 @@ impl ElfHeaders {
             loadable_phdrs,
             max_load_align,
             interp_phdr,
-            tls_phdr,
         })
     }
 
@@ -148,10 +142,6 @@ impl ElfHeaders {
     /// Returns a reference to the interpreter program header.
     pub(super) fn interp_phdr(&self) -> Option<&InterpPhdr> {
         self.interp_phdr.as_ref()
-    }
-
-    pub(super) fn tls_phdr(&self) -> Option<&TlsPhdr> {
-        self.tls_phdr.as_ref()
     }
 
     /// Finds the virtual address of the program headers.
@@ -261,8 +251,6 @@ struct HeaderPt2_64 {
 fn check_elf_header(elf_header: &ElfHeader) -> Result<()> {
     #[cfg(target_arch = "x86_64")]
     const EXPECTED_ELF_MACHINE: header::Machine = header::Machine::X86_64;
-    #[cfg(target_arch = "aarch64")]
-    const EXPECTED_ELF_MACHINE: header::Machine = header::Machine::AArch64;
     #[cfg(target_arch = "riscv64")]
     const EXPECTED_ELF_MACHINE: header::Machine = header::Machine::RISC_V;
     // Reference: <https://loongson.github.io/LoongArch-Documentation/LoongArch-ELF-ABI-EN.html#_e_machine_identifies_the_machine>
@@ -423,26 +411,5 @@ impl InterpPhdr {
             )
         })?;
         Ok(ldso_path)
-    }
-}
-
-/// A ELF program header of the type `PT_TLS`.
-///
-/// Describes the Thread-Local Storage template.
-pub(super) struct TlsPhdr {
-    pub vaddr: Vaddr,
-    pub filesz: usize,
-    pub memsz: usize,
-    pub align: usize,
-}
-
-impl TlsPhdr {
-    fn parse(phdr: &ProgramHeader64) -> Self {
-        Self {
-            vaddr: phdr.virtual_addr as usize,
-            filesz: phdr.file_size as usize,
-            memsz: phdr.mem_size as usize,
-            align: phdr.align as usize,
-        }
     }
 }

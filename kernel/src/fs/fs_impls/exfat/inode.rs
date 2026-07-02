@@ -65,7 +65,7 @@ impl FatAttr {
     fn make_mode(&self, mount_option: ExfatMountOptions, mode: InodeMode) -> InodeMode {
         let mut ret = mode;
         if self.contains(FatAttr::READONLY) && !self.contains(FatAttr::DIRECTORY) {
-            ret.remove(mkmod!(a + w));
+            ret.remove(mkmod!(a+w));
         }
         if self.contains(FatAttr::DIRECTORY) {
             ret.remove(InodeMode::from_bits_truncate(mount_option.fs_dmask));

@@ -43,38 +43,12 @@ impl TtyDriver for SerialDriver {
     }
 
     fn push_output(&self, chs: &[u8]) -> Result<usize> {
-        #[cfg(target_arch = "aarch64")]
-        {
-            for &byte in chs {
-                if byte == b'\n' {
-                    ostd::arch::serial::pl011_send_byte(b'\r');
-                }
-                ostd::arch::serial::pl011_send_byte(byte);
-            }
-        }
-        #[cfg(not(target_arch = "aarch64"))]
-        {
-            self.console.send(chs);
-        }
+        self.console.send(chs);
         Ok(chs.len())
     }
 
     fn echo_callback(&self) -> impl FnMut(&[u8]) + '_ {
-        #[cfg(target_arch = "aarch64")]
-        {
-            |chs: &[u8]| {
-                for &b in chs {
-                    if b == b'\n' {
-                        ostd::arch::serial::pl011_send_byte(b'\r');
-                    }
-                    ostd::arch::serial::pl011_send_byte(b);
-                }
-            }
-        }
-        #[cfg(not(target_arch = "aarch64"))]
-        {
-            |chs| self.console.send(chs)
-        }
+        |chs| self.console.send(chs)
     }
 
     fn can_push(&self) -> bool {
@@ -97,7 +71,6 @@ pub(super) fn serial0_device() -> Option<&'static Arc<Tty<SerialDriver>>> {
 
 pub(super) fn init_in_first_process() -> Result<()> {
     let devices = aster_console::all_devices();
-    for (name, _) in &devices {}
 
     // Initialize the `ttyS0` device if the serial console is available.
 

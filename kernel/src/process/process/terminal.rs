@@ -28,9 +28,9 @@ mod ioctl_defs {
     pub(super) type GetForegroundPgid = ioc!(TIOCGPGRP, 0x540F, OutData<Pgid>);
     pub(super) type SetForegroundPgid = ioc!(TIOCSPGRP, 0x5410, InData<Pgid>);
 
-    pub(super) type SetControlTty = ioc!(TIOCSCTTY, 0x540E, InData<i32, PassByVal>);
-    pub(super) type SetControlNoTty = ioc!(TIOCNOTTY, 0x5422, NoData);
-    pub(super) type GetControlSid = ioc!(TIOCGSID, 0x5429, OutData<Sid>);
+    pub(super) type SetControlTty     = ioc!(TIOCSCTTY, 0x540E, InData<i32, PassByVal>);
+    pub(super) type SetControlNoTty   = ioc!(TIOCNOTTY, 0x5422, NoData);
+    pub(super) type GetControlSid     = ioc!(TIOCGSID,  0x5429, OutData<Sid>);
 }
 
 impl dyn Terminal {

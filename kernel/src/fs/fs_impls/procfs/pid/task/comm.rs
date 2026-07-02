@@ -18,7 +18,7 @@ pub struct CommFileOps(TidDirOps);
 impl CommFileOps {
     pub fn new_inode(dir: &TidDirOps, parent: Weak<dyn Inode>) -> Arc<dyn Inode> {
         // Reference: <https://elixir.bootlin.com/linux/v6.16.5/source/fs/proc/base.c#L3336>
-        ProcFile::new(Self(dir.clone()), parent, mkmod!(a + r, u + w))
+        ProcFile::new(Self(dir.clone()), parent, mkmod!(a+r, u+w))
     }
 }
 

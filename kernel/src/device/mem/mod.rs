@@ -69,9 +69,9 @@ impl Device for MemDevice {
         // Reference: <https://elixir.bootlin.com/linux/v6.18/source/drivers/char/mem.c#L734>.
         Some(match self.file {
             MemFile::Full | MemFile::Null | MemFile::Random | MemFile::Urandom | MemFile::Zero => {
-                DevtmpfsInodeMeta::with_mode(self.file.name(), mkmod!(a + rw))
+                DevtmpfsInodeMeta::with_mode(self.file.name(), mkmod!(a+rw))
             }
-            MemFile::Kmsg => DevtmpfsInodeMeta::with_mode(self.file.name(), mkmod!(a + r, u + w)),
+            MemFile::Kmsg => DevtmpfsInodeMeta::with_mode(self.file.name(), mkmod!(a+r, u+w)),
             _ => DevtmpfsInodeMeta::new(self.file.name()),
         })
     }

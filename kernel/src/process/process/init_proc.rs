@@ -160,13 +160,6 @@ fn create_init_task(
     user_ctx.set_instruction_pointer(elf_load_info.entry_point as _);
     user_ctx.set_stack_pointer(elf_load_info.user_stack_top as _);
 
-    // Set up TLS pointer if the ELF has a PT_TLS segment.
-    // On aarch64, TPIDR_EL0 must point past the end of the TLS block.
-    // Without this, any thread-local access before C library init crashes.
-    if let Some(tls_ptr) = elf_load_info.tls_pointer {
-        user_ctx.set_tls_pointer(tls_ptr);
-    }
-
     let thread_name = ThreadName::new_from_executable_path(&elf_abs_path);
 
     let thread_builder =

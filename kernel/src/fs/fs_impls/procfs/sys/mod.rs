@@ -25,7 +25,7 @@ impl SysDirOps {
         // Reference:
         // <https://elixir.bootlin.com/linux/v6.16.5/source/fs/proc/proc_sysctl.c#L1566>
         // <https://elixir.bootlin.com/linux/v6.16.5/source/fs/proc/generic.c#L488-L489>
-        ProcDir::new(Self, parent, mkmod!(a + rx))
+        ProcDir::new(Self, parent, mkmod!(a+rx))
     }
 
     const STATIC_ENTRIES: &'static [StaticEntry] = &[

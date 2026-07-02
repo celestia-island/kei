@@ -394,8 +394,7 @@ impl OverlayInode {
         }
 
         if target_has_valid_lower {
-            let whiteout =
-                upper.create(&whiteout_name(name), InodeType::File, mkmod!(a + r, u + w))?;
+            let whiteout = upper.create(&whiteout_name(name), InodeType::File, mkmod!(a+r, u+w))?;
             // FIXME: Align the whiteout xattr behavior with Linux
             whiteout.set_xattr(
                 XattrName::try_from_full_name(WHITEOUT_XATTR_NAME).unwrap(),
@@ -441,7 +440,7 @@ impl OverlayInode {
 
         upper.rmdir(name)?;
 
-        let whiteout = upper.create(&whiteout_name(name), InodeType::File, mkmod!(a + r, u + w))?;
+        let whiteout = upper.create(&whiteout_name(name), InodeType::File, mkmod!(a+r, u+w))?;
         // FIXME: Align the whiteout xattr behavior with Linux
         whiteout.set_xattr(
             XattrName::try_from_full_name(WHITEOUT_XATTR_NAME).unwrap(),

@@ -55,7 +55,7 @@ impl PidfdFs {
         SHARED_INODE.call_once(|| {
             let pidfd_inode = Self::singleton().alloc_inode(
                 PseudoInodeType::Pidfd,
-                mkmod!(u + rwx),
+                mkmod!(u+rwx),
                 Uid::new_root(),
                 Gid::new_root(),
             );

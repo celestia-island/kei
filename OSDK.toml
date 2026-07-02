@@ -68,7 +68,7 @@ qemu.args = """\
     -display none \
     -serial chardev:mux \
     -monitor chardev:mux \
-    -chardev stdio,id=mux,mux=on,signal=off,logfile=target/qemu.log
+    -chardev stdio,id=mux,mux=on,signal=off,logfile=qemu.log
 """
 
 [scheme."loongarch"]
@@ -84,40 +84,9 @@ qemu.args = """\
     -display none \
     -serial chardev:mux \
     -monitor chardev:mux \
-    -chardev stdio,id=mux,mux=on,signal=off,logfile=target/qemu.log \
+    -chardev stdio,id=mux,mux=on,signal=off,logfile=qemu.log \
     -device virtio-keyboard-pci \
     -device virtio-serial \
     -device virtconsole,chardev=mux \
     -rtc base=utc
-"""
-
-[scheme."aarch64"]
-supported_archs = ["aarch64"]
-boot.method = "qemu-direct"
-build.strip_elf = false
-
-# QEMU args for aarch64. Drives both a serial console (for kernel logs) and
-# a graphical window (for the virtio-gpu 2D scanout). Override the display
-# backend with $QEMU_DISPLAY (e.g. `-display none` for headless CI,
-# `-display sdl` for a local window, `-display vnc=0.0.0.0:0` for remote).
-# Default keeps a window when $QEMU_DISPLAY is unset; set QEMU_DISPLAY=-display none
-# in CI to stay headless.
-qemu.args = """\
-    -cpu cortex-a72 \
-    -machine virt,gic-version=3,virtualization=on \
-    -m ${MEM:-2G} \
-    -smp ${SMP:-1} \
-    --no-reboot \
-    -serial chardev:mux \
-    -monitor chardev:mux \
-    -chardev stdio,id=mux,mux=on,signal=off,logfile=target/qemu.log \
-    -drive if=none,format=raw,id=x0,file=./test/initramfs/build/ext2.img \
-    -drive if=none,format=raw,id=x1,file=./test/initramfs/build/exfat.img \
-    -device virtio-blk-device,drive=x0 \
-    -device virtio-blk-device,drive=x1 \
-    -device virtio-gpu-device \
-    -device virtio-keyboard-device \
-    -device virtio-serial-device \
-    -device virtconsole,chardev:mux \
-    ${QEMU_DISPLAY:--display sdl} \
 """

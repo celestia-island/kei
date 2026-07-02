@@ -81,7 +81,7 @@ impl<'a> DevtmpfsInodeMeta<'a> {
     pub fn new(path: impl Into<Cow<'a, str>>) -> Self {
         Self {
             path: path.into(),
-            mode: mkmod!(u + rw),
+            mode: mkmod!(u+rw),
         }
     }
 
@@ -151,7 +151,7 @@ pub fn add_node(
                 } else {
                     // Create the parent directory
                     dev_path =
-                        dev_path.new_fs_child(next_name, InodeType::Dir, mkmod!(a + rx, u + w))?;
+                        dev_path.new_fs_child(next_name, InodeType::Dir, mkmod!(a+rx, u+w))?;
                 }
             }
         }

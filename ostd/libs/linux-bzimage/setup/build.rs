@@ -5,13 +5,7 @@ use std::{path::PathBuf, process::Command};
 fn main() {
     let source_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
-
-    // PAYLOAD_FILE is set by OSDK during kernel builds. When absent (e.g.,
-    // during `cargo check` or IDE analysis), skip the build script.
-    let Ok(payload_file) = std::env::var("PAYLOAD_FILE") else {
-        return;
-    };
-    let payload_file = PathBuf::from(payload_file);
+    let payload_file = PathBuf::from(std::env::var("PAYLOAD_FILE").unwrap());
 
     let target_arch = std::env::var("TARGET").unwrap();
     if target_arch.starts_with("x86_64") {

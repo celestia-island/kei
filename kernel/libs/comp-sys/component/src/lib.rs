@@ -178,10 +178,10 @@ fn match_and_call(
         // relative/path/to/comps/pci/src/lib.rs
         let mut str: String = registry.path.to_owned();
         str = str.replace('\\', "/");
-        // Trim the path to get the component base directory.
-        // The path comes from file!() which may be relative ("src/lib.rs")
-        // or workspace-relative ("kernel/comps/console/src/lib.rs").
-        // We need to extract the component base path.
+        // relative/path/to/comps/pci
+        // There are two cases, one in the test folder and one in the src folder.
+        // There may be multiple directories within the folder.
+        // There we assume it will not have such directories: 'comp1/src/comp2/src/lib.rs' so that we can split by tests or src string
         if str.contains("src/") {
             str = str
                 .trim_end_matches(str.get(str.find("src/").unwrap()..str.len()).unwrap())
@@ -191,21 +191,13 @@ fn match_and_call(
                 .trim_end_matches(str.get(str.find("tests/").unwrap()..str.len()).unwrap())
                 .to_string();
         } else {
-            // Path doesn't follow the src/ or tests/ convention.
-            // This can happen with absolute paths or non-standard layouts.
-            // Skip this component rather than panicking.
-            debug!("Skipping component with unrecognized path: {}", str);
-            continue;
+            panic!("The path of {} cannot recognized by component system", str);
         }
         let str = str.trim_end_matches('/').to_owned();
 
-        let Some(mut info) = components.remove(&str) else {
-            debug!(
-                "Component path '{}' not found in Components.toml, skipping",
-                str
-            );
-            continue;
-        };
+        let mut info = components
+            .remove(&str)
+            .ok_or(ComponentSystemInitError::NotIncludeAllComponent(str))?;
         info.function.replace(registry.function);
         infos.push(info);
     }
@@ -217,6 +209,7 @@ fn match_and_call(
     }
 
     infos.sort();
+    debug!("component infos: {infos:?}");
     info!("Components initializing in {stage:?} stage...");
 
     for info in infos {

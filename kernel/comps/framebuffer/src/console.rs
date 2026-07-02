@@ -115,7 +115,7 @@ struct ConsoleState {
 
 impl ConsoleState {
     fn new(backend: Arc<FrameBuffer>) -> Self {
-        let buffer_size = backend.buffer_size();
+        let buffer_size = backend.io_mem().size();
         Self {
             x_pos: 0,
             y_pos: 0,
@@ -133,9 +133,6 @@ impl ConsoleState {
     fn flush_fullscreen(&mut self) {
         if self.is_output_enabled() {
             self.backend.write_bytes_at(0, &self.bytes).unwrap();
-            // For blit-backed framebuffers, push the pixels to the host
-            // scanout. No-op for Mmio-backed (direct-mapped) framebuffers.
-            self.backend.flush_all();
         }
     }
 
@@ -173,11 +170,10 @@ impl ConsoleState {
     fn shift_lines_up(&mut self) {
         let offset = self.backend.calc_offset(0, self.font.height()).as_usize();
         self.bytes.copy_within(offset.., 0);
-        self.bytes[self.backend.buffer_size() - offset..].fill(0);
+        self.bytes[self.backend.io_mem().size() - offset..].fill(0);
 
         if self.is_output_enabled() {
             self.backend.write_bytes_at(0, &self.bytes).unwrap();
-            self.backend.flush_all();
         }
 
         self.y_pos -= self.font.height();

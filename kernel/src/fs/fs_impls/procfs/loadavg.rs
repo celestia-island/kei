@@ -26,7 +26,7 @@ impl LoadAvgFileOps {
         // Reference:
         // <https://elixir.bootlin.com/linux/v6.16.5/source/fs/proc/loadavg.c#L33>
         // <https://elixir.bootlin.com/linux/v6.16.5/source/fs/proc/generic.c#L549-L550>
-        ProcFile::new(Self, parent, mkmod!(a + r))
+        ProcFile::new(Self, parent, mkmod!(a+r))
     }
 }
 

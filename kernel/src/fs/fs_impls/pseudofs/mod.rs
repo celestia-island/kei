@@ -110,7 +110,7 @@ impl NaivePseudoFs {
                 root: Arc::new(PseudoInode::new(
                     ROOT_INO,
                     PseudoInodeType::Root,
-                    mkmod!(u + rw),
+                    mkmod!(u+rw),
                     Uid::new_root(),
                     Gid::new_root(),
                     weak_fs.clone(),

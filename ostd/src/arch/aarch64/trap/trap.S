@@ -231,12 +231,6 @@ run_user_entry:
     ldr     x1, [x28, #0x100]             // Load spsr_el1 from context
     msr     spsr_el1, x1
 
-    // Write TPIDR_EL0 (TLS pointer) from context.
-    // This is essential for user-space programs that use thread-local storage.
-    // Without it, TPIDR_EL0 remains 0 and any TLS access faults.
-    ldr     x1, [x28, #0x110]             // Load tls_pointer from context
-    msr     tpidr_el0, x1
-
     // Restore general regs for user mode (skip x0, x27, x28).
     // x28 holds the context pointer and must not be overwritten
     // until the very end. x27 is restored together with x28.

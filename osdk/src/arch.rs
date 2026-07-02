@@ -46,7 +46,7 @@ impl Arch {
     /// Get the target triple for the architecture.
     pub fn triple(&self) -> &'static str {
         match self {
-            Arch::Aarch64 => "aarch64-unknown-none",
+            Arch::Aarch64 => "aarch64-unknown-none-softfloat",
             Arch::RiscV64 => "riscv64imac-unknown-none-elf",
             Arch::X86_64 => "x86_64-unknown-none",
             Arch::LoongArch64 => "loongarch64-unknown-none-softfloat",

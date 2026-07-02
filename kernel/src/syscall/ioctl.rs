@@ -50,11 +50,11 @@ mod ioctl_defs {
 
     // Reference: <https://elixir.bootlin.com/linux/v6.18/source/include/uapi/asm-generic/ioctls.h>
 
-    pub(super) type SetNonBlocking = ioc!(FIONBIO, 0x5421, InData<i32>);
-    pub(super) type SetAsync = ioc!(FIOASYNC, 0x5452, InData<i32>);
+    pub(super) type SetNonBlocking    = ioc!(FIONBIO,  0x5421, InData<i32>);
+    pub(super) type SetAsync          = ioc!(FIOASYNC, 0x5452, InData<i32>);
 
     pub(super) type SetNotCloseOnExec = ioc!(FIONCLEX, 0x5450, NoData);
-    pub(super) type SetCloseOnExec = ioc!(FIOCLEX, 0x5451, NoData);
+    pub(super) type SetCloseOnExec    = ioc!(FIOCLEX,  0x5451, NoData);
 }
 
 fn handle_fd_ioctl(

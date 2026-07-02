@@ -49,7 +49,7 @@ impl AnonPipeInode {
 
         let pseudo_inode = PipeFs::singleton().alloc_inode(
             PseudoInodeType::Pipe,
-            mkmod!(u + rw),
+            mkmod!(u+rw),
             Uid::new_root(),
             Gid::new_root(),
         );

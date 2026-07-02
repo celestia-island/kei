@@ -517,19 +517,19 @@ fn mode_permissions() {
 
     // Check default modes based on SysPerms
     let r_mode = r_attr_inode.mode().unwrap();
-    assert!(r_mode.contains(mkmod!(a + r))); // 0o444
-    assert!(!r_mode.contains(mkmod!(u + w))); // Not 0o200
+    assert!(r_mode.contains(mkmod!(a+r))); // 0o444
+    assert!(!r_mode.contains(mkmod!(u+w))); // Not 0o200
 
     let rw_mode = rw_attr_inode.mode().unwrap();
-    assert!(rw_mode.contains(mkmod!(a + r))); // 0o444
-    assert!(rw_mode.contains(mkmod!(u + w))); // 0o200
+    assert!(rw_mode.contains(mkmod!(a+r))); // 0o444
+    assert!(rw_mode.contains(mkmod!(u+w))); // 0o200
 
     // Test set_mode
-    let new_mode = mkmod!(u + rw); // rw-------
+    let new_mode = mkmod!(u+rw); // rw-------
     rw_attr_inode.set_mode(new_mode).expect("set_mode failed");
     assert_eq!(rw_attr_inode.mode().unwrap(), new_mode);
 
     // Directories should have default mode (e.g., 0o555)
     let leaf1_mode = leaf1_dir_inode.mode().unwrap();
-    assert!(leaf1_mode.contains(mkmod!(a + rx))); // Read/execute for all users
+    assert!(leaf1_mode.contains(mkmod!(a+rx))); // Read/execute for all users
 }

@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-#[cfg(any(
-    target_arch = "x86_64",
-    target_arch = "aarch64",
-    target_arch = "riscv64"
-))]
+#[cfg(any(target_arch = "x86_64", target_arch = "riscv64"))]
 use ostd::arch::cpu::context::CpuException;
 #[cfg(target_arch = "loongarch64")]
 use ostd::arch::cpu::context::CpuExceptionInfo as CpuException;
@@ -76,6 +72,8 @@ pub(super) fn page_fault_handler(info: &CpuException) -> Result<(), ()> {
     let thread_local = task.as_thread_local().unwrap();
 
     if thread_local.is_page_fault_disabled() {
+        // Do nothing if the page fault handler is disabled. This will typically cause the fallible
+        // memory operation to report `EFAULT` errors immediately.
         return Err(());
     }
 

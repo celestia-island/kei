@@ -270,19 +270,6 @@ fn handle_user_page_fault(f: &mut TrapFrame, exception: &CpuException) {
         return;
     }
 
-    // Page fault could not be resolved — deliver signal to user process.
-    let far = match exception {
-        CpuException::InstructionPageFault(a) => *a,
-        CpuException::LoadPageFault(a) => *a,
-        CpuException::StorePageFault(a) => *a,
-        _ => 0,
-    };
-    crate::early_println!(
-        "[trap] unhandled user pf: elr={:#x} far={:#x}",
-        f.elr_el1,
-        far
-    );
-
     // For user-mode faults that can't be handled inline: return from run_user
     // so UserContext::execute can deliver a signal.
     let ctx_ptr = trap::CURRENT_USER_CTX.load();

@@ -4,12 +4,8 @@ OUTPUT_ARCH(aarch64)
 # ARM64 Image header expects kernel at text_offset (0x80000) from 2MB-aligned base
 # Base: 0x40000000 (QEMU virt RAM start), text_offset: 0x80000
 # KERNEL_LMA: 0x40080000 (2MB-aligned base + text_offset)
-#
-# KERNEL_VMA must match the linear mapping base address used by ostd.
-# For aarch64 with 48-bit VA: LINEAR_MAPPING_BASE_VADDR = 0xFFFF_8000_0000_0000
-# KERNEL_VMA = LINEAR_MAPPING_BASE_VADDR + KERNEL_LMA
 KERNEL_LMA = 0x40080000;
-KERNEL_VMA = 0xffff800040080000;
+KERNEL_VMA = 0xffffffff40080000;
 KERNEL_VMA_OFFSET = KERNEL_VMA - KERNEL_LMA;
 
 SECTIONS
@@ -36,10 +32,6 @@ SECTIONS
 
     # Then, we switch to virtual addresses for all the other sections.
     . += KERNEL_VMA_OFFSET;
-
-    # Define __executable_start at the kernel VMA (not physical address)
-    # so that adrp relocations from kernel code stay within ±4GB.
-    __executable_start = .;
 
     .text                   : AT(ADDR(.text) - KERNEL_VMA_OFFSET) {
         *(.text .text.*)

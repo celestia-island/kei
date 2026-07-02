@@ -13,24 +13,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
       - run: cd bsp && cargo check
 
-  check-arm64-patches:
+  check-vendored-versions:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Verify arm64 remotes configured
+      - name: Show vendored upstream versions
         run: |
-          if ! git remote get-url upstream >/dev/null 2>&1; then
-            git remote add upstream https://github.com/asterinas/asterinas.git
-          fi
-          if ! git remote get-url arm64 >/dev/null 2>&1; then
-            git remote add arm64 https://github.com/wanywhn/asterinas.git
-          fi
-      - name: Check upstream sync status
-        run: |
-          git fetch upstream main --depth=1
-          git fetch arm64 arm64-support --depth=1
-          echo "upstream/main: $(git rev-parse --short upstream/main)"
-          echo "arm64/arm64-support: $(git rev-parse --short arm64/arm64-support)"
+          echo "=== Upstream asterinas ==="
+          cat .vendored-upstream 2>/dev/null || echo "  (not vendored yet — run 'just vendor')"
+          echo ""
+          echo "=== ARM64 source ==="
+          cat .vendored-arm64 2>/dev/null || echo "  (not pulled yet — run 'just pull-arm64')"
 
   fmt:
     runs-on: ubuntu-latest

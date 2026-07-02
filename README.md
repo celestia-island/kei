@@ -1,82 +1,85 @@
-# kei — Asterinas ARM64 Distribution
+# kei — Asterinas ARM64 Fork
 
 [![License](https://img.shields.io/badge/license-MPL--2.0-blue.svg)](LICENSE-MPL)
 
-Downstream fork of [asterinas/asterinas](https://github.com/asterinas/asterinas)
-that adds ARM64 architecture support and Board Support Packages (BSP) for
-industrial IoT gateways.
+Independent fork of [asterinas/asterinas](https://github.com/asterinas/asterinas)
+with ARM64 support and Board Support Packages for industrial IoT gateways.
 
-## What kei IS
+## Model: Independent Fork (Apple LLVM Style)
 
-kei is a **downstream fork** that carries modifications on top of upstream
-Asterinas. It tracks two upstream sources via git merge:
+kei is **not** a branch that tracks upstream. It is an **independent fork**
+that periodically absorbs upstream changes on its own schedule.
 
 ```
-asterinas/asterinas:main        ← base kernel (ostd + kernel + osdk)
-wanywhn/asterinas:arm64-support ← ARM64 architecture port (PR #3270)
-        │
-        ▼
-    kei:dev = merge(upstream, arm64) + BSP + board configs + testing
+asterinas/asterinas          kei (this repo)
+(活跃上游)                    (完全独立)
+     │                            │
+     │  ┌── 每 N 个月 ──────▶     │  vendor-upstream.sh
+     │  │   squash 替换            │  (整体吸收，不做 commit 级 merge)
+     │  └──────────────────────   │
+     │                            │
+wanywhn/asterinas                │
+(arm64-support)                  │
+     │  ┌── 一次性拉取 ──────▶    │  pull-arm64.sh
+     │  │   之后独立维护           │  (点快照，之后自己改)
+     │  └──────────────────────   │
+                                  │
+                          ostd/src/arch/aarch64/  ← 我们独立维护
+                          kernel/src/arch/aarch64/ ← 我们独立维护
+                          bsp/                    ← 100% 我们的代码
+                          board/ configs/         ← 100% 我们的代码
 ```
 
-## What kei IS NOT
-
-- **Not a patch series** — no quilt, no fragile diffs. ARM64 code lives in the
-  tree directly, same as upstream `x86/`, `riscv/`, `loongarch/` directories.
-- **Not a permanent fork** — as ARM64 support merges upstream, kei's delta
-  shrinks. Eventually kei becomes just BSP configs + board device trees.
-- **Not a kernel for end users** — kei produces kernel binaries that
-  [aris](https://github.com/celestia-island/aris) packages into bootable firmware.
+**为什么不跟踪上游？**
+- asterinas 太活跃（4194 commits, SOSP/USENIX 论文），频繁 merge 冲突成本 > 收益
+- 上游 lrh2000 会重写 arm64，不会用我们的版本，追求 upstream 兼容无意义
+- 初创团队资源有限，按自己节奏吸收上游更务实
+- 这正是 Apple 维护 LLVM fork 的方式
 
 ## Relationship to aris
 
 ```
 kei (this repo)                    aris (gateway firmware)
-├── ostd/         ← from upstream    ├── packages/core/   ← supervisor
-├── kernel/       ← from upstream    ├── packages/builder/ ← image builder
-├── osdk/         ← from upstream    ├── overlay/         ← rootfs files
-├── bsp/rk3566/   ← OUR additions    └── scripts/         ← build + flash
-├── board/        ← OUR additions           │
-└── scripts/      ← OUR additions           │
-       │                                    │
-       └── kei-kernel.bin ──────────────────┘  fed into aris image builder
+├── ostd/  ← vendored periodically    ├── packages/core/    ← supervisor
+├── kernel/← vendored periodically    ├── packages/builder/ ← image builder
+├── bsp/   ← 100% our code            ├── overlay/          ← rootfs files
+└── board/ ← 100% our code            └── scripts/          ← build + flash
+       │                                      │
+       └── kei-kernel.bin ───────────────────┘
 ```
 
 ## Quick Start
 
 ```bash
-just setup       # Configure remotes, fetch upstreams
-just sync        # Merge latest upstream + arm64-support
-just build       # Build kernel for nanopi-r3s (aarch64)
-just test-all    # Boot-test all architectures in QEMU
+just setup        # Configure git remotes
+just vendor       # Absorb latest upstream asterinas (squash)
+just pull-arm64   # Pull ARM64 code from wanywhn fork (one-time)
+just versions     # Show what upstream versions we're based on
+just build        # Build kernel for nanopi-r3s (aarch64)
+just test-all     # Boot-test all architectures in QEMU
 ```
+
+## What Lives Where
+
+| Directory | Origin | Maintenance |
+|-----------|--------|-------------|
+| `ostd/` | Upstream asterinas | Vendored periodically, bugs fixed in-place |
+| `ostd/src/arch/aarch64/` | wanywhn fork (PR #3270) | **Independent** — we own this |
+| `kernel/` | Upstream asterinas | Vendored periodically |
+| `kernel/src/arch/aarch64/` | wanywhn fork (PR #3270) | **Independent** — we own this |
+| `osdk/` | Upstream asterinas | Vendored periodically |
+| `bsp/` | kei | **100% ours** — Board Support Packages |
+| `board/` `configs/` | kei | **100% ours** — board definitions |
+| `scripts/` `docs/` | kei | **100% ours** — tooling and docs |
 
 ## Supported Architectures
 
-| Architecture | Source | QEMU Test | Status |
-|-------------|--------|-----------|--------|
-| x86_64 | Upstream Tier 1 | q35 / qemu64 | ✅ Works |
-| aarch64 | wanywhn arm64-support (PR #3270) | virt / cortex-a55 | ✅ Boots in QEMU |
-| riscv64 | Upstream Tier 2 | virt / rv64 | ⚠️ Upstream WIP |
-| loongarch64 | Upstream Tier 3 | virt / max | ⚠️ Experimental |
-
-## Supported Boards
-
-| Board | SoC | Arch | BSP Status |
-|-------|-----|------|------------|
-| NanoPi R3S | RK3566 | aarch64 | Drivers stubbed |
-| OrangePi 3B | RK3566 | aarch64 | Planned |
-| Raspberry Pi 4 | BCM2711 | aarch64 | Planned |
-| VisionFive 2 | JH7110 | riscv64 | Planned |
-
-## Adding a New Architecture
-
-1. Fork or branch from upstream asterinas with the new arch
-2. Add `ostd/src/arch/<arch>/` following the x86/riscv pattern
-3. Add `kernel/src/arch/<arch>/` for kernel-level arch code
-4. Add QEMU scheme in `OSDK.toml`
-5. Add the target triple to `rust-toolchain.toml`
-6. Run `just test-all` to verify boot on QEMU
+| Arch | Status | QEMU Test |
+|------|--------|-----------|
+| x86_64 | Upstream Tier 1 | ✅ q35 |
+| aarch64 | kei-maintained (from PR #3270) | ✅ virt/cortex-a55 |
+| riscv64 | Upstream Tier 2 | ⚠️ virt/rv64 |
+| loongarch64 | Upstream Tier 3 | ⚠️ virt/max |
 
 ## License
 

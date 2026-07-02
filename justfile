@@ -5,15 +5,35 @@ set positional-arguments := true
 
 default: build
 
-# ── Setup & Sync ───────────────────────────────────────────
+# ── Vendoring (Apple LLVM model: pin + periodically absorb) ──
 
-# Initial setup: configure remotes, fetch upstreams
+# Setup: configure remotes
 setup:
     ./scripts/setup.sh
 
-# Sync with upstream asterinas + arm64-support (git merge, not patches)
-sync:
-    ./scripts/sync-upstream.sh
+# Vendor latest upstream asterinas (squash/replace model, not merge tracking)
+vendor:
+    ./scripts/vendor-upstream.sh
+
+# Vendor a specific upstream commit/tag
+vendor-ref REF:
+    ./scripts/vendor-upstream.sh {{REF}}
+
+# Pull ARM64 architecture code from wanywhn fork (one-time or rare re-sync)
+pull-arm64:
+    ./scripts/pull-arm64.sh
+
+# Pull ARM64 from a specific commit
+pull-arm64-ref REF:
+    ./scripts/pull-arm64.sh {{REF}}
+
+# Show what upstream versions kei is vendored from
+versions:
+    @echo "=== Upstream asterinas ==="
+    @cat .vendored-upstream 2>/dev/null || echo "  (not vendored yet)"
+    @echo ""
+    @echo "=== ARM64 source ==="
+    @cat .vendored-arm64 2>/dev/null || echo "  (not pulled yet)"
 
 # ── Build ──────────────────────────────────────────────────
 
@@ -25,7 +45,7 @@ build:
 build-board BOARD:
     ./scripts/build.sh {{BOARD}}
 
-# Build for a specific architecture (raw, no board)
+# Build for a specific architecture (raw, no board config)
 build-arch ARCH:
     cargo osdk build --target {{ARCH}}-unknown-none --release
 
@@ -56,13 +76,6 @@ test-bsp:
 # List supported boards
 list-boards:
     ls configs/*.toml | grep -v default | xargs -I{} basename {} .toml
-
-# List supported architectures
-list-arch:
-    @echo "x86_64      (upstream Tier 1)"
-    @echo "aarch64     (via wanywhn arm64-support, PR #3270)"
-    @echo "riscv64     (upstream Tier 2)"
-    @echo "loongarch64 (upstream Tier 3)"
 
 # Clean build artifacts
 clean:

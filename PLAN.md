@@ -2,131 +2,98 @@
 
 ## Goal
 
-Maintain a production-ready Asterinas kernel fork for ARM64 and other
-embedded architectures, with comprehensive Board Support Packages and
-multi-architecture QEMU testing.
+Maintain a production-ready Asterinas kernel fork for ARM64 embedded devices,
+with comprehensive Board Support Packages and multi-architecture QEMU testing.
 
-## Design: Why a Fork (Not Patches)
+## Design: Independent Fork (Apple LLVM Model)
 
-### The Problem with Patches
+### Why Not Track Upstream?
 
-The ARM64 architecture port is **4,475 lines across 80 files** — comparable
-to an entire new `ostd/src/arch/aarch64/` directory tree. Managing this as
-a quilt patch series is fragile:
+| Approach | Pro | Con | Verdict |
+|----------|-----|-----|---------|
+| Regular merge tracking | Catch upstream API breaks early | Constant merge conflicts; resource-heavy | ❌ Too expensive for startup |
+| Patch series (quilt) | Clean delta tracking | Fragile for 4475-line arch port; no IDE support | ❌ Wrong tool for scale |
+| **Independent fork + squash vendor** | Full control; absorb upstream on our schedule | Must manually detect API breaks at vendor time | ✅ Best fit |
 
-- Rebase conflicts on every upstream sync
-- No IDE support for "files that only exist in patches"
-- Can't test changes without applying patches first
-- The "gradually disappear" narrative is confusing
+### How Vendoring Works
 
-### The Fork Model
-
-kei is a **git fork** that merges from two upstreams:
+`scripts/vendor-upstream.sh` does **directory-level replacement**, not git merge:
 
 ```
-                   asterinas/asterinas (main)
-                          │
-                    git merge upstream/main
-                          │
-                          ▼
-    wanywhn/asterinas ──▶ kei (dev)
-    (arm64-support)        │  = upstream + arm64 + BSP + configs
-         │                 │
-    git merge arm64        │
+1. Snapshot our code (ostd/src/arch/aarch64/, bsp/, board/, configs/, ...)
+2. Delete ostd/, kernel/, osdk/ from kei tree
+3. Check out fresh copies from upstream/main
+4. Restore our snapshot on top
+5. Fix any API breaks (compile errors from changed upstream APIs)
+6. Commit as single "vendor: absorb asterinas <sha>"
 ```
 
-**Sync workflow** (`scripts/sync-upstream.sh`):
-1. `git fetch upstream main`
-2. `git merge upstream/main` (prefer kei changes on conflict)
-3. `git fetch arm64 arm64-support`
-4. `git merge arm64/arm64-support` (prefer arm64 changes on conflict)
-5. Run `just test-all` to verify nothing broke
+This is exactly how Apple absorbs LLVM upstream: take the whole thing,
+overlay Apple-specific changes, commit as one squashed point.
 
-**Lifecycle**: As ARM64 merges into official asterinas, the `arm64` remote
-becomes redundant. kei drops it and the delta shrinks to just BSP + configs.
-Eventually BSP drivers upstream too, and kei becomes a thin board-config layer.
+### What We Track vs. What We Own
 
-This is the same evolution path as Armbian: start as a fork carrying vendor
-patches, gradually upstream everything, end up as a config-only layer.
+```
+kei tree:
+│
+├── ostd/                          ← VENDORED (replaced wholesale on upgrade)
+│   └── src/arch/
+│       ├── x86/                   ← comes with vendoring
+│       ├── riscv/                 ← comes with vendoring
+│       ├── loongarch/             ← comes with vendoring
+│       └── aarch64/               ← OURS (preserved across vendoring)
+│
+├── kernel/                        ← VENDORED
+│   └── src/arch/
+│       └── aarch64/               ← OURS (preserved across vendoring)
+│
+├── osdk/                          ← VENDORED
+├── bsp/                           ← OURS (never touched by vendoring)
+├── board/ configs/                ← OURS
+├── scripts/ docs/                 ← OURS
+└── .vendored-upstream             ← tracks which upstream commit we're on
+```
 
-## Architecture
+### Vendoring Frequency
 
-### Source Composition
-
-kei's tree contains three categories of code:
-
-| Category | Directory | Origin | Modifiable |
-|----------|-----------|--------|------------|
-| Framework | `ostd/` | asterinas upstream | Bug fixes only |
-| Framework (arm64) | `ostd/src/arch/aarch64/` | wanywhn fork | Active development |
-| Kernel | `kernel/` | asterinas upstream | Bug fixes only |
-| Kernel (arm64) | `kernel/src/arch/aarch64/` | wanywhn fork | Active development |
-| Build tool | `osdk/` | asterinas upstream | Minimal changes |
-| **BSP** | `bsp/` | **kei** | **Primary development** |
-| **Board configs** | `board/`, `configs/` | **kei** | **Primary development** |
-| **Build/test scripts** | `scripts/` | **kei** | **Primary development** |
-
-### Testing Strategy
-
-Following the Linux kernel / KernelCI model:
-
-| Test Level | What | How |
-|-----------|------|-----|
-| Per-architecture boot | Kernel boots to console | QEMU per arch (`test-all-arch.sh`) |
-| BSP unit tests | Driver logic | `cargo osdk test` (ktest) |
-| Integration | evernight talks to devices | QEMU + virtio-net, aris integration |
-| Hardware | Real board boot | NanoPi R3S + sensors |
-
-Architectures tested by `test-all-arch.sh`:
-- `x86_64` — QEMU q35 (upstream baseline)
-- `aarch64` — QEMU virt / cortex-a55 (our primary target)
-- `riscv64` — QEMU virt / rv64 (future)
-- `loongarch64` — QEMU virt / max (future)
+- **Upstream asterinas**: Every 3-6 months, or when a critical fix lands
+- **ARM64 code (wanywhn)**: One-time pull, then independent maintenance.
+  Re-pull only if wanywhn makes significant improvements worth absorbing.
 
 ## Milestones
 
 ### M1 — Fork Bootstrap
-- [x] Repository structure aligned with asterinas conventions
-- [x] Git merge workflow (`sync-upstream.sh`)
-- [x] Multi-architecture QEMU test harness (`test-all-arch.sh`)
-- [ ] First successful merge of upstream + arm64
-- [ ] QEMU aarch64 boot test passes
+- [x] Independent fork structure
+- [x] Vendor script (squash/directory-replace model)
+- [x] ARM64 pull script (point-in-time snapshot from wanywhn)
+- [x] Multi-architecture QEMU test harness
+- [ ] First successful vendor + arm64 pull + aarch64 boot
 
-### M2 — ARM64 Stabilization
-The wanywhn arm64-support branch is LLM-generated and QEMU-only.
-We need to harden it:
-- [ ] Audit all 80 changed files, fix LLM artifacts
+### M2 — ARM64 Hardening
+The wanywhn arm64 code is LLM-generated and QEMU-only. Hardening tasks:
+- [ ] Audit all files in ostd/src/arch/aarch64/, fix LLM artifacts
 - [ ] Replace third-party GICv3 crate with in-tree driver
-- [ ] Add SMP / multi-core boot support (PSCI)
+- [ ] SMP / multi-core boot (PSCI secondary bring-up)
 - [ ] Real hardware boot on NanoPi R3S (RK3566)
 - [ ] Performance benchmarks vs Linux baseline
 
 ### M3 — RK3566 BSP
-Board-specific drivers, built as OSDK library crates:
 - [ ] GPIO (Rockchip GRF pinctrl)
 - [ ] Dual Ethernet (stmmac / RK GMAC)
 - [ ] UART (DW 8250)
-- [ ] SPI (DW SSI)
-- [ ] I2C (RK3x)
-- [ ] Watchdog (DW WDT)
+- [ ] SPI / I2C / Watchdog
 - [ ] SD/eMMC (DW MMC)
 
 ### M4 — Multi-Arch Expansion
 - [ ] RISC-V: JH7110 BSP (VisionFive 2)
-- [ ] ARMv7 evaluation (if upstream adds support)
-- [ ] x86_64: Intel N100 BSP (industrial PC)
-
-### M5 — Upstream Convergence
-- [ ] ARM64 merged into official asterinas
-- [ ] kei drops arm64 remote, tracks upstream only
-- [ ] BSP drivers upstreamed where possible
-- [ ] kei becomes thin config layer
+- [ ] ARMv7 evaluation
+- [ ] x86_64: Intel N100 BSP
 
 ## Risk Assessment
 
-| Risk | Likelihood | Impact | Mitigation |
-|------|-----------|--------|------------|
-| wanywhn branch abandoned | Medium | High | We maintain our own merge; can rebase manually |
-| Upstream lrh2000 rewrites arm64 differently | High | Medium | Our BSP layer is arch-agnostic; only `ostd/src/arch/` needs updating |
-| LLM-generated code has subtle bugs | High | High | M2 audit milestone; real hardware testing |
-| Upstream API breaks arm64 | Medium | Medium | Sync regularly; pin to specific upstream commits |
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| Upstream API breaks at vendor time | Medium | Vendor script + compile test + fix cycle |
+| wanywhn arm64 code has subtle bugs | High | M2 audit milestone; real HW testing |
+| Falling behind upstream features | Low | Periodic vendoring catches up in batches |
+| Upstream ships different arm64 | Low | Evaluate at vendor time; adopt if better |

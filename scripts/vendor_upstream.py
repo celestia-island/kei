@@ -11,7 +11,6 @@ Usage:
 from __future__ import annotations
 
 import datetime
-import os
 import shutil
 import subprocess
 import sys
@@ -41,27 +40,22 @@ OUR_PATHS = [
     "README.md",
     "rust-toolchain.toml",
     "clippy.toml",
-    "deny.toml",
-    "Cargo.toml",  # Merged: upstream base + kei bsp/ members
 ]
 
 # Directories refreshed from upstream on each vendor
 UPSTREAM_DIRS = ["ostd", "kernel", "osdk", "test", "tools"]
 
-# Root-level files tracked from upstream (Cargo.toml gets merged, not replaced)
-UPSTREAM_FILES = ["Cargo.lock", "Makefile", "OSDK.toml",
+# Root-level files tracked from upstream
+UPSTREAM_FILES = ["Cargo.toml", "Cargo.lock", "Makefile", "OSDK.toml",
                   "Components.toml", "VERSION"]
 
 
 def git(*args: str, **kw) -> subprocess.CompletedProcess:
-    from proxy import get_proxy_env
-    env = {**os.environ.copy(), **get_proxy_env()}
     return subprocess.run(
         ["git", *args],
         cwd=PROJECT_ROOT,
         capture_output=kw.get("capture", False),
         text=True,
-        env=env,
     )
 
 
@@ -104,7 +98,7 @@ def main() -> int:
                 dst = stash_dir / rel
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 if src.is_dir():
-                    shutil.copytree(src, dst, symlinks=True)
+                    shutil.copytree(src, dst)
                 else:
                     shutil.copy2(src, dst)
         cf.ok(f"Snapshot saved ({len(OUR_PATHS)} paths)")
@@ -138,7 +132,7 @@ def main() -> int:
                         target.unlink()
                 target.parent.mkdir(parents=True, exist_ok=True)
                 if stash_path.is_dir():
-                    shutil.copytree(stash_path, target, symlinks=True)
+                    shutil.copytree(stash_path, target)
                 else:
                     shutil.copy2(stash_path, target)
         cf.ok("kei code restored")

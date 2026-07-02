@@ -11,14 +11,12 @@ Usage:
 """
 from __future__ import annotations
 
-import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent / "utils"))
-import build_env
 import cli_format as cf
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -34,7 +32,7 @@ ARCH_CONFIG = {
     "aarch64": {
         "qemu": "qemu-system-aarch64",
         "machine": "virt",
-        "cpu": "cortex-a72",
+        "cpu": "cortex-a55",
         "memory": "2048",
         "target": "aarch64-unknown-none",
     },
@@ -73,26 +71,19 @@ def test_arch(arch: str, output_dir: Path) -> str:
 
     # Build kernel for this architecture
     cf.pending(f"Building kernel ({cfg['target']})...")
-    nightly_env = dict(os.environ)
-    rustup_home = os.environ.get("RUSTUP_HOME", os.path.expanduser("~/.rustup"))
-    nightly_bin = os.path.join(rustup_home, "toolchains", "nightly-2026-05-01-x86_64-unknown-linux-gnu", "bin")
-    if os.path.isdir(nightly_bin):
-        nightly_env["PATH"] = nightly_bin + ":" + nightly_env.get("PATH", "")
-
-    build_cmd = ["cargo", "osdk", "build", "--target-arch", arch, "--release"]
-    scheme = {"aarch64": "aarch64", "riscv64": "riscv", "loongarch64": "loongarch"}.get(arch)
-    if scheme:
-        build_cmd.extend(["--scheme", scheme])
-    build_result = subprocess.run(build_cmd, cwd=PROJECT_ROOT, capture_output=True, env=nightly_env)
+    build_result = subprocess.run(
+        ["cargo", "osdk", "build", "--target", cfg["target"], "--release"],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+    )
     if build_result.returncode != 0:
         cf.fail(f"Build failed for {arch}")
         return "FAIL"
 
-    # Locate kernel binary — OSDK outputs under target/osdk/
-    kernel = PROJECT_ROOT / "target" / "osdk" / "aster-kernel.bin"
-    kernel_elf = PROJECT_ROOT / "target" / cfg["target"] / "release" / "aster-kernel-osdk-bin"
-    kernel_qemu_elf = PROJECT_ROOT / "target" / "osdk" / "aster-kernel-osdk-bin.qemu_elf"
-    kernel_path = kernel if kernel.exists() else (kernel_qemu_elf if kernel_qemu_elf.exists() else kernel_elf)
+    # Locate kernel binary
+    kernel = PROJECT_ROOT / "target" / cfg["target"] / "release" / "kei-kernel"
+    kernel_bin = PROJECT_ROOT / "target" / cfg["target"] / "release" / "kei-kernel.bin"
+    kernel_path = kernel_bin if kernel_bin.exists() else kernel
 
     if not kernel_path.exists():
         cf.fail(f"Kernel binary not found: {kernel_path}")
@@ -142,15 +133,13 @@ def test_arch(arch: str, output_dir: Path) -> str:
 
 
 def main() -> int:
-    if build_env.wsl_main_guard():
-        return 0
     all_archs = list(ARCH_CONFIG.keys())
     selected = sys.argv[1:] if len(sys.argv) > 1 else all_archs
 
     cf.section(f"kei multi-architecture boot test")
     cf.info(f"  Architectures: {' '.join(selected)}")
 
-    output_dir = PROJECT_ROOT / "target" / "test-output"
+    output_dir = PROJECT_ROOT / "output"
 
     results = {"PASS": 0, "FAIL": 0, "SKIP": 0, "UNKNOWN": 0}
     for arch in selected:

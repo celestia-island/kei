@@ -1,4 +1,4 @@
-<p align="center" dir="rtl"><img src="../logo.webp" alt="kei" width="240" /></p>
+<p align="center" dir="rtl"><img src="https://raw.githubusercontent.com/celestia-island/kei/master/docs/logo.webp" alt="kei" width="240" /></p>
 
 <h1 align="center">kei</h1>
 

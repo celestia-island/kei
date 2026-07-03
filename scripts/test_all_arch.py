@@ -11,6 +11,7 @@ Usage:
 """
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -32,7 +33,7 @@ ARCH_CONFIG = {
     "aarch64": {
         "qemu": "qemu-system-aarch64",
         "machine": "virt",
-        "cpu": "cortex-a55",
+        "cpu": "cortex-a72",
         "memory": "2048",
         "target": "aarch64-unknown-none",
     },
@@ -71,19 +72,26 @@ def test_arch(arch: str, output_dir: Path) -> str:
 
     # Build kernel for this architecture
     cf.pending(f"Building kernel ({cfg['target']})...")
-    build_result = subprocess.run(
-        ["cargo", "osdk", "build", "--target", cfg["target"], "--release"],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-    )
+    build_env = dict(os.environ)
+    rustup_home = os.environ.get("RUSTUP_HOME", os.path.expanduser("~/.rustup"))
+    nightly_bin = os.path.join(rustup_home, "toolchains", "nightly-2026-04-03-x86_64-unknown-linux-gnu", "bin")
+    if os.path.isdir(nightly_bin):
+        build_env["PATH"] = nightly_bin + ":" + build_env.get("PATH", "")
+
+    build_cmd = ["cargo", "osdk", "build", "--target-arch", arch, "--release"]
+    scheme = {"aarch64": "aarch64", "riscv64": "riscv", "loongarch64": "loongarch"}.get(arch)
+    if scheme:
+        build_cmd.extend(["--scheme", scheme])
+    build_result = subprocess.run(build_cmd, cwd=PROJECT_ROOT, capture_output=True, env=build_env)
     if build_result.returncode != 0:
         cf.fail(f"Build failed for {arch}")
         return "FAIL"
 
-    # Locate kernel binary
-    kernel = PROJECT_ROOT / "target" / cfg["target"] / "release" / "kei-kernel"
-    kernel_bin = PROJECT_ROOT / "target" / cfg["target"] / "release" / "kei-kernel.bin"
-    kernel_path = kernel_bin if kernel_bin.exists() else kernel
+    # Locate kernel binary — OSDK outputs under target/osdk/
+    kernel = PROJECT_ROOT / "target" / "osdk" / "aster-kernel.bin"
+    kernel_elf = PROJECT_ROOT / "target" / cfg["target"] / "release" / "aster-kernel-osdk-bin"
+    kernel_qemu_elf = PROJECT_ROOT / "target" / "osdk" / "aster-kernel-osdk-bin.qemu_elf"
+    kernel_path = kernel if kernel.exists() else (kernel_qemu_elf if kernel_qemu_elf.exists() else kernel_elf)
 
     if not kernel_path.exists():
         cf.fail(f"Kernel binary not found: {kernel_path}")

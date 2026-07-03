@@ -44,8 +44,14 @@ def main() -> int:
     cf.info("Press Ctrl-A X to exit.")
     cf.blank()
 
-    cmd = [qemu, "-M", "virt", "-cpu", "cortex-a55", "-m", "2048", "-smp", "4"]
+    # The kei aarch64 kernel requires EL2 boot (virtualization=on) and
+    # GICv3 for interrupt handling.
+    cmd = [qemu, "-M", "virt,gic-version=3,virtualization=on", "-cpu", "cortex-a72", "-m", "2048", "-smp", "1"]
+    # Attach initramfs if available
+    initramfs = PROJECT_ROOT / "test" / "initramfs" / "build" / "initramfs.cpio.gz"
     cmd.extend(["-kernel", str(kernel)])
+    if initramfs.exists():
+        cmd.extend(["-initrd", str(initramfs)])
     if dtb.exists():
         cmd.extend(["-dtb", str(dtb)])
     cmd.extend(["-nographic", "-no-reboot"])

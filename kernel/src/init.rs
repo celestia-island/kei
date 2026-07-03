@@ -16,10 +16,18 @@ use crate::{
 };
 
 pub(super) fn main() {
+    // VGA text mode display (x86_64 only)
+    #[cfg(target_arch = "x86_64")]
+    {
+        crate::vga_text::print_banner();
+    }
+
     // Initialize the global states for all CPUs.
     ostd::early_println!("OSTD initialized. Preparing components.");
-    // FIXME: component::init_all panics on path mismatch — skip for now
-    ostd::early_println!("[FIXME] Skipping component::init_all (Bootstrap)");
+    if let Err(e) = component::init_all(InitStage::Bootstrap, component::parse_metadata!()) {
+        ostd::early_println!("[WARN] component::init_all(Bootstrap) failed: {:?}", e);
+    }
+    ostd::early_println!("Components Bootstrap done.");
     init();
     ostd::early_println!("Kernel init done.");
     ostd::early_println!("Kernel init done.");
@@ -165,8 +173,9 @@ fn first_kthread() {
 static INIT_PROCESS: Once<Arc<Process>> = Once::new();
 
 fn init_in_first_kthread(path_resolver: &PathResolver) {
-    ostd::early_println!("[FIXME] Skipping component::init_all (Kthread)");
-    ostd::early_println!("[INFO] init_in_first_kthread continuing...");
+    if let Err(e) = component::init_all(InitStage::Kthread, component::parse_metadata!()) {
+        ostd::early_println!("[WARN] component::init_all(Kthread) failed: {:?}", e);
+    }
     // Work queue should be initialized before interrupt is enabled,
     // in case any irq handler uses work queue as bottom half
     crate::thread::work_queue::init_in_first_kthread();

@@ -67,10 +67,16 @@ kei tree:
 - [x] Vendor script (squash/directory-replace model)
 - [x] ARM64 pull script (point-in-time snapshot from wanywhn)
 - [x] Multi-architecture QEMU test harness
-- [ ] First successful vendor + arm64 pull + aarch64 boot
+- [x] First successful vendor + arm64 pull + aarch64 boot
+
+> **Status**: Kernel boots in QEMU aarch64 (cortex-a72, virt, GICv3).
+> Reaches OSTD `frame::meta::init` before crashing on FDT memory region
+> parsing (region 6 has an overflowing physical address range).
+> Build pipeline produces a valid ARM64 Image (.bin) with correct header.
 
 ### M2 — ARM64 Hardening
 The wanywhn arm64 code is LLM-generated and QEMU-only. Hardening tasks:
+- [ ] Fix FDT memory region parsing (region 6 overflows PA space)
 - [ ] Audit all files in ostd/src/arch/aarch64/, fix LLM artifacts
 - [ ] Replace third-party GICv3 crate with in-tree driver
 - [ ] SMP / multi-core boot (PSCI secondary bring-up)

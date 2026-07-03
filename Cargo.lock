@@ -2380,6 +2380,10 @@ name = "malkuth"
 version = "0.1.0"
 
 [[patch.unused]]
+name = "arona"
+version = "0.1.0"
+
+[[patch.unused]]
 name = "tairitsu"
 version = "0.5.13"
 
@@ -2409,10 +2413,6 @@ version = "0.5.13"
 
 [[patch.unused]]
 name = "evernight"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "arona"
 version = "0.1.0"
 
 [[patch.unused]]

@@ -8,6 +8,7 @@ Usage:
 """
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -29,6 +30,49 @@ ARCH_TO_TARGET = {
     "riscv64": "riscv64imac-unknown-none-elf",
     "loongarch64": "loongarch64-unknown-none-softfloat",
 }
+
+ARCH_TO_SCHEME = {
+    "x86_64": None,
+    "aarch64": "aarch64",
+    "riscv64": "riscv",
+    "loongarch64": "loongarch",
+}
+
+
+def find_nightly_cargo() -> list[str]:
+    """Build the cargo command with the correct nightly toolchain.
+
+    cargo-osdk internally spawns a cargo subprocess that needs nightly-only
+    -Z flags. The stable cargo (default) rejects them. We must prepend the
+    nightly toolchain's bin directory to PATH so OSDK's internal cargo picks
+    up the nightly compiler.
+    """
+    toolchain = "nightly-2026-04-03"
+    host_triple = "x86_64-unknown-linux-gnu"
+    rustup_home = Path(os.environ.get("RUSTUP_HOME", os.path.expanduser("~/.rustup")))
+    nightly_bin = rustup_home / "toolchains" / f"{toolchain}-{host_triple}" / "bin"
+    if nightly_bin.exists():
+        env = dict(os.environ)
+        env["PATH"] = str(nightly_bin) + ":" + env.get("PATH", "")
+        return env
+    return dict(os.environ)
+
+
+def find_llvm_objcopy() -> str | None:
+    """Locate llvm-objcopy from the nightly toolchain."""
+    toolchain = "nightly-2026-04-03"
+    host_triple = "x86_64-unknown-linux-gnu"
+    rustup_home = Path(os.environ.get("RUSTUP_HOME", os.path.expanduser("~/.rustup")))
+    candidates = [
+        rustup_home / "toolchains" / f"{toolchain}-{host_triple}" / "lib" / "rustlib" / host_triple / "bin" / "llvm-objcopy",
+        shutil.which("llvm-objcopy"),
+        shutil.which("aarch64-linux-gnu-objcopy"),
+        shutil.which("objcopy"),
+    ]
+    for c in candidates:
+        if c and Path(c).exists():
+            return str(c)
+    return None
 
 
 def load_board_config(board: str) -> dict:
@@ -87,30 +131,58 @@ def main() -> int:
 
     cf.blank()
     cf.step("[3/5] Building kernel via cargo osdk")
-    result = subprocess.run(
-        ["cargo", "osdk", "build", "--target-arch", arch, "--profile", profile],
-        cwd=PROJECT_ROOT,
-    )
+    build_env = find_nightly_cargo()
+    scheme = ARCH_TO_SCHEME.get(arch)
+    cmd = ["cargo", "osdk", "build", "--target-arch", arch, "--profile", profile]
+    if scheme:
+        cmd.extend(["--scheme", scheme])
+    result = subprocess.run(cmd, cwd=PROJECT_ROOT, env=build_env)
     if result.returncode != 0:
         cf.fail("Kernel build failed")
         cf.info("  TIP: verify ostd/src/arch/aarch64/ exists")
+        cf.info("  TIP: ensure nightly-2026-04-03 toolchain is installed")
         return 1
 
     cf.blank()
     cf.step("[4/5] Copying build artifacts")
-    kernel_paths = [
-        PROJECT_ROOT / "target" / rust_target / profile / "kei-kernel",
-        PROJECT_ROOT / "target" / rust_target / profile / "kei-kernel.bin",
-    ]
+    # OSDK produces:
+    #   target/osdk/aster-kernel-osdk-bin.qemu_elf — ELF for QEMU direct boot
+    #   target/{rust_target}/{profile}/aster-kernel-osdk-bin — raw ELF from cargo
+    # For aarch64, we also need an ARM64 Image (.bin) so QEMU passes the FDT
+    # address in x0 (ELF format does not get FDT in x0).
+    qemu_elf = PROJECT_ROOT / "target" / "osdk" / "aster-kernel-osdk-bin.qemu_elf"
+    raw_elf = PROJECT_ROOT / "target" / rust_target / profile / "aster-kernel-osdk-bin"
+    existing_bin = PROJECT_ROOT / "target" / "osdk" / "aster-kernel.bin"
+
     copied = False
-    for kp in kernel_paths:
-        if kp.exists():
-            shutil.copy2(kp, output_dir / "kei-kernel.bin")
-            cf.ok(f"  Kernel: {output_dir / 'kei-kernel.bin'}")
-            copied = True
-            break
+    if arch == "aarch64" and qemu_elf.exists():
+        # Generate ARM64 Image (.bin) from ELF using llvm-objcopy.
+        # QEMU's -kernel with ARM64 Image format correctly passes FDT in x0.
+        objcopy = find_llvm_objcopy()
+        if objcopy:
+            bin_path = output_dir / "kei-kernel.bin"
+            subprocess.run(
+                [objcopy, "-O", "binary", str(qemu_elf), str(bin_path)],
+                check=False,
+            )
+            if bin_path.exists() and bin_path.stat().st_size > 100_000:
+                cf.ok(f"  Kernel (ARM64 Image): {bin_path}")
+                copied = True
+            else:
+                cf.warn("  objcopy produced invalid binary")
+
+    if not copied:
+        # Fall back to existing .bin or copy ELF directly
+        for kp in [existing_bin, qemu_elf, raw_elf]:
+            if kp.exists():
+                shutil.copy2(kp, output_dir / "kei-kernel.bin")
+                cf.ok(f"  Kernel: {output_dir / 'kei-kernel.bin'}")
+                copied = True
+                break
+
     if not copied:
         cf.warn("  Kernel binary not found at expected paths")
+        cf.info(f"  Looked in: {[str(qemu_elf), str(raw_elf)]}")
 
     cf.blank()
     cf.step("[5/5] Compiling device tree")

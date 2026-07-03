@@ -61,6 +61,7 @@ mod syscall;
 mod thread;
 mod time;
 mod util;
+#[cfg(target_arch = "x86_64")]
 mod vbe_dispi;
 mod vga_text;
 // TODO: Add vDSO support for other architectures.

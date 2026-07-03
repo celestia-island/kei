@@ -1,6 +1,6 @@
-<p align="center"><img src="https://raw.githubusercontent.com/celestia-island/kei/master/docs/logo.webp" alt="kei" width="240" /></p>
+<p align="center"><img src="https://raw.githubusercontent.com/celestia-island/kei/master/docs/logo.webp" alt="KEI" width="240" /></p>
 
-<h1 align="center">kei</h1>
+<h1 align="center">KEI</h1>
 
 <p align="center"><strong>Asterinas ARM64 fork — independent kernel for industrial IoT gateways</strong></p>
 
@@ -28,30 +28,30 @@
 
 ## Introduction
 
-kei is an independent fork of [asterinas/asterinas](https://github.com/asterinas/asterinas)
+KEI is an independent fork of [asterinas/asterinas](https://github.com/asterinas/asterinas)
 with ARM64 support and Board Support Packages for industrial IoT gateways. It
 provides the `kei-kernel.bin` consumed by [aris](https://github.com/celestia-island/aris).
 
 ## Fork Model
 
-kei is **not** a branch that tracks upstream. It is an independent fork that
+KEI is **not** a branch that tracks upstream. It is an independent fork that
 periodically absorbs upstream changes on its own schedule — the same model Apple
 uses for its LLVM fork.
 
 ```mermaid
 flowchart LR
-    UP["asterinas/asterinas\n(active upstream)"] -->|vendor-upstream.sh\nsquash every N months| KEI["kei (this repo)\nfully independent"]
+    UP["asterinas/asterinas\n(active upstream)"] -->|vendor-upstream.sh\nsquash every N months| KEI["KEI (this repo)\nfully independent"]
     WNY["wanywhn/asterinas\n(arm64-support)"] -->|pull-arm64.sh\none-time snapshot| KEI
 ```
 
-kei independently maintains `ostd/src/arch/aarch64/`, `kernel/src/arch/aarch64/`,
+KEI independently maintains `ostd/src/arch/aarch64/`, `kernel/src/arch/aarch64/`,
 `bsp/`, `board/`, `configs/`, and `docs/`.
 
 ## Relationship to aris
 
 ```mermaid
 flowchart TB
-    subgraph KEI["kei (this repo)"]
+    subgraph KEI["KEI (this repo)"]
         OSTD["ostd/ — vendored periodically"]
         KERN["kernel/ — vendored periodically"]
         BSP["bsp/ — 100% our code"]
@@ -86,9 +86,9 @@ just test-all     # Boot-test all architectures in QEMU
 | `kernel/` | Upstream asterinas | Vendored periodically |
 | `kernel/src/arch/aarch64/` | wanywhn fork (PR #3270) | **Independent** — we own this |
 | `osdk/` | Upstream asterinas | Vendored periodically |
-| `bsp/` | kei | **100% ours** — Board Support Packages |
-| `board/` `configs/` | kei | **100% ours** — board definitions |
-| `scripts/` `docs/` | kei | **100% ours** — tooling and docs |
+| `bsp/` | KEI | **100% ours** — Board Support Packages |
+| `board/` `configs/` | KEI | **100% ours** — board definitions |
+| `scripts/` `docs/` | KEI | **100% ours** — tooling and docs |
 
 ## Supported Architectures
 

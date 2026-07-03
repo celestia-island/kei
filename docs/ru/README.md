@@ -1,6 +1,6 @@
-<p align="center"><img src="https://raw.githubusercontent.com/celestia-island/kei/master/docs/logo.webp" alt="kei" width="240" /></p>
+<p align="center"><img src="https://raw.githubusercontent.com/celestia-island/kei/master/docs/logo.webp" alt="KEI" width="240" /></p>
 
-<h1 align="center">kei</h1>
+<h1 align="center">KEI</h1>
 
 <p align="center"><strong>Форк ARM64 от Asterinas — независимое ядро для промышленных IoT-шлюзов</strong></p>
 
@@ -28,13 +28,13 @@
 
 ## Введение
 
-kei — это независимый форк [asterinas/asterinas](https://github.com/asterinas/asterinas)
+KEI — это независимый форк [asterinas/asterinas](https://github.com/asterinas/asterinas)
 с поддержкой ARM64 и Board Support Packages для промышленных IoT-шлюзов. Он
 предоставляет `kei-kernel.bin`, используемый проектом [aris](https://github.com/celestia-island/aris).
 
 ## Модель форка
 
-kei **не** является веткой, отслеживающей апстрим. Это независимый форк, который
+KEI **не** является веткой, отслеживающей апстрим. Это независимый форк, который
 периодически включает изменения апстрима по своему графику — та же модель, которую
 Apple использует для своего форка LLVM.
 
@@ -44,7 +44,7 @@ flowchart LR
     WNY["wanywhn/asterinas\n(поддержка-arm64)"] -->|pull-arm64.sh\nодноразовый снимок| KEI
 ```
 
-kei самостоятельно поддерживает `ostd/src/arch/aarch64/`, `kernel/src/arch/aarch64/`,
+KEI самостоятельно поддерживает `ostd/src/arch/aarch64/`, `kernel/src/arch/aarch64/`,
 `bsp/`, `board/`, `configs/` и `docs/`.
 
 ## Связь с aris

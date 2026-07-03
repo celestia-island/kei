@@ -1,6 +1,6 @@
-<p align="center"><img src="https://raw.githubusercontent.com/celestia-island/kei/master/docs/logo.webp" alt="kei" width="240" /></p>
+<p align="center"><img src="https://raw.githubusercontent.com/celestia-island/kei/master/docs/logo.webp" alt="KEI" width="240" /></p>
 
-<h1 align="center">kei</h1>
+<h1 align="center">KEI</h1>
 
 <p align="center"><strong>Asterinas ARM64 分支 —— 面向工业物联网网关的独立内核</strong></p>
 
@@ -28,13 +28,13 @@
 
 ## 简介
 
-kei 是 [asterinas/asterinas](https://github.com/asterinas/asterinas) 的独立分支，
+KEI 是 [asterinas/asterinas](https://github.com/asterinas/asterinas) 的独立分支，
 提供 ARM64 支持以及面向工业物联网网关的板级支持包（BSP）。它生成被
 [aris](https://github.com/celestia-island/aris) 使用的 `kei-kernel.bin`。
 
 ## 分支模式
 
-kei **不是**跟踪上游的分支。它是一个独立分支，按自己的节奏定期吸收上游变更 ——
+KEI **不是**跟踪上游的分支。它是一个独立分支，按自己的节奏定期吸收上游变更 ——
 与 Apple 维护其 LLVM 分支采用相同的模式。
 
 ```mermaid
@@ -43,7 +43,7 @@ flowchart LR
     WNY["wanywhn/asterinas\n（arm64-support）"] -->|pull-arm64.sh\n一次性快照| KEI
 ```
 
-kei 独立维护 `ostd/src/arch/aarch64/`、`kernel/src/arch/aarch64/`、
+KEI 独立维护 `ostd/src/arch/aarch64/`、`kernel/src/arch/aarch64/`、
 `bsp/`、`board/`、`configs/` 以及 `docs/`。
 
 ## 与 aris 的关系

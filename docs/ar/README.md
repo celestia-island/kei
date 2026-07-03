@@ -1,6 +1,6 @@
-<p align="center" dir="rtl"><img src="https://raw.githubusercontent.com/celestia-island/kei/master/docs/logo.webp" alt="kei" width="240" /></p>
+<p align="center" dir="rtl"><img src="https://raw.githubusercontent.com/celestia-island/kei/master/docs/logo.webp" alt="KEI" width="240" /></p>
 
-<h1 align="center">kei</h1>
+<h1 align="center">KEI</h1>
 
 <p align="center" dir="rtl"><strong>تفرّع ARM64 من Asterinas — نواة مستقلة لبوابات IoT الصناعية</strong></p>
 
@@ -28,13 +28,13 @@
 
 ## مقدمة
 
-kei هو تفرّع مستقل عن [asterinas/asterinas](https://github.com/asterinas/asterinas)
+KEI هو تفرّع مستقل عن [asterinas/asterinas](https://github.com/asterinas/asterinas)
 يدعم ARM64 وحزم دعم اللوحات (BSP) لبوابات IoT الصناعية. يوفّر
 `kei-kernel.bin` الذي يستهلكه [aris](https://github.com/celestia-island/aris).
 
 ## نموذج التفرّع
 
-kei **ليس** فرعاً يتتبّع المصدر المنبع (upstream). إنه تفرّع مستقل
+KEI **ليس** فرعاً يتتبّع المصدر المنبع (upstream). إنه تفرّع مستقل
 يمتصّ تغييرات المصدر المنبع دورياً وفق جدوله الخاص — نفس النموذج
 الذي تستخدمه Apple لتفرّعها الخاص بـ LLVM.
 

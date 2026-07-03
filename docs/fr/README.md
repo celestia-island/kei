@@ -1,6 +1,6 @@
-<p align="center"><img src="https://raw.githubusercontent.com/celestia-island/kei/master/docs/logo.webp" alt="kei" width="240" /></p>
+<p align="center"><img src="https://raw.githubusercontent.com/celestia-island/kei/master/docs/logo.webp" alt="KEI" width="240" /></p>
 
-<h1 align="center">kei</h1>
+<h1 align="center">KEI</h1>
 
 <p align="center"><strong>Fork ARM64 d'Asterinas — noyau indépendant pour passerelles IoT industrielles</strong></p>
 
@@ -28,13 +28,13 @@
 
 ## Introduction
 
-kei est un fork indépendant de [asterinas/asterinas](https://github.com/asterinas/asterinas)
+KEI est un fork indépendant de [asterinas/asterinas](https://github.com/asterinas/asterinas)
 avec support ARM64 et Board Support Packages pour les passerelles IoT industrielles. Il
 fournit le `kei-kernel.bin` consommé par [aris](https://github.com/celestia-island/aris).
 
 ## Modèle de fork
 
-kei n'est **pas** une branche qui suit l'amont. C'est un fork indépendant qui
+KEI n'est **pas** une branche qui suit l'amont. C'est un fork indépendant qui
 absorbe périodiquement les changements amont à son propre rythme — le même modèle
 qu'Apple utilise pour son fork LLVM.
 
@@ -44,7 +44,7 @@ flowchart LR
     WNY["wanywhn/asterinas\n(support-arm64)"] -->|pull-arm64.sh\ninstantané unique| KEI
 ```
 
-kei maintient indépendamment `ostd/src/arch/aarch64/`, `kernel/src/arch/aarch64/`,
+KEI maintient indépendamment `ostd/src/arch/aarch64/`, `kernel/src/arch/aarch64/`,
 `bsp/`, `board/`, `configs/`, et `docs/`.
 
 ## Relation avec aris

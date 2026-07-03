@@ -1,6 +1,6 @@
-<p align="center"><img src="https://raw.githubusercontent.com/celestia-island/kei/master/docs/logo.webp" alt="kei" width="240" /></p>
+<p align="center"><img src="https://raw.githubusercontent.com/celestia-island/kei/master/docs/logo.webp" alt="KEI" width="240" /></p>
 
-<h1 align="center">kei</h1>
+<h1 align="center">KEI</h1>
 
 <p align="center"><strong>Asterinas ARM64 フォーク —— 産業用 IoT ゲートウェイ向けの独立カーネル</strong></p>
 
@@ -28,13 +28,13 @@
 
 ## はじめに
 
-kei は [asterinas/asterinas](https://github.com/asterinas/asterinas) の独立フォークであり、
+KEI は [asterinas/asterinas](https://github.com/asterinas/asterinas) の独立フォークであり、
 ARM64 サポートと産業用 IoT ゲートウェイ向けのボードサポートパッケージ（BSP）を提供します。
 [aris](https://github.com/celestia-island/aris) が使用する `kei-kernel.bin` を生成します。
 
 ## フォークモデル
 
-kei は上流を追跡するブランチでは**ありません**。独立したフォークであり、独自のスケジュールで
+KEI は上流を追跡するブランチでは**ありません**。独立したフォークであり、独自のスケジュールで
 定期的に上流の変更を取り込みます —— Apple が自社の LLVM フォークで採用しているモデルと同じです。
 
 ```mermaid
@@ -43,7 +43,7 @@ flowchart LR
     WNY["wanywhn/asterinas\n（arm64-support）"] -->|pull-arm64.sh\n一回限りのスナップショット| KEI
 ```
 
-kei は `ostd/src/arch/aarch64/`、`kernel/src/arch/aarch64/`、
+KEI は `ostd/src/arch/aarch64/`、`kernel/src/arch/aarch64/`、
 `bsp/`、`board/`、`configs/`、`docs/` を独自に保守しています。
 
 ## aris との関係

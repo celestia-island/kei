@@ -175,8 +175,10 @@ fn first_kthread() {
     print_banner();
 
     INIT_PROCESS.call_once(|| {
+        ostd::early_println!("[init] spawning init process...");
         let karg = INIT_PROC_ARGS.get().unwrap();
         let init_path = INIT_PATH.get().map(|s| s.as_str());
+        ostd::early_println!("[init] path={:?}", init_path);
         spawn_init_process(init_path, karg.argv().to_vec(), karg.envp().to_vec())
             .expect("Failed to run the init process")
     });

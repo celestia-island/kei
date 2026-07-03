@@ -18,6 +18,7 @@ Usage:
 from __future__ import annotations
 
 import gzip
+import os
 import shutil
 import subprocess
 import sys
@@ -70,6 +71,34 @@ exec /bin/sh
 """
 
 
+def find_busybox(arch: str) -> Path | None:
+    """Find a busybox binary for the target architecture.
+
+    Search order:
+      1. ARCH_BUSYBOX env var (explicit override)
+      2. test/initramfs/busybox-<arch> (pre-built per-arch binary)
+      3. Host busybox (only when arch matches the host)
+    """
+    # 1. Explicit override
+    env_path = os.environ.get("ARCH_BUSYBOX")
+    if env_path and Path(env_path).exists():
+        return Path(env_path)
+
+    # 2. Pre-built per-arch binary
+    prebuilt = PROJECT_ROOT / "test" / "initramfs" / f"busybox-{arch}"
+    if prebuilt.exists():
+        return prebuilt
+
+    # 3. Host busybox (only if arch matches host)
+    host_arch = os.uname().machine
+    if host_arch == arch or (host_arch == "x86_64" and arch == "x86_64"):
+        bb = shutil.which("busybox")
+        if bb:
+            return Path(bb)
+
+    return None
+
+
 def create_initramfs(arch: str, force: bool = False) -> Path:
     """Create a minimal initramfs.cpio.gz for kernel boot."""
     if INITRAMFS_GZ.exists() and not force:
@@ -91,7 +120,7 @@ def create_initramfs(arch: str, force: bool = False) -> Path:
         init.chmod(0o755)
 
         # Include busybox if available (for shell + network tools)
-        busybox = shutil.which("busybox")
+        busybox = find_busybox(arch)
         if busybox:
             shutil.copy2(busybox, root / "bin" / "busybox")
             for applet in ("sh", "ls", "cat", "ip", "mount", "echo",

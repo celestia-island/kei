@@ -28,36 +28,30 @@ pub mod trap;
 /// 2. This function must be called after the kernel page table is activated on
 ///    the bootstrapping processor.
 pub(crate) unsafe fn late_init_on_bsp() {
-    // SAFETY: This is only called once on this BSP in the boot context.
+    crate::early_println!("[arch] trap::init_on_cpu");
     unsafe { trap::init_on_cpu() };
 
-    // SAFETY: The caller ensures that this function is only called once on BSP,
-    // after the kernel page table is activated.
+    crate::early_println!("[arch] io_mem_builder");
     let io_mem_builder = unsafe { io::construct_io_mem_allocator_builder() };
 
-    // SAFETY: This function is called once and at most once at a proper timing
-    // in the boot context of the BSP, with no external interrupt-related
-    // operations having been performed.
+    crate::early_println!("[arch] irq::chip::init_on_bsp (GIC)");
     unsafe { irq::chip::init_on_bsp(&io_mem_builder) };
 
-    // SAFETY: This is called on the BSP and before any IPI-related operation is
-    // performed.
+    crate::early_println!("[arch] irq::ipi::init_on_bsp");
     unsafe { irq::ipi::init_on_bsp() };
 
-    // SAFETY: This function is called once and at most once at a proper timing
-    // in the boot context of the BSP, with no timer-related operations having
-    // been performed.
+    crate::early_println!("[arch] timer::init_on_bsp");
     unsafe { timer::init_on_bsp() };
 
-    // SAFETY: We're on the BSP and we're ready to boot all APs.
+    crate::early_println!("[arch] smp::boot_all_aps");
     unsafe { crate::boot::smp::boot_all_aps() };
 
-    // SAFETY:
-    // 1. All the system device memory have been removed from the builder.
-    // 2. ARM64 platforms do not have port I/O.
+    crate::early_println!("[arch] io::init");
     unsafe { crate::io::init(io_mem_builder) };
 
+    crate::early_println!("[arch] power::init");
     power::init();
+    crate::early_println!("[arch] late_init_on_bsp done");
 }
 
 /// Initializes application-processor-specific state.

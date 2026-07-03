@@ -125,19 +125,20 @@ unsafe fn init() {
         arch::serial::init();
     });
 
+    crate::early_println!("[ostd] init: smp::init");
     smp::init();
 
-    // SAFETY:
-    // 1. The kernel page table is activated on the BSP.
-    // 2. The function is called only once on the BSP.
-    // 3. No remaining `with_borrow` invocations from now.
+    crate::early_println!("[ostd] init: boot_pt::dismiss");
     unsafe { mm::page_table::boot_pt::dismiss() };
 
+    crate::early_println!("[ostd] init: irq::enable_local");
     arch::irq::enable_local();
 
+    crate::early_println!("[ostd] init: invoke_ffi_init_funcs");
     invoke_ffi_init_funcs();
 
     IN_BOOTSTRAP_CONTEXT.store(false, Ordering::Relaxed);
+    crate::early_println!("[ostd] init: DONE");
 }
 
 /// Indicates whether the kernel is in bootstrap context.

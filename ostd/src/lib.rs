@@ -114,9 +114,10 @@ unsafe fn init() {
     crate::early_println!("[ostd] init: sync::init");
     sync::init();
 
+    crate::early_println!("[ostd] init: boot::init_after_heap");
     boot::init_after_heap();
 
-    // SAFETY: This function is called only once on the BSP.
+    crate::early_println!("[ostd] init: arch::late_init_on_bsp");
     unsafe { arch::late_init_on_bsp() };
 
     #[cfg(target_arch = "x86_64")]

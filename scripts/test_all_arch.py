@@ -147,7 +147,7 @@ def main() -> int:
     cf.section(f"kei multi-architecture boot test")
     cf.info(f"  Architectures: {' '.join(selected)}")
 
-    output_dir = PROJECT_ROOT / "output"
+    output_dir = PROJECT_ROOT / "target" / "test-output"
 
     results = {"PASS": 0, "FAIL": 0, "SKIP": 0, "UNKNOWN": 0}
     for arch in selected:

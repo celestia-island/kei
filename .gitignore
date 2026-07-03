@@ -7,3 +7,24 @@
 *~
 .DS_Store
 .env
+
+# QEMU and runtime logs
+*.log
+qemu.log
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Build artifacts
+*.img
+*.img.xz
+*.iso
+*.qcow2
+*.cpio.gz
+
+# Disk images for testing
+/test/initramfs/build/*.img
+
+# Cargo lock for osdk (it has its own)
+/osdk/Cargo.lock

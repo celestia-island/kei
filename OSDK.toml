@@ -68,7 +68,7 @@ qemu.args = """\
     -display none \
     -serial chardev:mux \
     -monitor chardev:mux \
-    -chardev stdio,id=mux,mux=on,signal=off,logfile=qemu.log
+    -chardev stdio,id=mux,mux=on,signal=off,logfile=target/qemu.log
 """
 
 [scheme."loongarch"]
@@ -84,7 +84,7 @@ qemu.args = """\
     -display none \
     -serial chardev:mux \
     -monitor chardev:mux \
-    -chardev stdio,id=mux,mux=on,signal=off,logfile=qemu.log \
+    -chardev stdio,id=mux,mux=on,signal=off,logfile=target/qemu.log \
     -device virtio-keyboard-pci \
     -device virtio-serial \
     -device virtconsole,chardev=mux \
@@ -106,7 +106,7 @@ qemu.args = """\
     -display none \
     -serial chardev:mux \
     -monitor chardev:mux \
-    -chardev stdio,id=mux,mux=on,signal=off,logfile=qemu.log \
+    -chardev stdio,id=mux,mux=on,signal=off,logfile=target/qemu.log \
     -drive if=none,format=raw,id=x0,file=./test/initramfs/build/ext2.img \
     -drive if=none,format=raw,id=x1,file=./test/initramfs/build/exfat.img \
     -device virtio-blk-device,drive=x0 \

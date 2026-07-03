@@ -104,7 +104,7 @@ def main() -> int:
         cf.fail(f"Unknown arch: {arch}")
         return 1
 
-    output_dir = PROJECT_ROOT / "output" / board
+    output_dir = PROJECT_ROOT / "target" / "output" / board
     output_dir.mkdir(parents=True, exist_ok=True)
 
     cf.section(f"kei build: {board} ({profile})")

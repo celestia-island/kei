@@ -26,7 +26,7 @@ def main() -> int:
     args = parser.parse_args()
 
     board = args.board
-    output_dir = PROJECT_ROOT / "output" / board
+    output_dir = PROJECT_ROOT / "target" / "output" / board
     kernel = output_dir / "kei-kernel.bin"
     dtb = output_dir / "board.dtb"
 

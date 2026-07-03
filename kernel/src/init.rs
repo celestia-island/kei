@@ -18,33 +18,50 @@ use crate::{
 pub(super) fn main() {
     // Initialize the global states for all CPUs.
     ostd::early_println!("OSTD initialized. Preparing components.");
-    component::init_all(InitStage::Bootstrap, component::parse_metadata!()).unwrap();
+    // FIXME: component::init_all panics on path mismatch — skip for now
+    ostd::early_println!("[FIXME] Skipping component::init_all (Bootstrap)");
     init();
+    ostd::early_println!("Kernel init done.");
+    ostd::early_println!("Kernel init done.");
 
     // Initialize the per-CPU states for BSP.
     init_on_each_cpu();
+    ostd::early_println!("Per-CPU init done.");
 
     // Enable APs.
     ostd::boot::smp::register_ap_entry(ap_init);
+    ostd::early_println!("Spawning BSP idle thread...");
 
     // Give the control of the BSP to the idle thread.
     ThreadOptions::new(bsp_idle_loop)
         .cpu_affinity(CpuId::bsp().into())
         .sched_policy(SchedPolicy::Idle)
         .spawn();
+    ostd::early_println!("BSP idle thread spawned.");
 }
 
 fn init() {
+    ostd::early_println!("[init] arch::init");
     crate::arch::init();
+    ostd::early_println!("[init] thread::init");
     crate::thread::init();
+    ostd::early_println!("[init] random::init");
     crate::util::random::init();
+    ostd::early_println!("[init] driver::init");
     crate::driver::init();
+    ostd::early_println!("[init] time::init");
     crate::time::init();
+    ostd::early_println!("[init] net::init");
     crate::net::init();
+    ostd::early_println!("[init] sched::init");
     crate::sched::init();
+    ostd::early_println!("[init] process::init");
     crate::process::init();
+    ostd::early_println!("[init] fs::init");
     crate::fs::init();
+    ostd::early_println!("[init] security::init");
     crate::security::init();
+    ostd::early_println!("[init] done");
 }
 
 fn init_on_each_cpu() {
@@ -148,7 +165,8 @@ fn first_kthread() {
 static INIT_PROCESS: Once<Arc<Process>> = Once::new();
 
 fn init_in_first_kthread(path_resolver: &PathResolver) {
-    component::init_all(InitStage::Kthread, component::parse_metadata!()).unwrap();
+    ostd::early_println!("[FIXME] Skipping component::init_all (Kthread)");
+    ostd::early_println!("[INFO] init_in_first_kthread continuing...");
     // Work queue should be initialized before interrupt is enabled,
     // in case any irq handler uses work queue as bottom half
     crate::thread::work_queue::init_in_first_kthread();

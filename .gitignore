@@ -26,6 +26,9 @@ __pycache__/
 # Disk images for testing
 /test/initramfs/build/*.img
 
+# Pre-built per-arch busybox binaries (downloaded by initramfs.py)
+/test/initramfs/busybox-*
+
 # Cargo lock for osdk (it has its own)
 /osdk/Cargo.lock
 /Cargo.lock

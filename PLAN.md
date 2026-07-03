@@ -1,3 +1,46 @@
+# kei — 项目状态与计划 (PLAN)
+
+> 本文件由自动化扫描于 **2026-07-04** 生成，记录项目当前状态、近期进展与后续计划。
+> 原有详细计划已保留于文末「既有详细计划（存档）」。
+
+## 1. 项目概述
+
+- **名称**：`kei`
+- **简介**：Asterinas ARM64 fork —— 面向工业物联网网关的独立内核。
+- **远程仓库**：本地仓库（无 origin）
+- **技术栈**：Rust / just
+- **类别**：firmware
+
+## 2. 当前状态
+
+- **当前分支**：`dev`
+- **工作区**：干净
+- **最近提交时间**：2026-07-04
+- **最近提交**：docs: rewrite License section in flowing paragraph style (all 8 languages)
+
+## 3. 未提交改动
+
+无。
+
+## 4. 近期进展（最近提交）
+
+- docs: rewrite License section in flowing paragraph style (all 8 languages)
+- docs: rewrite License section in entelecheia flowing paragraph style
+- docs: standardize License section format across all translations
+- style: use uppercase ARIS / KEI throughout
+- chore: stop tracking Cargo.lock (again)
+- docs: use GitHub raw URL for logo, bold English without self-link
+
+## 5. 后续计划
+
+1. 推进板级/驱动或协议落地里程碑，保持跨设备回归测试。
+2. 收敛审计遗留项，固化启动与健康检查流程。
+3. 定期刷新本 PLAN.md 以反映最新状态。
+
+---
+
+## 既有详细计划（存档）
+
 # kei — Project Plan
 
 ## Goal
@@ -103,3 +146,4 @@ The wanywhn arm64 code is LLM-generated and QEMU-only. Hardening tasks:
 | wanywhn arm64 code has subtle bugs | High | M2 audit milestone; real HW testing |
 | Falling behind upstream features | Low | Periodic vendoring catches up in batches |
 | Upstream ships different arm64 | Low | Evaluate at vendor time; adopt if better |
+

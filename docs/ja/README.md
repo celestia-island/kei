@@ -1,8 +1,8 @@
-<p align="center"><img src="https://raw.githubusercontent.com/celestia-island/kei/master/docs/logo.webp" alt="KEI" width="240" /></p>
+<p align="center"><img src="../logo.webp" alt="kei" width="240" /></p>
 
-<h1 align="center">KEI</h1>
+<h1 align="center">kei</h1>
 
-<p align="center"><strong>IoT 向け OS カーネル — Asterinas 上の RTOS 規律、Linux エコシステムへのアクセス付き</strong></p>
+<p align="center"><strong>Asterinas ARM64 フォーク —— 産業用 IoT ゲートウェイ向けの独立カーネル</strong></p>
 
 <div align="center">
 
@@ -28,11 +28,13 @@
 
 ## はじめに
 
-KEI は産業用 IoT のために専用構築された OS カーネルです。[asterinas/asterinas](https://github.com/asterinas/asterinas) を取り込み、それを RTOS 風の施設へと形作ります —— 小さく、リアルタイムで、監査可能 —— 一方で Linux エコシステムへの橋を保ち、既存のドライバ、ツール、バイナリが手の届く範囲に残るようにします。Linux ディストリビューションでも、ストックの Asterinas でもありません。最も近い類似物は、たまたま Linux を話す RTOS です。必要なワークロードにはリアルタイムの決定性を、それ以外のすべてには Linux グレードのソフトウェア互換性を提供します。
+kei は [asterinas/asterinas](https://github.com/asterinas/asterinas) の独立フォークであり、
+ARM64 サポートと産業用 IoT ゲートウェイ向けのボードサポートパッケージ（BSP）を提供します。
+[aris](https://github.com/celestia-island/aris) が使用する `kei-kernel.bin` を生成します。
 
 ## フォークモデル
 
-KEI は上流を追跡するブランチでは**ありません**。独立したフォークであり、独自のスケジュールで
+kei は上流を追跡するブランチでは**ありません**。独立したフォークであり、独自のスケジュールで
 定期的に上流の変更を取り込みます —— Apple が自社の LLVM フォークで採用しているモデルと同じです。
 
 ```mermaid
@@ -41,8 +43,27 @@ flowchart LR
     WNY["wanywhn/asterinas\n（arm64-support）"] -->|pull-arm64.sh\n一回限りのスナップショット| KEI
 ```
 
-KEI は `ostd/src/arch/aarch64/`、`kernel/src/arch/aarch64/`、
+kei は `ostd/src/arch/aarch64/`、`kernel/src/arch/aarch64/`、
 `bsp/`、`board/`、`configs/`、`docs/` を独自に保守しています。
+
+## aris との関係
+
+```mermaid
+flowchart TB
+    subgraph KEI["kei（本リポジトリ）"]
+        OSTD["ostd/ — 定期的にベンダー取り込み"]
+        KERN["kernel/ — 定期的にベンダー取り込み"]
+        BSP["bsp/ — 100% 自作コード"]
+        BRD["board/ — 100% 自作コード"]
+    end
+    subgraph ARIS["aris（ゲートウェイファームウェア）"]
+        CORE["packages/core/ — スーパバイザ"]
+        BUILDER["packages/builder/ — イメージビルダ"]
+        OVL["overlay/ — rootfs ファイル"]
+        SCR["scripts/ — ビルド + 書き込み"]
+    end
+    KEI -->|kei-kernel.bin| ARIS
+```
 
 ## クイックスタート
 
@@ -79,4 +100,8 @@ just test-all     # Boot-test all architectures in QEMU
 
 ## ライセンス
 
-SySL-1.0（Synthetic Source License）が KEI 自身のコードに適用されます —— [LICENSE](../../LICENSE) を参照。ベンダー取り込みの Asterinas コード（`ostd/`、`kernel/`、`osdk/`）は MPL-2.0 のままです —— [LICENSE-MPL](../../LICENSE-MPL) を参照。
+**SySL-1.0**（Synthetic Source License）は kei 自身のコードに適用されます ——
+[LICENSE](../../LICENSE) を参照。
+
+**MPL-2.0** はベンダー取り込みした Asterinas コード（`ostd/`、`kernel/`、`osdk/`）に適用されます ——
+[LICENSE-MPL](../../LICENSE-MPL) を参照。

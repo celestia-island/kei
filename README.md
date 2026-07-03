@@ -1,51 +1,69 @@
-# kei — Asterinas ARM64 Fork
+<p align="center"><img src="docs/logo.webp" alt="kei" width="240" /></p>
 
-[![License](https://img.shields.io/badge/license-MPL--2.0-blue.svg)](LICENSE-MPL)
+<h1 align="center">kei</h1>
 
-Independent fork of [asterinas/asterinas](https://github.com/asterinas/asterinas)
-with ARM64 support and Board Support Packages for industrial IoT gateways.
+<p align="center"><strong>Asterinas ARM64 fork — independent kernel for industrial IoT gateways</strong></p>
 
-## Model: Independent Fork (Apple LLVM Style)
+<div align="center">
 
-kei is **not** a branch that tracks upstream. It is an **independent fork**
-that periodically absorbs upstream changes on its own schedule.
+[![License: SySL](https://img.shields.io/badge/license-SySL%201.0-blue)](./LICENSE)
+[![License: MPL-2.0](https://img.shields.io/badge/vendored-MPL--2.0-blue)](./LICENSE-MPL)
+[![Checks](https://img.shields.io/github/actions/workflow/status/celestia-island/kei/ci.yml)](https://github.com/celestia-island/kei/actions/workflows/ci.yml)
 
+</div>
+
+<div align="center">
+
+[English](./docs/en/README.md) ·
+[简体中文](./docs/zhs/README.md) ·
+[繁體中文](./docs/zht/README.md) ·
+[日本語](./docs/ja/README.md) ·
+[한국어](./docs/ko/README.md) ·
+[Français](./docs/fr/README.md) ·
+[Español](./docs/es/README.md) ·
+[Русский](./docs/ru/README.md) ·
+[العربية](./docs/ar/README.md)
+
+</div>
+
+## Introduction
+
+kei is an independent fork of [asterinas/asterinas](https://github.com/asterinas/asterinas)
+with ARM64 support and Board Support Packages for industrial IoT gateways. It
+provides the `kei-kernel.bin` consumed by [aris](https://github.com/celestia-island/aris).
+
+## Fork Model
+
+kei is **not** a branch that tracks upstream. It is an independent fork that
+periodically absorbs upstream changes on its own schedule — the same model Apple
+uses for its LLVM fork.
+
+```mermaid
+flowchart LR
+    UP["asterinas/asterinas\n(active upstream)"] -->|vendor-upstream.sh\nsquash every N months| KEI["kei (this repo)\nfully independent"]
+    WNY["wanywhn/asterinas\n(arm64-support)"] -->|pull-arm64.sh\none-time snapshot| KEI
 ```
-asterinas/asterinas          kei (this repo)
-(活跃上游)                    (完全独立)
-     │                            │
-     │  ┌── 每 N 个月 ──────▶     │  vendor-upstream.sh
-     │  │   squash 替换            │  (整体吸收，不做 commit 级 merge)
-     │  └──────────────────────   │
-     │                            │
-wanywhn/asterinas                │
-(arm64-support)                  │
-     │  ┌── 一次性拉取 ──────▶    │  pull-arm64.sh
-     │  │   之后独立维护           │  (点快照，之后自己改)
-     │  └──────────────────────   │
-                                  │
-                          ostd/src/arch/aarch64/  ← 我们独立维护
-                          kernel/src/arch/aarch64/ ← 我们独立维护
-                          bsp/                    ← 100% 我们的代码
-                          board/ configs/         ← 100% 我们的代码
-```
 
-**为什么不跟踪上游？**
-- asterinas 太活跃（4194 commits, SOSP/USENIX 论文），频繁 merge 冲突成本 > 收益
-- 上游 lrh2000 会重写 arm64，不会用我们的版本，追求 upstream 兼容无意义
-- 初创团队资源有限，按自己节奏吸收上游更务实
-- 这正是 Apple 维护 LLVM fork 的方式
+kei independently maintains `ostd/src/arch/aarch64/`, `kernel/src/arch/aarch64/`,
+`bsp/`, `board/`, `configs/`, and `docs/`.
 
 ## Relationship to aris
 
-```
-kei (this repo)                    aris (gateway firmware)
-├── ostd/  ← vendored periodically    ├── packages/core/    ← supervisor
-├── kernel/← vendored periodically    ├── packages/builder/ ← image builder
-├── bsp/   ← 100% our code            ├── overlay/          ← rootfs files
-└── board/ ← 100% our code            └── scripts/          ← build + flash
-       │                                      │
-       └── kei-kernel.bin ───────────────────┘
+```mermaid
+flowchart TB
+    subgraph KEI["kei (this repo)"]
+        OSTD["ostd/ — vendored periodically"]
+        KERN["kernel/ — vendored periodically"]
+        BSP["bsp/ — 100% our code"]
+        BRD["board/ — 100% our code"]
+    end
+    subgraph ARIS["aris (gateway firmware)"]
+        CORE["packages/core/ — supervisor"]
+        BUILDER["packages/builder/ — image builder"]
+        OVL["overlay/ — rootfs files"]
+        SCR["scripts/ — build + flash"]
+    end
+    KEI -->|kei-kernel.bin| ARIS
 ```
 
 ## Quick Start
@@ -83,9 +101,8 @@ just test-all     # Boot-test all architectures in QEMU
 
 ## License
 
-**SySL-1.0** (Synthetic Source License) for kei's own code — see [LICENSE](LICENSE).
+**SySL-1.0** (Synthetic Source License) for kei's own code — see
+[LICENSE](LICENSE).
 
-**MPL-2.0** for vendored Asterinas code (ostd/, kernel/, osdk/) — see [LICENSE-MPL](LICENSE-MPL).
-
-The two licenses coexist without conflict (MPL-2.0 is file-level copyleft;
-kei's additions are SySL-1.0 permissive with AI-disclosure requirements).
+**MPL-2.0** for vendored Asterinas code (`ostd/`, `kernel/`, `osdk/`) — see
+[LICENSE-MPL](LICENSE-MPL).

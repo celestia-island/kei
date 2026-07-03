@@ -1,8 +1,8 @@
-<p align="center"><img src="https://raw.githubusercontent.com/celestia-island/kei/master/docs/logo.webp" alt="KEI" width="240" /></p>
+<p align="center"><img src="../logo.webp" alt="kei" width="240" /></p>
 
-<h1 align="center">KEI</h1>
+<h1 align="center">kei</h1>
 
-<p align="center"><strong>Un núcleo de SO orientado a IoT — disciplina RTOS sobre Asterinas, con acceso al ecosistema Linux</strong></p>
+<p align="center"><strong>Fork ARM64 de Asterinas — kernel independiente para pasarelas IoT industriales</strong></p>
 
 <div align="center">
 
@@ -28,18 +28,13 @@
 
 ## Introducción
 
-KEI es un núcleo de sistema operativo diseñado específicamente para el IoT
-industrial. Toma Asterinas y lo conforma en una instalación de estilo RTOS —
-pequeño, en tiempo real, auditable — pero mantiene un puente hacia el ecosistema
-Linux para que los controladores, herramientas y binarios existentes sigan al
-alcance. No es ni una distribución Linux ni Asterinas sin modificar. El análogo
-más cercano es un RTOS que resulta hablar Linux: determinismo en tiempo real
-para la carga de trabajo que lo necesita, compatibilidad de software de grado
-Linux para todo lo demás.
+kei es un fork independiente de [asterinas/asterinas](https://github.com/asterinas/asterinas)
+con soporte ARM64 y Board Support Packages para pasarelas IoT industriales.
+Proporciona el `kei-kernel.bin` consumido por [aris](https://github.com/celestia-island/aris).
 
 ## Modelo de fork
 
-KEI **no** es una rama que sigue al upstream. Es un fork independiente que
+kei **no** es una rama que sigue al upstream. Es un fork independiente que
 absorbe periódicamente los cambios del upstream a su propio ritmo — el mismo
 modelo que Apple usa para su fork de LLVM.
 
@@ -49,8 +44,27 @@ flowchart LR
     WNY["wanywhn/asterinas\n(soporte-arm64)"] -->|pull-arm64.sh\ninstantánea única| KEI
 ```
 
-KEI mantiene de forma independiente `ostd/src/arch/aarch64/`, `kernel/src/arch/aarch64/`,
+kei mantiene de forma independiente `ostd/src/arch/aarch64/`, `kernel/src/arch/aarch64/`,
 `bsp/`, `board/`, `configs/`, y `docs/`.
+
+## Relación con aris
+
+```mermaid
+flowchart TB
+    subgraph KEI["kei (este repo)"]
+        OSTD["ostd/ — integrado periódicamente"]
+        KERN["kernel/ — integrado periódicamente"]
+        BSP["bsp/ — 100% nuestro código"]
+        BRD["board/ — 100% nuestro código"]
+    end
+    subgraph ARIS["aris (firmware de pasarela)"]
+        CORE["packages/core/ — supervisor"]
+        BUILDER["packages/builder/ — constructor de imágenes"]
+        OVL["overlay/ — archivos rootfs"]
+        SCR["scripts/ — construcción + flasheo"]
+    end
+    KEI -->|kei-kernel.bin| ARIS
+```
 
 ## Inicio rápido
 
@@ -87,4 +101,8 @@ just test-all     # Boot-test all architectures in QEMU
 
 ## Licencia
 
-SySL-1.0 (Synthetic Source License) para el código de KEI — ver [LICENSE](../../LICENSE). El código Asterinas integrado (`ostd/`, `kernel/`, `osdk/`) permanece bajo MPL-2.0 — ver [LICENSE-MPL](../../LICENSE-MPL).
+**SySL-1.0** (Synthetic Source License) para el código propio de kei — ver
+[LICENSE](../../LICENSE).
+
+**MPL-2.0** para el código de Asterinas integrado (`ostd/`, `kernel/`, `osdk/`) — ver
+[LICENSE-MPL](../../LICENSE-MPL).

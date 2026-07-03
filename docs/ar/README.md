@@ -1,8 +1,8 @@
-<p align="center" dir="rtl"><img src="https://raw.githubusercontent.com/celestia-island/kei/master/docs/logo.webp" alt="KEI" width="240" /></p>
+<p align="center" dir="rtl"><img src="../logo.webp" alt="kei" width="240" /></p>
 
-<h1 align="center">KEI</h1>
+<h1 align="center">kei</h1>
 
-<p align="center" dir="rtl"><strong>نواة نظام تشغيل موجّهة لِإنترنت الأشياء (IoT) — انضباط RTOS فوق Asterinas، مع الوصول إلى منظومة لينكس</strong></p>
+<p align="center" dir="rtl"><strong>تفرّع ARM64 من Asterinas — نواة مستقلة لبوابات IoT الصناعية</strong></p>
 
 <div align="center">
 
@@ -28,16 +28,13 @@
 
 ## مقدمة
 
-KEI نواة نظام تشغيل مبنية خصيصاً لِإنترنت الأشياء الصناعي. تأخذ Asterinas وتصوغها
-على هيئة بنية بأسلوب RTOS — صغيرة وزمنية حقيقية وقابلة للتدقيق — لكنها تحتفظ
-بجسر إلى منظومة لينكس بحيث تبقى التعريفات والأدوات والملفات الثنائية القائمة في
-المتناول. ليست توزيعة لينكس ولا Asterinas كما هي. أقرب نظيرٍ لها RTOSٌ يحدث أن
-يتحدّث لينكس: حتمية زمنية حقيقية للأحمال التي تحتاجها، وتوافقٌ برمجي بمستوى
-لينكس لكل ما سوى ذلك.
+kei هو تفرّع مستقل عن [asterinas/asterinas](https://github.com/asterinas/asterinas)
+يدعم ARM64 وحزم دعم اللوحات (BSP) لبوابات IoT الصناعية. يوفّر
+`kei-kernel.bin` الذي يستهلكه [aris](https://github.com/celestia-island/aris).
 
 ## نموذج التفرّع
 
-KEI **ليس** فرعاً يتتبّع المصدر المنبع (upstream). إنه تفرّع مستقل
+kei **ليس** فرعاً يتتبّع المصدر المنبع (upstream). إنه تفرّع مستقل
 يمتصّ تغييرات المصدر المنبع دورياً وفق جدوله الخاص — نفس النموذج
 الذي تستخدمه Apple لتفرّعها الخاص بـ LLVM.
 
@@ -49,6 +46,25 @@ flowchart LR
 
 يحافظ kei بشكل مستقل على `ostd/src/arch/aarch64/` و `kernel/src/arch/aarch64/`
 و `bsp/` و `board/` و `configs/` و `docs/`.
+
+## العلاقة مع aris
+
+```mermaid
+flowchart TB
+    subgraph KEI["kei (هذا المستودع)"]
+        OSTD["ostd/ — مُدمج دورياً"]
+        KERN["kernel/ — مُدمج دورياً"]
+        BSP["bsp/ — 100% كودنا"]
+        BRD["board/ — 100% كودنا"]
+    end
+    subgraph ARIS["aris (برنامج البوابة الثابت)"]
+        CORE["packages/core/ — المشرف"]
+        BUILDER["packages/builder/ — منشئ الصور"]
+        OVL["overlay/ — ملفات rootfs"]
+        SCR["scripts/ — البناء + الوميض"]
+    end
+    KEI -->|kei-kernel.bin| ARIS
+```
 
 ## البداية السريعة
 
@@ -85,4 +101,8 @@ just test-all     # Boot-test all architectures in QEMU
 
 ## الترخيص
 
-SySL-1.0 (Synthetic Source License) — راجع [LICENSE](../../LICENSE). كود Asterinas المُدمج (`ostd/`، `kernel/`، `osdk/`) يبقى تحت MPL-2.0 — راجع [LICENSE-MPL](../../LICENSE-MPL).
+**SySL-1.0** (Synthetic Source License) للكود الخاص بـ kei — راجع
+[LICENSE](../../LICENSE).
+
+**MPL-2.0** لكود Asterinas المُدمج (`ostd/` و `kernel/` و `osdk/`) — راجع
+[LICENSE-MPL](../../LICENSE-MPL).

@@ -16,10 +16,22 @@ use crate::{
 };
 
 pub(super) fn main() {
-    // VGA text mode display (x86_64 only)
+    // VBE graphics framebuffer (x86_64 QEMU with -vga std)
     #[cfg(target_arch = "x86_64")]
     {
-        crate::vga_text::print_banner();
+        ostd::early_println!("[VBE] Setting graphics mode 640x480x32...");
+        if let Some((fb_addr, w, h, bpp)) = crate::vbe_dispi::set_graphics_mode(640, 480, 32) {
+            ostd::early_println!("[VBE] Framebuffer at {:#x}, {}x{}x{}", fb_addr, w, h, bpp);
+
+            // Draw a test pattern: blue background with green banner area
+            crate::vbe_dispi::draw_rect(fb_addr, w, h, bpp, 0, 0, w, h, 10, 10, 40); // dark blue bg
+            crate::vbe_dispi::draw_rect(fb_addr, w, h, bpp, 50, 80, 540, 160, 20, 20, 20); // banner bg
+
+            ostd::early_println!("[VBE] Graphics displayed on QEMU VGA.");
+        } else {
+            ostd::early_println!("[VBE] No VBE DISPI support, falling back to VGA text");
+            crate::vga_text::print_banner();
+        }
     }
 
     // Initialize the global states for all CPUs.

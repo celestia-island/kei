@@ -2352,35 +2352,11 @@ dependencies = [
 ]
 
 [[patch.unused]]
-name = "hikari-animation"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "hikari-components"
-version = "0.2.7"
-
-[[patch.unused]]
-name = "hikari-icons"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "hikari-palette"
-version = "0.2.7"
-
-[[patch.unused]]
-name = "hikari-theme"
-version = "0.2.7"
-
-[[patch.unused]]
 name = "hifumi"
 version = "0.1.1"
 
 [[patch.unused]]
-name = "malkuth"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "arona"
+name = "evernight"
 version = "0.1.0"
 
 [[patch.unused]]
@@ -2412,8 +2388,32 @@ name = "tairitsu-web"
 version = "0.5.13"
 
 [[patch.unused]]
-name = "evernight"
+name = "malkuth"
 version = "0.1.0"
+
+[[patch.unused]]
+name = "arona"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "hikari-animation"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "hikari-components"
+version = "0.2.7"
+
+[[patch.unused]]
+name = "hikari-icons"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "hikari-palette"
+version = "0.2.7"
+
+[[patch.unused]]
+name = "hikari-theme"
+version = "0.2.7"
 
 [[patch.unused]]
 name = "aoba"

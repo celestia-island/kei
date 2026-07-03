@@ -109,11 +109,8 @@ unsafe fn init() {
     crate::early_println!("[ostd] init: kspace::activate_kernel_page_table");
     unsafe { mm::kspace::activate_kernel_page_table() };
 
-    // Reinitialize serial port with linear mapping address (the identity
-    // mapping from the boot page table is no longer valid).
-    crate::early_println!("[ostd] init: serial reinit");
-    arch::serial::reinit_with_linear_mapping();
-
+    // Serial port is reinitialized inside activate_kernel_page_table
+    // for aarch64 (the identity mapping is gone after the switch).
     crate::early_println!("[ostd] init: sync::init");
     sync::init();
 

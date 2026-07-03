@@ -2352,6 +2352,14 @@ dependencies = [
 ]
 
 [[patch.unused]]
+name = "evernight"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "arona"
+version = "0.1.0"
+
+[[patch.unused]]
 name = "malkuth"
 version = "0.1.0"
 
@@ -2374,10 +2382,6 @@ version = "0.2.7"
 [[patch.unused]]
 name = "hikari-theme"
 version = "0.2.7"
-
-[[patch.unused]]
-name = "hifumi"
-version = "0.1.1"
 
 [[patch.unused]]
 name = "tairitsu"
@@ -2406,6 +2410,10 @@ version = "0.5.13"
 [[patch.unused]]
 name = "tairitsu-web"
 version = "0.5.13"
+
+[[patch.unused]]
+name = "hifumi"
+version = "0.1.1"
 
 [[patch.unused]]
 name = "aoba"
@@ -2454,11 +2462,3 @@ version = "0.5.13"
 [[patch.unused]]
 name = "tairitsu-vdom"
 version = "0.5.13"
-
-[[patch.unused]]
-name = "evernight"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "arona"
-version = "0.1.0"

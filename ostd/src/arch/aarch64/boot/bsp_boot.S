@@ -197,10 +197,11 @@ el1_setup:
 
     // Now we're running with virtual addresses
     // Set up stack pointer (virtual address)
-    // boot_stack_top is in .boot section at physical address, need to add offset
+    // boot_stack_top is in .boot section at physical address, convert to
+    // linear mapping virtual address by adding LINEAR_MAPPING_BASE_VADDR
     adrp    x3, boot_stack_top
     add     x3, x3, #:lo12:boot_stack_top
-    ldr     x4, =0xffffffff00000000
+    ldr     x4, =0xffff800000000000
     add     sp, x3, x4
 
     // Jump to virtual address code

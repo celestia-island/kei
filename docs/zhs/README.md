@@ -100,8 +100,4 @@ just test-all     # Boot-test all architectures in QEMU
 
 ## 许可证
 
-**SySL-1.0**（合成源代码许可证）适用于 kei 自身代码 —— 见
-[LICENSE](../../LICENSE)。
-
-**MPL-2.0** 适用于引入的 Asterinas 代码（`ostd/`、`kernel/`、`osdk/`） —— 见
-[LICENSE-MPL](../../LICENSE-MPL)。
+SySL-1.0（Synthetic Source License）适用于 KEI 自身代码 —— 见 [LICENSE](../../LICENSE)。引入的 Asterinas 代码（`ostd/`、`kernel/`、`osdk/`）仍适用 MPL-2.0 —— 见 [LICENSE-MPL](../../LICENSE-MPL)。

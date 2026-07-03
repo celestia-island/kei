@@ -101,8 +101,4 @@ just test-all     # Boot-test all architectures in QEMU
 
 ## الترخيص
 
-**SySL-1.0** (Synthetic Source License) للكود الخاص بـ kei — راجع
-[LICENSE](../../LICENSE).
-
-**MPL-2.0** لكود Asterinas المُدمج (`ostd/` و `kernel/` و `osdk/`) — راجع
-[LICENSE-MPL](../../LICENSE-MPL).
+SySL-1.0 (Synthetic Source License) — راجع [LICENSE](../../LICENSE). كود Asterinas المُدمج (`ostd/`، `kernel/`، `osdk/`) يبقى تحت MPL-2.0 — راجع [LICENSE-MPL](../../LICENSE-MPL).

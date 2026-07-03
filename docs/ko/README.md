@@ -100,8 +100,4 @@ just test-all     # Boot-test all architectures in QEMU
 
 ## 라이선스
 
-**SySL-1.0**(합성 소스 라이선스)은 kei 자체 코드에 적용됩니다 ——
-[LICENSE](../../LICENSE) 참조.
-
-**MPL-2.0**은 벤더링된 Asterinas 코드(`ostd/`, `kernel/`, `osdk/`)에 적용됩니다 ——
-[LICENSE-MPL](../../LICENSE-MPL) 참조.
+SySL-1.0（Synthetic Source License）이 KEI 자체 코드에 적용됩니다 —— [LICENSE](../../LICENSE) 참조. 벤더링된 Asterinas 코드（`ostd/`, `kernel/`, `osdk/`）는 MPL-2.0으로 유지됩니다 —— [LICENSE-MPL](../../LICENSE-MPL) 참조.

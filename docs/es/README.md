@@ -101,8 +101,4 @@ just test-all     # Boot-test all architectures in QEMU
 
 ## Licencia
 
-**SySL-1.0** (Synthetic Source License) para el código propio de kei — ver
-[LICENSE](../../LICENSE).
-
-**MPL-2.0** para el código de Asterinas integrado (`ostd/`, `kernel/`, `osdk/`) — ver
-[LICENSE-MPL](../../LICENSE-MPL).
+SySL-1.0 (Synthetic Source License) para el código de KEI — ver [LICENSE](../../LICENSE). El código Asterinas integrado (`ostd/`, `kernel/`, `osdk/`) permanece bajo MPL-2.0 — ver [LICENSE-MPL](../../LICENSE-MPL).

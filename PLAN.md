@@ -1,6 +1,6 @@
 # kei — 项目状态与计划 (PLAN)
 
-> 本文件由自动化扫描于 **2026-07-04** 生成，记录项目当前状态、近期进展与后续计划。
+> 本文件于 **2026-07-04** 更新，记录项目当前状态、近期进展与后续计划。
 > 原有详细计划已保留于文末「既有详细计划（存档）」。
 
 ## 1. 项目概述
@@ -17,25 +17,50 @@
 - **工作区**：干净
 - **最近提交时间**：2026-07-04
 - **最近提交**：docs: rewrite License section in flowing paragraph style (all 8 languages)
+- **initramfs**：已构建（`test/initramfs/build/initramfs.cpio.gz`，457 KB）
 
 ## 3. 未提交改动
 
 无。
 
-## 4. 近期进展（最近提交）
+## 4. 近期进展
+
+### evernight 联调（2026-07-04）
+
+与 aris + evernight 进行宿主机联调测试，验证 IoT 网关数据链路：
+
+```
+Modbus TCP sim → evernight sensor-poll → WebSocket → evernight-server
+```
+
+- evernight `evernight` + `evernight-server` 二进制构建成功（x86_64 host）
+- **device.register + device.telemetry 双向验证通过**（sensor-poll 端 + server 端日志确认）
+- kei initramfs 已就绪，可用于 QEMU arm64 boot 测试（待安装 `qemu-system-aarch64`）
+- aris 侧 `ignition_test.py` 修复：`SENSOR_DATA_DIR` 注入 + Modbus TCP sim 帧解析
+
+### 既往提交
 
 - docs: rewrite License section in flowing paragraph style (all 8 languages)
-- docs: rewrite License section in entelecheia flowing paragraph style
-- docs: standardize License section format across all translations
-- style: use uppercase ARIS / KEI throughout
-- chore: stop tracking Cargo.lock (again)
-- docs: use GitHub raw URL for logo, bold English without self-link
+- docs: add PLAN.md current-status snapshot
+- feat: fix build/test pipeline + verify aarch64 QEMU boot
+- milestone: kei Asterinas kernel FULLY BOOTS on aarch64 QEMU
+- wip: kernel reaches late_init_on_bsp — GIC/timer init pending
 
 ## 5. 后续计划
 
-1. 推进板级/驱动或协议落地里程碑，保持跨设备回归测试。
-2. 收敛审计遗留项，固化启动与健康检查流程。
-3. 定期刷新本 PLAN.md 以反映最新状态。
+### 短期（本周）
+1. **QEMU arm64 boot 联调**——安装 `qemu-system-aarch64`，用 kei 内核 + initramfs 启动，验证到达 evernight 运行点
+2. **M2 FDT 内存解析修复**——region 6 物理地址溢出导致 `frame::meta::init` 崩溃
+3. **kei 内核 + evernight 联调**——QEMU virt (cortex-a55/a72) 上启动 kei，验证 initramfs → evernight → gateway 链路
+
+### 中期
+1. M2 ARM64 Hardening：审计 ostd/src/arch/aarch64/，替换第三方 GICv3 crate
+2. M2 SMP/PSCI 多核启动
+3. M3 RK3566 BSP 驱动（GPIO / stmmac / DW UART）
+
+### 长期
+1. M2.4 在 NanoPi R3S 上运行 kei + evernight 全栈
+2. 性能基准测试 vs Linux baseline
 
 ---
 
@@ -116,15 +141,17 @@ kei tree:
 > Reaches OSTD `frame::meta::init` before crashing on FDT memory region
 > parsing (region 6 has an overflowing physical address range).
 > Build pipeline produces a valid ARM64 Image (.bin) with correct header.
+> initramfs built and ready for QEMU arm64 boot test with evernight.
 
 ### M2 — ARM64 Hardening
 The wanywhn arm64 code is LLM-generated and QEMU-only. Hardening tasks:
-- [ ] Fix FDT memory region parsing (region 6 overflows PA space)
+- [ ] Fix FDT memory region parsing (region 6 overflows PA space) ← **当前阻塞项**
 - [ ] Audit all files in ostd/src/arch/aarch64/, fix LLM artifacts
 - [ ] Replace third-party GICv3 crate with in-tree driver
 - [ ] SMP / multi-core boot (PSCI secondary bring-up)
 - [ ] Real hardware boot on NanoPi R3S (RK3566)
 - [ ] Performance benchmarks vs Linux baseline
+- [ ] QEMU arm64 boot test with evernight gateway stack ← **联调待办**
 
 ### M3 — RK3566 BSP
 - [ ] GPIO (Rockchip GRF pinctrl)

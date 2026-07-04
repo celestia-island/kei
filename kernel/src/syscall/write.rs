@@ -13,6 +13,29 @@ pub fn sys_write(
     user_buf_len: usize,
     ctx: &Context,
 ) -> Result<SyscallReturn> {
+    // On aarch64, the trait-object vtable for PerOpenFileOps::write_at has a
+    // dispatch bug that prevents TtyFile::write_at from being called. As a
+    // workaround, when writing to fd 1 (stdout) or fd 2 (stderr), bypass the
+    // file abstraction and write directly to the PL011 UART.
+    #[cfg(target_arch = "aarch64")]
+    if raw_fd == 1 || raw_fd == 2 {
+        if user_buf_len != 0 {
+            let user_space = ctx.user_space();
+            let mut reader = user_space.reader(user_buf_ptr, user_buf_len)?;
+            let mut buf = vec![0u8; user_buf_len];
+            use ostd::mm::VmWriter;
+            let len = reader.read_fallible(&mut VmWriter::from(buf.as_mut_slice())).map_err(|e| Error::from(e))?;
+            for &byte in &buf[..len] {
+                if byte == b'\n' {
+                    ostd::arch::serial::pl011_send_byte(b'\r');
+                }
+                ostd::arch::serial::pl011_send_byte(byte);
+            }
+            return Ok(SyscallReturn::Return(len as _));
+        }
+        return Ok(SyscallReturn::Return(0));
+    }
+
     debug!(
         "raw_fd = {}, user_buf_ptr = 0x{:x}, user_buf_len = 0x{:x}",
         raw_fd, user_buf_ptr, user_buf_len

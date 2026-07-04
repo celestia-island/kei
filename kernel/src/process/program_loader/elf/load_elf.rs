@@ -530,21 +530,38 @@ fn map_vdso_to_vmar(vmar: &Vmar) -> Option<Vaddr> {
 /// We allocate a zeroed page — musl's __init_tls will set up the actual TLS
 /// template. The critical thing is that TPIDR_EL0 is NOT zero, so early
 /// thread-local accesses don't dereference NULL.
-fn setup_tls(vmar: &Vmar, _elf_headers: &ElfHeaders) -> Option<Vaddr> {
+fn setup_tls(vmar: &Vmar, elf_headers: &ElfHeaders) -> Option<Vaddr> {
     use crate::vm::perms::VmPerms;
 
-    // Allocate one zeroed page for TLS. musl's __init_tls will overwrite
-    // with the proper TLS template. The critical thing is that TPIDR_EL0
-    // is NOT zero, so early thread-local accesses don't dereference NULL.
+    // Determine the TLS block size from PT_TLS.
+    // We need enough space for both the TLS data (at negative offsets from TP)
+    // and the TCB (at small positive offsets from TP).
+    let tls_memsz = elf_headers.tls_phdr().map(|t| t.memsz).unwrap_or(0);
+    if tls_memsz == 0 && !cfg!(target_arch = "aarch64") {
+        return None;
+    }
+
+    // On aarch64: TPIDR_EL0 points past the TLS data. The TCB is at TPIDR_EL0
+    // + small offsets (up to ~64 bytes). We need to ensure both the TLS data
+    // (below TP) and the TCB (above TP) are within allocated pages.
+    // Allocate 2 pages to be safe.
+    let alloc_pages = 2usize;
+    let alloc_size = alloc_pages * PAGE_SIZE;
+
     let tls_base = vmar
-        .new_map(PAGE_SIZE, VmPerms::READ | VmPerms::WRITE)
+        .new_map(alloc_size, VmPerms::READ | VmPerms::WRITE)
         .ok()?
         .handle_page_faults_around()
         .build()
         .ok()?;
 
-    // On aarch64, TPIDR_EL0 = end of TLS block (point past the data).
+    // TPIDR_EL0 = tls_base + PAGE_SIZE.
+    // TLS data is at [tls_base + PAGE_SIZE - tls_memsz, tls_base + PAGE_SIZE).
+    // TCB is at [tls_base + PAGE_SIZE, tls_base + PAGE_SIZE + 64) — within the second page.
     let tp = tls_base + PAGE_SIZE;
-    ostd::early_println!("[elf] TLS setup: base={:#x}, tp={:#x}", tls_base, tp);
+    ostd::early_println!(
+        "[elf] TLS: base={:#x}, tp={:#x}, tls_memsz={}",
+        tls_base, tp, tls_memsz
+    );
     Some(tp)
 }

@@ -58,6 +58,13 @@ impl RawUserContext {
     /// On return, the context will contain the saved registers from the trap.
     pub(in crate::arch) fn run(&mut self) {
         crate::arch::irq::disable_local();
+
+        // Explicitly write TPIDR_EL0 before entering user mode.
+        // The assembly run_user also does this, but we do it here too
+        // as a belt-and-suspenders approach.
+        #[cfg(target_arch = "aarch64")]
+        unsafe { core::arch::asm!("msr tpidr_el0, {}", in(reg) self.tls_pointer) };
+
         CURRENT_USER_CTX.store(self as *mut RawUserContext as usize);
         // SAFETY: The assembly function saves callee-saved regs, sets up
         // ELR_EL1/SPSR_EL1, restores user regs, and executes eret.

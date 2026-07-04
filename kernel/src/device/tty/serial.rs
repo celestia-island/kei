@@ -45,11 +45,6 @@ impl TtyDriver for SerialDriver {
     fn push_output(&self, chs: &[u8]) -> Result<usize> {
         #[cfg(target_arch = "aarch64")]
         {
-            use core::sync::atomic::{AtomicBool, Ordering};
-            static TRACED: AtomicBool = AtomicBool::new(false);
-            if !TRACED.swap(true, Ordering::Relaxed) {
-                ostd::early_println!("[serial] push_output FIRST CALL, {} bytes, first byte={:#x}", chs.len(), chs.first().copied().unwrap_or(0));
-            }
             for &byte in chs {
                 if byte == b'\n' {
                     ostd::arch::serial::pl011_send_byte(b'\r');

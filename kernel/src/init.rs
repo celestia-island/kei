@@ -175,10 +175,8 @@ fn first_kthread() {
     print_banner();
 
     INIT_PROCESS.call_once(|| {
-        ostd::early_println!("[init] spawning init process...");
         let karg = INIT_PROC_ARGS.get().unwrap();
         let init_path = INIT_PATH.get().map(|s| s.as_str());
-        ostd::early_println!("[init] path={:?}", init_path);
         spawn_init_process(init_path, karg.argv().to_vec(), karg.envp().to_vec())
             .expect("Failed to run the init process")
     });
@@ -245,18 +243,12 @@ fn open_initial_console(ctx: &Context) {
     drop(resolver_guard);
 
     let Some((found_path, path)) = path else {
-        ostd::early_println!("[console] no console device found (tried {:?})", console_paths);
         return;
     };
 
-    ostd::early_println!("[console] opening {}", found_path);
-
     let file: Arc<dyn FileLike> = match InodeHandle::new(path, AccessMode::O_RDWR, StatusFlags::empty()) {
         Ok(f) => Arc::new(f),
-        Err(e) => {
-            ostd::early_println!("[console] failed to open: {:?}", e);
-            return;
-        }
+        Err(_) => return,
     };
 
     let file_table = ctx.thread_local.borrow_file_table();
@@ -264,7 +256,6 @@ fn open_initial_console(ctx: &Context) {
     let _ = ft.insert(file.clone(), FdFlags::empty()); // fd 0 = stdin
     let _ = ft.insert(file.clone(), FdFlags::empty()); // fd 1 = stdout
     let _ = ft.insert(file.clone(), FdFlags::empty()); // fd 2 = stderr
-    ostd::early_println!("[console] console opened as fd 0/1/2");
 }
 
 static INIT_PATH: Once<String> = Once::new();

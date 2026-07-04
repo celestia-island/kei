@@ -59,14 +59,12 @@ pub fn load_elf_to_vmar(
 ) -> Result<ElfLoadInfo> {
     let ldso = lookup_and_parse_ldso(&elf_headers, &elf_file, path_resolver)?;
 
-    ostd::early_println!("[elf] mapping vmos...");
     #[cfg_attr(
         not(any(target_arch = "x86_64", target_arch = "riscv64")),
         expect(unused_mut)
     )]
     let (elf_mapped_info, entry_point, mut aux_vec) =
         map_vmos_and_build_aux_vec(vmar, ldso, &elf_headers, &elf_file)?;
-    ostd::early_println!("[elf] vmos mapped, entry={:#x}", entry_point);
     vmar.process_vm()
         .set_code_range(elf_mapped_info.code_range.clone());
     vmar.process_vm()
@@ -82,10 +80,8 @@ pub fn load_elf_to_vmar(
         aux_vec.set(AuxKey::AT_SYSINFO_EHDR, vdso_text_base as u64);
     }
 
-    ostd::early_println!("[elf] writing init stack...");
     vmar.process_vm()
         .map_and_write_init_stack(vmar, argv, envp, aux_vec)?;
-    ostd::early_println!("[elf] init heap...");
     vmar.process_vm().map_and_init_heap(
         vmar,
         elf_mapped_info.data_range.len(),
@@ -559,9 +555,5 @@ fn setup_tls(vmar: &Vmar, elf_headers: &ElfHeaders) -> Option<Vaddr> {
     // TLS data is at [tls_base + PAGE_SIZE - tls_memsz, tls_base + PAGE_SIZE).
     // TCB is at [tls_base + PAGE_SIZE, tls_base + PAGE_SIZE + 64) — within the second page.
     let tp = tls_base + PAGE_SIZE;
-    ostd::early_println!(
-        "[elf] TLS: base={:#x}, tp={:#x}, tls_memsz={}",
-        tls_base, tp, tls_memsz
-    );
     Some(tp)
 }

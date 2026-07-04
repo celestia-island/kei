@@ -76,14 +76,5 @@ pub(super) fn page_fault_handler(info: &CpuException) -> Result<(), ()> {
     }
 
     let user_space = CurrentUserSpace::new(thread_local);
-    let pf_info: PageFaultInfo = info.try_into().unwrap();
-    let result = handle_page_fault_from_vmar(user_space.vmar(), &pf_info);
-    if result.is_err() {
-        use core::sync::atomic::{AtomicBool, Ordering};
-        static TRACED: AtomicBool = AtomicBool::new(false);
-        if !TRACED.swap(true, Ordering::Relaxed) {
-            ostd::early_println!("[pf] FIRST FAILURE: info={:?}", info);
-        }
-    }
-    result
+    handle_page_fault_from_vmar(user_space.vmar(), &info.try_into().unwrap())
 }

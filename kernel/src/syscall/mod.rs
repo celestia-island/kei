@@ -374,39 +374,12 @@ impl SyscallArgument {
 
 pub fn handle_syscall(ctx: &Context, user_ctx: &mut UserContext) {
     let syscall_frame = SyscallArgument::new_from_context(user_ctx);
-    let syscall_number = syscall_frame.syscall_number;
-
-    // Trace first 50 syscalls to diagnose user-space initialization
-    #[cfg(target_arch = "aarch64")]
-    {
-        use core::sync::atomic::{AtomicU32, Ordering};
-        static SYSCALL_COUNT: AtomicU32 = AtomicU32::new(0);
-        let count = SYSCALL_COUNT.fetch_add(1, Ordering::Relaxed);
-        if count < 50 {
-            ostd::early_println!("[syscall #{}] nr={}", count, syscall_number);
-        }
-    }
-
     let syscall_return = arch::syscall_dispatch(
-        syscall_number,
+        syscall_frame.syscall_number,
         syscall_frame.args,
         ctx,
         user_ctx,
     );
-
-    #[cfg(target_arch = "aarch64")]
-    {
-        use core::sync::atomic::{AtomicU32, Ordering};
-        static SYSCALL_COUNT: AtomicU32 = AtomicU32::new(0);
-        let count = SYSCALL_COUNT.fetch_add(1, Ordering::Relaxed);
-        if count < 50 {
-            match &syscall_return {
-                Ok(SyscallReturn::Return(v)) => ostd::early_println!("[syscall #{}] -> ok {}", count, v),
-                Ok(_) => ostd::early_println!("[syscall #{}] -> ok (no return)", count),
-                Err(e) => ostd::early_println!("[syscall #{}] -> ERR {:?}", count, e.error()),
-            }
-        }
-    }
 
     match syscall_return {
         Ok(return_value) => {

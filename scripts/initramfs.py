@@ -20,6 +20,8 @@ from __future__ import annotations
 import gzip
 import os
 import shutil
+import stat
+import struct
 import subprocess
 import sys
 import tempfile
@@ -31,6 +33,37 @@ import cli_format as cf
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 INITRAMFS_BUILD_DIR = PROJECT_ROOT / "test" / "initramfs" / "build"
 INITRAMFS_GZ = INITRAMFS_BUILD_DIR / "initramfs.cpio.gz"
+
+
+def _inject_cpio_devnode(cpio_data: bytes, name: str, major: int, minor: int) -> bytes:
+    """Inject a character device node into a newc-format cpio archive.
+
+    Used when running as non-root (mknod requires CAP_MKNOD).
+    Adds the device node entry before the trailer.
+    """
+    mode = 0o620 | 0o20000  # S_IFCHR | rw-rw----
+    ino = abs(hash(name)) & 0xFFFFFFFF
+
+    def h(v):
+        return f"{v:08x}".encode()
+
+    hdr = b"070701" + h(ino) + h(mode) + h(0) + h(0) + h(1) + h(0) + h(0) + h(0) + h(0) + h(major) + h(minor) + h(len(name) + 1) + h(0)
+    name_bytes = name.encode() + b"\x00"
+    name_pad = (4 - (len(hdr) + len(name_bytes)) % 4) % 4
+    entry = hdr + name_bytes + b"\x00" * name_pad
+
+    # Insert before the trailer entry
+    trailer_name = b"TRAILER!!!\x00"
+    insert_pos = cpio_data.rfind(trailer_name)
+    if insert_pos > 0:
+        insert_pos -= 110  # back up past trailer's 110-byte header
+    else:
+        insert_pos = len(cpio_data)
+
+    result = cpio_data[:insert_pos] + entry + cpio_data[insert_pos:]
+    cf.ok(f"injected /dev/{name} (char {major}:{minor}) into cpio archive")
+    return result
+
 
 # Init script — runs as PID 1 inside the booted kernel.
 INIT_SCRIPT = """#!/bin/sh
@@ -114,6 +147,17 @@ def create_initramfs(arch: str, force: bool = False) -> Path:
         for d in ("bin", "dev", "proc", "sys", "etc", "tmp", "run"):
             (root / d).mkdir(parents=True, exist_ok=True)
 
+        # Create /dev/console (char major 5, minor 1) — required by the kernel
+        # to connect stdin/stdout/stderr for the init process.
+        # Linux creates this before starting init; without it, all user-space
+        # writes to stdout/stderr silently fail (EBADF).
+        os.makedirs(root / "dev", exist_ok=True)
+        try:
+            os.mknod(root / "dev" / "console", 0o620 | stat.S_IFCHR, os.makedev(5, 1))
+        except (PermissionError, OSError):
+            # mknod requires root; device node will be injected into cpio later.
+            pass
+
         # Init script (PID 1)
         init = root / "init"
         init.write_text(INIT_SCRIPT)
@@ -144,8 +188,22 @@ def create_initramfs(arch: str, force: bool = False) -> Path:
             cf.info(result.stderr.decode("utf-8", errors="replace"))
             return INITRAMFS_GZ
 
+        cpio_data = result.stdout
+
+        # If /dev/console doesn't exist or isn't a char device, inject it
+        # directly into the cpio archive as a binary device node entry.
+        console_path = root / "dev" / "console"
+        need_inject = True
+        if console_path.exists():
+            try:
+                need_inject = not stat.S_ISCHR(console_path.stat().st_mode)
+            except OSError:
+                need_inject = True
+        if need_inject:
+            cpio_data = _inject_cpio_devnode(cpio_data, "dev/console", 5, 1)
+
         with gzip.open(INITRAMFS_GZ, "wb") as f:
-            f.write(result.stdout)
+            f.write(cpio_data)
 
     size = INITRAMFS_GZ.stat().st_size
     cf.ok(f"initramfs created: {INITRAMFS_GZ.name} ({size} bytes)")

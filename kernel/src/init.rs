@@ -209,6 +209,58 @@ pub(super) fn on_first_process_startup(ctx: &Context) {
     component::init_all(InitStage::Process, component::parse_metadata!()).unwrap();
     crate::device::init_in_first_process(ctx).unwrap();
     crate::fs::init_in_first_process(ctx);
+
+    // Open /dev/console as fd 0 (stdin), 1 (stdout), 2 (stderr) for the init
+    // process.  Linux does this in kernel_init() before exec'ing init; without
+    // it, user-space writes to stdout silently fail (EBADF).
+    open_initial_console(ctx);
+}
+
+/// Opens `/dev/console` and assigns it to fd 0, 1, 2.
+///
+/// Mirrors Linux's `init/main.c`:
+///   fd = open("/dev/console", O_RDWR);
+///   dup(fd);  // stdout
+///   dup(fd);  // stderr
+fn open_initial_console(ctx: &Context) {
+    use crate::fs::{
+        file::{
+            AccessMode, FileLike, InodeHandle, StatusFlags,
+            file_table::FdFlags,
+        },
+        vfs::path::FsPath,
+    };
+
+    // Try /dev/ttyS0 first (created by serial init in RamFs), then /dev/console.
+    let console_paths = ["/dev/ttyS0", "/dev/console"];
+    let fs_info = ctx.thread_local.borrow_fs();
+    let resolver = fs_info.resolver();
+    let resolver_guard = resolver.read();
+
+    let path = console_paths.iter().find_map(|p| {
+        FsPath::try_from(*p).ok().and_then(|fp| resolver_guard.lookup(&fp).ok())
+    });
+    drop(resolver_guard);
+
+    let Some(path) = path else {
+        ostd::early_println!("[console] no console device found (tried {:?})", console_paths);
+        return;
+    };
+
+    let file: Arc<dyn FileLike> = match InodeHandle::new(path, AccessMode::O_RDWR, StatusFlags::empty()) {
+        Ok(f) => Arc::new(f),
+        Err(e) => {
+            ostd::early_println!("[console] failed to open: {:?}", e);
+            return;
+        }
+    };
+
+    let file_table = ctx.thread_local.borrow_file_table();
+    let mut ft = file_table.unwrap().write();
+    let _ = ft.insert(file.clone(), FdFlags::empty()); // fd 0 = stdin
+    let _ = ft.insert(file.clone(), FdFlags::empty()); // fd 1 = stdout
+    let _ = ft.insert(file.clone(), FdFlags::empty()); // fd 2 = stderr
+    ostd::early_println!("[console] console opened as fd 0/1/2");
 }
 
 static INIT_PATH: Once<String> = Once::new();

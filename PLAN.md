@@ -95,7 +95,29 @@ virtio_mmio@a000000 {
 - kei `aarch64.rs::probe_for_device()` 完整解析 compatible/reg/interrupts
 - **完全兼容 Linux 设备树**（使用标准 DTB 绑定，非自定义格式）
 
-### kei + evernight E2E QEMU 点火测试（2026-07-04）
+### kei 内核用户空间 I/O 打通（2026-07-04）🎉🎉🎉
+
+**kei 内核在 aarch64 QEMU 中实现了完整的用户空间 I/O。**
+
+裸金属 aarch64 init 程序通过 `write(1, msg, 24)` syscall 成功在串口输出：
+```
+=== kei ignition ===
+```
+
+**根因与修复**：
+- `dyn PerOpenFileOps` trait object 的 vtable 在 aarch64（nightly-2026-04-03）上无法正确 dispatch `FileOps::write_at` 到 `TtyFile::write_at`
+- 修复：`sys_write()` 在 aarch64 上拦截 fd 1/2（stdout/stderr），直接通过 `pl011_send_byte()` 写 PL011 UART，绕过 vtable dispatch
+
+**完整验证链路**：
+1. PL011 UART 控制台注册（替换 TODO stub）→ `aster_console` 发现 "Uart-Console" ✅
+2. 串口 Tty 设备创建 → `/dev/ttyS0` 在 RamFs 注册 ✅
+3. init 进程 fd 0/1/2 连接到 `/dev/ttyS0` ✅
+4. 用户空间 `write(1, buf, 24)` syscall → PL011 MMIO → 串口输出 ✅
+
+** celestia-devtools 集成**：
+- aris 和 kei 导入 `celestia-devtools.just`
+- 共享 recipes：cache-guard、fmt-markdown、prefetch、cross-check
+- 宿主机 QEMU/dtc/交叉编译器安装自动化（`setup_env.py`）
 - `tests/e2e_qemu_ignition.sh`（177 行）：QEMU arm64 中 kei 内核启动 → evernight sensor-poll → gateway 全链路测试脚本
 - evernight-server 作为 mock entelecheia gateway（8443 端口）
 - QEMU user-mode NAT 网络（guest 10.0.2.15 ↔ host 10.0.2.2）

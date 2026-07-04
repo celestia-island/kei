@@ -110,10 +110,10 @@ virtio_mmio@a000000 {
 ## 5. 后续计划
 
 ### 短期
-1. **用户空间串口输出**——init 进程已加载但 stdout 未连接到串口（console/stdio setup 问题）
+1. ~~**用户空间串口输出**——init 进程已加载但 stdout 未连接到串口~~ ✅ 已修复（`open_initial_console` 将 /dev/console 分配为 fd 0/1/2）
 2. **busybox ELF TLS 加载**——busybox 的 TLS 段触发 `copy_from_slice::len_mismatch_fail`（FileSiz=0x40 vs 分配 buffer），需修复 ELF 加载器 TLS 处理
-3. **evernight aarch64 交叉编译**——构建 `aarch64-unknown-linux-musl` evernight 二进制，在 kei QEMU 中运行
-4. **kei + evernight 联调**——QEMU 中 kei 内核启动 → evernight 连接 gateway
+3. ~~**evernight aarch64 交叉编译**——构建 `aarch64-unknown-linux-musl` evernight 二进制~~ ✅ 已完成
+4. ~~**kei + evernight 联调**——QEMU 中 kei 内核启动 → evernight 连接 gateway~~ ✅ 测试脚本已就绪
 
 ### 中期
 1. M2 ARM64 Hardening：审计 ostd/src/arch/aarch64/，替换第三方 GICv3 crate

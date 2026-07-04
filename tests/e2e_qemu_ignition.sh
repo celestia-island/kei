@@ -118,25 +118,11 @@ echo "  Initramfs: $INITRAMFS.e2e"
 echo "  Gateway:   ws://10.0.2.2:$GATEWAY_PORT/api/ws"
 echo "  Port fwd:  host:$GATEWAY_PORT → guest:$GATEWAY_PORT"
 
-# Use a container backend for QEMU if the system qemu isn't available.
-# Prefer docker, fall back to podman (podman is docker-CLI compatible).
-# QEMU_DISPLAY env var controls the display backend (default: headless for
-# CI; set QEMU_DISPLAY="-display sdl" for a local window).
-QEMU_DISPLAY_ARG="${QEMU_DISPLAY:--nographic}"
+# Use Docker QEMU if system qemu isn't available
 QEMU_BIN="qemu-system-aarch64"
 if ! command -v "$QEMU_BIN" &>/dev/null; then
-    CONTAINER_BIN=""
-    if command -v docker &>/dev/null && docker info >/dev/null 2>&1; then
-        CONTAINER_BIN="docker"
-    elif command -v podman &>/dev/null; then
-        CONTAINER_BIN="podman"
-    fi
-    if [ -z "$CONTAINER_BIN" ]; then
-        echo "  FAILED: neither docker nor podman is available, and qemu-system-aarch64 is missing"
-        exit 1
-    fi
-    echo "  (using $CONTAINER_BIN QEMU)"
-    "$CONTAINER_BIN" run --rm --network host \
+    echo "  (using Docker QEMU)"
+    docker run --rm --network host \
         -v "$KEI_ROOT:/kei" \
         --entrypoint bash \
         qemu-arm64 \
@@ -150,7 +136,7 @@ if ! command -v "$QEMU_BIN" &>/dev/null; then
             -append 'console=ttyAMA0 init=/init' \
             -netdev user,id=net0 \
             -device virtio-net-device,netdev=net0 \
-            $QEMU_DISPLAY_ARG \
+            -nographic \
             -no-reboot 2>&1" > /tmp/e2e-qemu.log 2>&1 || true
 else
     timeout 30 "$QEMU_BIN" \
@@ -163,7 +149,7 @@ else
         -append "console=ttyAMA0 init=/init" \
         -netdev "user,id=net0" \
         -device virtio-net-device,netdev=net0 \
-        $QEMU_DISPLAY_ARG \
+        -nographic \
         -no-reboot > /tmp/e2e-qemu.log 2>&1 || true
 fi
 

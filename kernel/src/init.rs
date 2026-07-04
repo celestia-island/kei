@@ -238,14 +238,18 @@ fn open_initial_console(ctx: &Context) {
     let resolver_guard = resolver.read();
 
     let path = console_paths.iter().find_map(|p| {
-        FsPath::try_from(*p).ok().and_then(|fp| resolver_guard.lookup(&fp).ok())
+        FsPath::try_from(*p).ok().and_then(|fp| {
+            resolver_guard.lookup(&fp).ok().map(|path| (*p, path))
+        })
     });
     drop(resolver_guard);
 
-    let Some(path) = path else {
+    let Some((found_path, path)) = path else {
         ostd::early_println!("[console] no console device found (tried {:?})", console_paths);
         return;
     };
+
+    ostd::early_println!("[console] opening {}", found_path);
 
     let file: Arc<dyn FileLike> = match InodeHandle::new(path, AccessMode::O_RDWR, StatusFlags::empty()) {
         Ok(f) => Arc::new(f),

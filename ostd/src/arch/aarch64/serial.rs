@@ -16,6 +16,7 @@ use crate::sync::{LocalIrqDisabled, SpinLock};
 const UARTDR: u32 = 0x000; // Data Register
 const UARTFR: u32 = 0x018; // Flag Register
 const UARTFR_TXFF: u32 = 1 << 5; // TX FIFO full
+const UARTFR_RXFE: u32 = 1 << 4; // RX FIFO empty
 
 /// QEMU virt PL011 UART physical base address.
 const UART_PHYS_BASE: usize = 0x0900_0000;
@@ -109,4 +110,41 @@ pub(crate) fn reinit_with_linear_mapping() {
     use crate::mm::paddr_to_vaddr;
     let vaddr = paddr_to_vaddr(UART_PHYS_BASE);
     UART_VADDR.store(vaddr, Ordering::Relaxed);
+}
+
+// ── Public safe API for PL011 UART MMIO ──────────────────────────
+// These functions allow other crates (e.g., aster-uart) to access the
+// PL011 UART without using `unsafe`, respecting their `#![deny(unsafe_code)]`.
+
+/// Sends a single byte to the PL011 UART.
+/// No-op if the UART is not yet initialized.
+pub fn pl011_send_byte(byte: u8) {
+    let base = UART_VADDR.load(Ordering::Relaxed);
+    if base == 0 {
+        return;
+    }
+    let fr = base + UARTFR as usize;
+    let dr = base + UARTDR as usize;
+    while unsafe { core::ptr::read_volatile(fr as *const u32) } & UARTFR_TXFF != 0 {}
+    unsafe { core::ptr::write_volatile(dr as *mut u32, byte as u32) };
+}
+
+/// Receives a single byte from the PL011 UART.
+/// Returns `None` if the UART is not initialized or the RX FIFO is empty.
+pub fn pl011_recv_byte() -> Option<u8> {
+    let base = UART_VADDR.load(Ordering::Relaxed);
+    if base == 0 {
+        return None;
+    }
+    let fr = base + UARTFR as usize;
+    let dr = base + UARTDR as usize;
+    if unsafe { core::ptr::read_volatile(fr as *const u32) } & UARTFR_RXFE != 0 {
+        return None;
+    }
+    Some(unsafe { core::ptr::read_volatile(dr as *const u32) as u8 })
+}
+
+/// Returns the virtual address of the PL011 UART, or 0 if not initialized.
+pub fn pl011_vaddr() -> usize {
+    UART_VADDR.load(Ordering::Relaxed)
 }

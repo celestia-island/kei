@@ -13,13 +13,12 @@ pub fn sys_write(
     user_buf_len: usize,
     ctx: &Context,
 ) -> Result<SyscallReturn> {
-    debug!(
-        "raw_fd = {}, user_buf_ptr = 0x{:x}, user_buf_len = 0x{:x}",
-        raw_fd, user_buf_ptr, user_buf_len
-    );
+    ostd::early_println!("[syscall] write(fd={}, buf={:#x}, len={})", raw_fd, user_buf_ptr, user_buf_len);
 
     let mut file_table = ctx.thread_local.borrow_file_table_mut();
     let file = get_file_fast!(&mut file_table, raw_fd.try_into()?);
+
+    ostd::early_println!("[syscall] write: fd={} found, writing {} bytes", raw_fd, user_buf_len);
 
     // According to <https://man7.org/linux/man-pages/man2/write.2.html>, if
     // the user specified an empty buffer, we should detect errors by checking
@@ -28,7 +27,12 @@ pub fn sys_write(
         if user_buf_len != 0 {
             let user_space = ctx.user_space();
             let mut reader = user_space.reader(user_buf_ptr, user_buf_len)?;
-            file.write(&mut reader)
+            let result = file.write(&mut reader);
+            match &result {
+                Ok(n) => ostd::early_println!("[syscall] write ok: {} bytes", n),
+                Err(e) => ostd::early_println!("[syscall] write error: {:?}", e),
+            }
+            result
         } else {
             file.write_bytes(&[])
         }

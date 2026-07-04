@@ -6,6 +6,8 @@
 //!
 //! External PHY: Realtek RTL8211F (NanoPi R3S)
 
+use alloc::vec::Vec;
+
 /// Ethernet controller instance.
 pub struct EthernetController {
     /// Controller index (0 or 1)
@@ -18,7 +20,7 @@ pub struct EthernetController {
 pub fn init() -> Vec<EthernetController> {
     // TODO: probe device tree, find gmac nodes,
     //       reset PHY, configure RGMII, enable clocks
-    vec![
+    alloc::vec![
         EthernetController { index: 0, phy_addr: 0 },
         EthernetController { index: 1, phy_addr: 1 },
     ]

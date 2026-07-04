@@ -17,6 +17,8 @@
 #![no_std]
 #![feature(asm_const)]
 
+extern crate alloc;
+
 pub mod gpio;
 pub mod ethernet;
 pub mod uart;

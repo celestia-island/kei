@@ -16,7 +16,7 @@
 - **当前分支**：`dev`
 - **工作区**：干净
 - **最近提交时间**：2026-07-04
-- **最近提交**：feat: kei kernel FULLY BOOTS on aarch64 QEMU + spawns user-space init
+- **最近提交**：test: add kei+evernight E2E QEMU ignition test script
 - **initramfs**：已构建（`test/initramfs/build/initramfs.cpio.gz`，aarch64 busybox + init）
 
 ## 3. 未提交改动
@@ -55,6 +55,11 @@ Modbus TCP sim → evernight sensor-poll → WebSocket → evernight-server
 
 - evernight 二进制构建成功，device.register + device.telemetry 双向验证通过
 - aris `ignition_test.py` 修复：`SENSOR_DATA_DIR` 注入 + Modbus TCP sim 帧解析
+
+### kei + evernight E2E QEMU 点火测试（2026-07-04）
+- `tests/e2e_qemu_ignition.sh`（177 行）：QEMU arm64 中 kei 内核启动 → evernight sensor-poll → gateway 全链路测试脚本
+- evernight-server 作为 mock entelecheia gateway（8443 端口）
+- QEMU user-mode NAT 网络（guest 10.0.2.15 ↔ host 10.0.2.2）
 
 ### 既往提交
 

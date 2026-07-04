@@ -56,10 +56,50 @@ Modbus TCP sim → evernight sensor-poll → WebSocket → evernight-server
 - evernight 二进制构建成功，device.register + device.telemetry 双向验证通过
 - aris `ignition_test.py` 修复：`SENSOR_DATA_DIR` 注入 + Modbus TCP sim 帧解析
 
+### 多架构构建验证（2026-07-04）
+
+全部 4 种架构编译成功，产出有效 ELF 内核二进制：
+
+| 架构 | OSDK Scheme | 状态 | 产物 |
+|------|-------------|------|------|
+| **aarch64** | `aarch64` | ✅ 完整启动 + 用户空间 | ELF 64-bit ARM aarch64 (7MB) |
+| **x86_64** | `microvm` | ✅ 编译通过 | ELF 64-bit x86-64 (需 vDSO) |
+| **riscv64** | `riscv` | ✅ 编译通过 | ELF 64-bit RISC-V (需 vDSO) |
+| **loongarch64** | `loongarch` | ✅ 编译通过 | ELF 64-bit LoongArch |
+
+> x86_64/riscv64 需要 `VDSO_LIBRARY_DIR` 环境变量指向预构建的 vDSO .so 文件。
+> aarch64/loongarch64 不需要 vDSO（vdso 模块仅 x86_64/riscv64 启用）。
+
+### evernight aarch64 交叉编译（2026-07-04）
+
+- **evernight** 交叉编译成功：`aarch64-unknown-linux-musl`，12MB 静态链接 ELF
+- 使用 musl.cc 交叉工具链 + `.cargo/config.toml` linker 配置
+- 修复 AppContext feature 门控 bug（`capture`/`signaling` 字段未正确 cfg-gated）
+- 功能集：`hardware,protocol,serial,sensor,s7comm,bin,api,vault,manifest,tunnel,remote-ssh`
+
+### 设备树（FDT）验证（2026-07-04）
+
+QEMU virt FDT 包含标准 Linux 绑定的网络设备节点：
+
+```
+virtio_mmio@a000000 {
+    dma-coherent;
+    interrupts = <0x00 0x10 0x01>;    ← GIC SPI #16
+    reg = <0x00 0xa000000 0x00 0x200>; ← MMIO 512 bytes
+    compatible = "virtio,mmio";        ← 标准 Linux 绑定
+};
+```
+
+- 16 个 virtio_mmio 插槽（0xa000000 – 0xa001e00），每个 512 字节
+- GICv3 3-cell 中断格式，interrupt-parent 指向 /intc
+- kei `aarch64.rs::probe_for_device()` 完整解析 compatible/reg/interrupts
+- **完全兼容 Linux 设备树**（使用标准 DTB 绑定，非自定义格式）
+
 ### kei + evernight E2E QEMU 点火测试（2026-07-04）
 - `tests/e2e_qemu_ignition.sh`（177 行）：QEMU arm64 中 kei 内核启动 → evernight sensor-poll → gateway 全链路测试脚本
 - evernight-server 作为 mock entelecheia gateway（8443 端口）
 - QEMU user-mode NAT 网络（guest 10.0.2.15 ↔ host 10.0.2.2）
+- evernight aarch64 二进制嵌入 initramfs（6.2MB cpio.gz）
 
 ### 既往提交
 

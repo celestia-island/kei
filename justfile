@@ -4,14 +4,9 @@
 set unstable
 set shell := ["bash", "-c"]
 set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
+set lists
 
-python_cmd := if os_family() == "windows" {
-    "python"
-} else if which("python3") != "" {
-    "python3"
-} else {
-    "python"
-}
+import "./celestia-devtools.just"
 
 default: build
 
@@ -42,13 +37,25 @@ versions:
 # ── Build ──────────────────────────────────────────────────
 
 build:
+    just cache-guard
     {{python_cmd}} scripts/build.py nanopi-r3s
 
 build-board BOARD:
+    just cache-guard
     {{python_cmd}} scripts/build.py {{BOARD}}
 
 build-arch ARCH:
+    just cache-guard
     cargo osdk build --target {{ARCH}}-unknown-none --release
+
+# Format Rust + Markdown docs
+fmt:
+    cargo fmt --all
+    just fmt-markdown
+
+fmt-check:
+    cargo fmt --all -- --check
+    just fmt-markdown --check
 
 check-bsp:
     cd bsp && cargo check

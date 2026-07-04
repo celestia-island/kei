@@ -41,6 +41,8 @@ pub struct ElfLoadInfo {
     pub entry_point: Vaddr,
     /// The top address of the user stack.
     pub user_stack_top: Vaddr,
+    /// TPIDR_EL0 value for TLS (end of TLS block), if PT_TLS exists.
+    pub tls_pointer: Option<Vaddr>,
 }
 
 /// Loads an ELF file to the process VMAR.
@@ -91,9 +93,15 @@ pub fn load_elf_to_vmar(
     )?;
 
     let user_stack_top = vmar.process_vm().init_stack().user_stack_top();
+
+    // Set up TLS: if the ELF has a PT_TLS segment, allocate a TLS block in the
+    // process's address space and compute the thread pointer (TPIDR_EL0 on aarch64).
+    let tls_pointer = setup_tls(vmar, &elf_headers);
+
     Ok(ElfLoadInfo {
         entry_point,
         user_stack_top,
+        tls_pointer,
     })
 }
 
@@ -514,4 +522,29 @@ fn map_vdso_to_vmar(vmar: &Vmar) -> Option<Vaddr> {
     )
     .unwrap();
     Some(vdso_text_base)
+}
+
+/// Allocates a TLS block and returns the thread pointer (TPIDR_EL0 value).
+///
+/// On aarch64, TPIDR_EL0 must point to writable memory (past the TLS block).
+/// We allocate a zeroed page — musl's __init_tls will set up the actual TLS
+/// template. The critical thing is that TPIDR_EL0 is NOT zero, so early
+/// thread-local accesses don't dereference NULL.
+fn setup_tls(vmar: &Vmar, _elf_headers: &ElfHeaders) -> Option<Vaddr> {
+    use crate::vm::perms::VmPerms;
+
+    // Allocate one zeroed page for TLS. musl's __init_tls will overwrite
+    // with the proper TLS template. The critical thing is that TPIDR_EL0
+    // is NOT zero, so early thread-local accesses don't dereference NULL.
+    let tls_base = vmar
+        .new_map(PAGE_SIZE, VmPerms::READ | VmPerms::WRITE)
+        .ok()?
+        .handle_page_faults_around()
+        .build()
+        .ok()?;
+
+    // On aarch64, TPIDR_EL0 = end of TLS block (point past the data).
+    let tp = tls_base + PAGE_SIZE;
+    ostd::early_println!("[elf] TLS setup: base={:#x}, tp={:#x}", tls_base, tp);
+    Some(tp)
 }

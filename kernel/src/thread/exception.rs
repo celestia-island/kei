@@ -72,11 +72,18 @@ pub(super) fn page_fault_handler(info: &CpuException) -> Result<(), ()> {
     let thread_local = task.as_thread_local().unwrap();
 
     if thread_local.is_page_fault_disabled() {
-        // Do nothing if the page fault handler is disabled. This will typically cause the fallible
-        // memory operation to report `EFAULT` errors immediately.
         return Err(());
     }
 
     let user_space = CurrentUserSpace::new(thread_local);
-    handle_page_fault_from_vmar(user_space.vmar(), &info.try_into().unwrap())
+    let pf_info: PageFaultInfo = info.try_into().unwrap();
+    let result = handle_page_fault_from_vmar(user_space.vmar(), &pf_info);
+    if result.is_err() {
+        use core::sync::atomic::{AtomicBool, Ordering};
+        static TRACED: AtomicBool = AtomicBool::new(false);
+        if !TRACED.swap(true, Ordering::Relaxed) {
+            ostd::early_println!("[pf] FIRST FAILURE: info={:?}", info);
+        }
+    }
+    result
 }

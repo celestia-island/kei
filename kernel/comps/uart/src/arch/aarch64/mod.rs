@@ -38,7 +38,6 @@ impl Pl011Console {
 
 impl AnyConsoleDevice for Pl011Console {
     fn send(&self, buf: &[u8]) {
-        ostd::early_println!("[pl011] send {} bytes: {:?}", buf.len(), core::str::from_utf8(buf));
         for &byte in buf {
             // Translate \n → \r\n for terminal compatibility
             if byte == b'\n' {

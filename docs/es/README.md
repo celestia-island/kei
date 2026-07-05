@@ -2,7 +2,7 @@
 
 <h1 align="center">KEI</h1>
 
-<p align="center"><strong>Fork ARM64 de Asterinas — kernel independiente para pasarelas IoT industriales</strong></p>
+<p align="center"><strong>Un núcleo de SO orientado a IoT — disciplina RTOS sobre Asterinas, con acceso al ecosistema Linux</strong></p>
 
 <div align="center">
 
@@ -28,9 +28,14 @@
 
 ## Introducción
 
-KEI es un fork independiente de [asterinas/asterinas](https://github.com/asterinas/asterinas)
-con soporte ARM64 y Board Support Packages para pasarelas IoT industriales.
-Proporciona el `kei-kernel.bin` consumido por [aris](https://github.com/celestia-island/aris).
+KEI es un núcleo de sistema operativo diseñado específicamente para el IoT
+industrial. Toma Asterinas y lo conforma en una instalación de estilo RTOS —
+pequeño, en tiempo real, auditable — pero mantiene un puente hacia el ecosistema
+Linux para que los controladores, herramientas y binarios existentes sigan al
+alcance. No es ni una distribución Linux ni Asterinas sin modificar. El análogo
+más cercano es un RTOS que resulta hablar Linux: determinismo en tiempo real
+para la carga de trabajo que lo necesita, compatibilidad de software de grado
+Linux para todo lo demás.
 
 ## Modelo de fork
 
@@ -46,25 +51,6 @@ flowchart LR
 
 KEI mantiene de forma independiente `ostd/src/arch/aarch64/`, `kernel/src/arch/aarch64/`,
 `bsp/`, `board/`, `configs/`, y `docs/`.
-
-## Relación con aris
-
-```mermaid
-flowchart TB
-    subgraph KEI["kei (este repo)"]
-        OSTD["ostd/ — integrado periódicamente"]
-        KERN["kernel/ — integrado periódicamente"]
-        BSP["bsp/ — 100% nuestro código"]
-        BRD["board/ — 100% nuestro código"]
-    end
-    subgraph ARIS["aris (firmware de pasarela)"]
-        CORE["packages/core/ — supervisor"]
-        BUILDER["packages/builder/ — constructor de imágenes"]
-        OVL["overlay/ — archivos rootfs"]
-        SCR["scripts/ — construcción + flasheo"]
-    end
-    KEI -->|kei-kernel.bin| ARIS
-```
 
 ## Inicio rápido
 

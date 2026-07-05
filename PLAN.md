@@ -6,7 +6,7 @@
 ## 1. 项目概述
 
 - **名称**：`kei`
-- **简介**：Asterinas ARM64 fork —— 面向工业物联网网关的独立内核。
+- **简介**：面向物联网的操作系统内核 —— 基于 Asterinas 的 RTOS 级设施，兼顾 Linux 生态接入。
 - **远程仓库**：本地仓库（无 origin）
 - **技术栈**：Rust / just
 - **类别**：firmware

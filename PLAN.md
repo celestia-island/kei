@@ -77,6 +77,22 @@ Modbus TCP sim → evernight sensor-poll → WebSocket → evernight-server
 - 修复 AppContext feature 门控 bug（`capture`/`signaling` 字段未正确 cfg-gated）
 - 功能集：`hardware,protocol,serial,sensor,s7comm,bin,api,vault,manifest,tunnel,remote-ssh`
 
+### virtio-gpu 2D 显示驱动（2026-07-06）
+
+**新增 kei 的第一个图形显示路径**：virtio-gpu 2D scanout 驱动，让内核能在 QEMU 窗口显示像素。
+
+- `kernel/comps/virtio/src/device/gpu/`：全新 virtio-gpu 驱动（mod.rs spec 类型 + device.rs 驱动主体），实现 OASIS virtio-gpu 2D 协议
+- `kernel/comps/framebuffer/src/framebuffer.rs`：重构 framebuffer 子系统支持 late-init + blit 后端（`FrameBufferBackend::Blit`），让设备探测时（晚于 boot）能 publish framebuffer
+- 探测链路：`GET_DISPLAY_INFO` → `RESOURCE_CREATE_2D` → `RESOURCE_ATTACH_BACKING`（绑定客户机 DMA 缓冲区）→ `SET_SCANOUT` → `publish()` blit-backed `FrameBuffer`
+- 内核 printk 经 `FramebufferConsole` 自动渲染到 QEMU 窗口
+- QEMU 参数更新：`OSDK.toml` aarch64 scheme 加 `-device virtio-gpu-device`，显示后端由 `$QEMU_DISPLAY` 控制（默认 sdl，CI 用 none）
+- `cargo osdk check`（x86_64）编译通过，仅剩预存的 inode/set_tls 错误
+
+**已知限制**：
+1. `/dev/fb0` mmap 对 blit 后端返回 ENODEV（用户态暂走 read/write ioctl）
+2. `poll_response` 运行时 flush 路径有竞态（probe 阶段串行不受影响），已在代码注释记录
+3. **aarch64 `cargo osdk build` 受阻于 cargo-osdk 0.18.0 的 base crate 隔离机制**：base crate 用 `ostd = "0.18.0"`（version）声明依赖，虽然 `[patch.crates-io]` 重定向到本地 ostd 源码，但依赖图仍用 crates.io 版本的 metadata（不含 kei fork 的 aarch64 target 依赖如 `fdt`/`unwinding`）。CJK 路径（`/mnt/d/源代码/...`）上 cargo-osdk 的 `get_cargo_metadata` spawn 会 panic。临时绕过：bind-mount 到 ASCII 路径（`/opt/kei`），但 fdt/unwinding 依赖解析仍需修复（可能需要给 base crate 注入 target-specific deps 或 patch cargo-osdk）
+
 ### 设备树（FDT）验证（2026-07-04）
 
 QEMU virt FDT 包含标准 Linux 绑定的网络设备节点：

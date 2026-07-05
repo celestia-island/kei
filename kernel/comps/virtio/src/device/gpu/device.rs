@@ -28,7 +28,9 @@ use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 use aster_framebuffer::framebuffer::{self, BlitBackend, FrameBuffer};
 use ostd::arch::trap::TrapFrame;
-use ostd::mm::{HasDaddr, HasSize, PAGE_SIZE, dma::DmaCoherent, io::util::HasVmReaderWriter};
+use ostd::mm::{
+    HasDaddr, HasSize, PAGE_SIZE, dma::DmaCoherent, io::util::HasVmReaderWriter,
+};
 use ostd::sync::SpinLock;
 use ostd_pod::Pod;
 
@@ -37,9 +39,9 @@ use crate::queue::VirtQueue;
 use crate::transport::VirtioTransport;
 
 use super::{
-    CmdType, GpuFeatures, MemEntry, QUEUE_CONTROL, QUEUE_CURSOR, QUEUE_SIZE, Rect,
-    ResourceAttachBacking, ResourceCreate2d, RespDisplayInfo, RespGeneric, RespType, SCANOUT_ID,
-    SetScanout, TransferToHost2d, VirtioGpuConfig, VirtioGpuCtrlHdr, VirtioGpuFormat,
+    CmdType, GpuFeatures, MemEntry, QUEUE_CONTROL, QUEUE_CURSOR, QUEUE_SIZE, ResourceAttachBacking,
+    ResourceCreate2d, RespDisplayInfo, RespGeneric, RespType, Rect, SCANOUT_ID, SetScanout,
+    TransferToHost2d, VirtioGpuConfig, VirtioGpuCtrlHdr, VirtioGpuFormat,
 };
 
 /// The single live GPU device, recovered by the blit-flush callback.
@@ -86,18 +88,14 @@ impl GpuDevice {
     }
 
     /// Probe and initialize the device, then publish a framebuffer.
-    pub(crate) fn init(mut transport: Box<dyn VirtioTransport>) -> Result<(), VirtioDeviceError> {
+    pub(crate) fn init(
+        mut transport: Box<dyn VirtioTransport>,
+    ) -> Result<(), VirtioDeviceError> {
         // 1. Set up the two virtqueues.
-        let control_queue = SpinLock::new(VirtQueue::new(
-            QUEUE_CONTROL,
-            QUEUE_SIZE,
-            transport.as_mut(),
-        )?);
-        let cursor_queue = SpinLock::new(VirtQueue::new(
-            QUEUE_CURSOR,
-            QUEUE_SIZE,
-            transport.as_mut(),
-        )?);
+        let control_queue =
+            SpinLock::new(VirtQueue::new(QUEUE_CONTROL, QUEUE_SIZE, transport.as_mut())?);
+        let cursor_queue =
+            SpinLock::new(VirtQueue::new(QUEUE_CURSOR, QUEUE_SIZE, transport.as_mut())?);
 
         // 2. Query scanout geometry using a transient command context (no
         //    backing buffer allocated yet — GET_DISPLAY_INFO needs none).
@@ -319,8 +317,9 @@ impl<'a> ProbeCtx<'a> {
                 .write_val(&entry)
                 .map_err(|_| VirtioDeviceError::UnsupportedConfig)?;
         }
-        let resp_dma = DmaCoherent::alloc(frames_of(core::mem::size_of::<RespGeneric>()), false)
-            .map_err(VirtioDeviceError::ResourceAlloc)?;
+        let resp_dma =
+            DmaCoherent::alloc(frames_of(core::mem::size_of::<RespGeneric>()), false)
+                .map_err(VirtioDeviceError::ResourceAlloc)?;
 
         let token = {
             let mut q = self.control_queue.lock();

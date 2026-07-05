@@ -3,7 +3,7 @@
 use alloc::sync::Arc;
 
 use aster_framebuffer::{
-    framebuffer::FRAMEBUFFER,
+    framebuffer,
     mode::{KeyboardMode, KeyboardModeFlags},
 };
 use aster_input::{
@@ -448,7 +448,7 @@ impl InputHandler for VtKeyboardHandler {
 static REGISTERED_INPUT_HANDLER_CLASS: Once<RegisteredInputHandlerClass> = Once::new();
 
 pub(super) fn init_in_first_process() {
-    if FRAMEBUFFER.get().is_none() {
+    if framebuffer::get().is_none() {
         return;
     }
 

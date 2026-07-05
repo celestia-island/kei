@@ -4,7 +4,7 @@ use alloc::sync::Weak;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use aster_framebuffer::{
-    console::FramebufferConsole, font::BitmapFont, framebuffer::FRAMEBUFFER, mode::ConsoleMode,
+    console::FramebufferConsole, font::BitmapFont, framebuffer, mode::ConsoleMode,
 };
 use int_to_c_enum::TryFromInt;
 use ostd::sync::{LocalIrqDisabled, SpinLock, SpinLockGuard};
@@ -285,9 +285,9 @@ impl VtConsole {
 
         let mut backend = self.backend.lock();
         if !matches!(*backend, VtConsoleBackend::Framebuffer(_))
-            && let Some(fb) = FRAMEBUFFER.get()
+            && let Some(fb) = framebuffer::get()
         {
-            let mut console = FramebufferConsole::new(fb.clone());
+            let mut console = FramebufferConsole::new(fb);
             console.set_mode(mode);
             *backend = VtConsoleBackend::Framebuffer(console);
         }

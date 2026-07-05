@@ -1,0 +1,7 @@
+[site]
+title = "KEI"
+description = "Asterinas ARM64 fork for industrial IoT gateways"
+
+[languages]
+default = "en"
+order = ["en", "zhs", "zht", "ja", "ko", "fr", "es", "ru", "ar"]

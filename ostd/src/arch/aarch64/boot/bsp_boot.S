@@ -153,12 +153,18 @@ el1_setup:
     // TG0 = 0 (4KB granule for TTBR0: 0b00)
     // IRGN0 = 1, ORGN0 = 1 (normal cacheable)
     // SH0 = 3 (inner shareable)
-    // T1SZ = 16 (48-bit VA for TTBR1)
+    // T1SZ = 16 (48-bit VA for TTBR1, matching LINEAR_MAPPING_BASE_VADDR
+    //            0xffff800000000000 whose top 16 bits are all 1s)
     // TG1 = 2 (4KB granule for TTBR1: 0b10, ARM encodes TG1 differently from TG0)
     // IRGN1 = 1, ORGN1 = 1, SH1 = 3
-    // Value: T0SZ=16 | T1SZ=16<<16 | SH0=3<<12 | SH1=3<<28 | IRGN0=1<<8 | IRGN1=1<<24
-    //        | TG0=0 | TG1=2<<30 | IPS=5<<32 (40-bit PA)
-    ldr     x1, =0x00000000b5103510
+    // Value: T0SZ=16 | T1SZ=16<<6 | SH0=3<<12 | TG0=0 | TG1=2<<30
+    //        | IRGN0=1<<8 | ORGN0=1<<8 | IRGN1=1<<24 | ORGN1=1<<24 | SH1=3<<28
+    //        | IPS=5<<32 (40-bit PA)
+    // Note: the previous value 0xb5103510 had T1SZ=20 (bits[11:6]=010100)
+    // which requires top 20 bits all 1s for TTBR1. Our linear mapping base
+    // 0xffff800000000000 only has top 16 bits set, causing TTBR1 to reject
+    // the address after page table switch.
+    ldr     x1, =0x00000000b5103410
     msr     tcr_el1, x1
     isb
 

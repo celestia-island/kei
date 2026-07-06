@@ -5,12 +5,17 @@ on:
   pull_request:
     branches: [dev, main]
 
+env:
+  # Override rust-toolchain.toml (which pins nightly for the kernel).
+  # CI formatting and BSP checks use stable.
+  RUSTUP_TOOLCHAIN: stable
+
 jobs:
   check-bsp:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
+      - uses: dtolnay/rust-toolchain@stable
       - run: cd bsp && cargo check
 
   check-vendored-versions:
@@ -20,16 +25,16 @@ jobs:
       - name: Show vendored upstream versions
         run: |
           echo "=== Upstream asterinas ==="
-          cat .vendored-upstream 2>/dev/null || echo "  (not vendored yet — run 'just vendor')"
+          cat .vendored-upstream 2>/dev/null || echo "  (not vendored yet)"
           echo ""
           echo "=== ARM64 source ==="
-          cat .vendored-arm64 2>/dev/null || echo "  (not pulled yet — run 'just pull-arm64')"
+          cat .vendored-arm64 2>/dev/null || echo "  (not pulled yet)"
 
   fmt:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
+      - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
       - run: cargo fmt --all -- --check

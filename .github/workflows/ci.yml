@@ -5,17 +5,12 @@ on:
   pull_request:
     branches: [dev, main]
 
-env:
-  # Override rust-toolchain.toml (which pins nightly for the kernel).
-  # CI formatting and BSP checks use stable.
-  RUSTUP_TOOLCHAIN: stable
-
 jobs:
   check-bsp:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@nightly
       - run: cd bsp && cargo check
 
   check-vendored-versions:
@@ -32,6 +27,10 @@ jobs:
 
   fmt:
     runs-on: ubuntu-latest
+    env:
+      # Override rust-toolchain.toml so fmt uses stable (nightly's rustfmt
+      # is not always available for pinned toolchains).
+      RUSTUP_TOOLCHAIN: stable
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

@@ -467,9 +467,6 @@ pub(crate) unsafe fn init() -> Segment<MetaPageMeta> {
             .iter()
             .filter(|r| {
                 if cfg!(target_arch = "aarch64") {
-                    // On aarch64 the Kernel region's base address can be
-                    // corrupted by the VMA offset, producing a huge
-                    // max_paddr. Only use Usable regions.
                     r.typ() == crate::boot::memory_region::MemoryRegionType::Usable
                 } else {
                     r.typ().is_physical()
@@ -477,6 +474,9 @@ pub(crate) unsafe fn init() -> Segment<MetaPageMeta> {
             })
             .map(|r| r.base() + r.len())
             .max();
+        // Temporary cap: limit to 256MB on aarch64 to speed up debugging.
+        // The full 3GB takes too long in QEMU TCG mode.
+        let max = max.map(|m| m.min(0x10000000)); // 256MB cap
         crate::early_println!("[meta] max_paddr = {:?}", max);
         max.expect("no physical memory region found")
     };
@@ -494,9 +494,12 @@ pub(crate) unsafe fn init() -> Segment<MetaPageMeta> {
     add_temp_linear_mapping(max_paddr);
 
     let tot_nr_frames = max_paddr / page_size::<PagingConsts>(1);
+    crate::early_println!("[meta] tot_nr_frames = {}", tot_nr_frames);
     let (nr_meta_pages, meta_pages) = alloc_meta_frames(tot_nr_frames);
+    crate::early_println!("[meta] nr_meta_pages = {} meta_pages = {:#x}", nr_meta_pages, meta_pages);
 
     // Map the metadata frames.
+    crate::early_println!("[meta] mapping metadata frames...");
     boot_pt::with_borrow(|boot_pt| {
         for i in 0..nr_meta_pages {
             let frame_paddr = meta_pages + i * PAGE_SIZE;
@@ -511,9 +514,11 @@ pub(crate) unsafe fn init() -> Segment<MetaPageMeta> {
         }
     })
     .unwrap();
+    crate::early_println!("[meta] metadata frames mapped OK");
 
     // Now the metadata frames are mapped, we can initialize the metadata.
     super::MAX_PADDR.store(max_paddr, Ordering::Relaxed);
+    crate::early_println!("[meta] MAX_PADDR stored, continuing init...");
 
     let meta_page_range = meta_pages..meta_pages + nr_meta_pages * PAGE_SIZE;
 
@@ -549,15 +554,34 @@ fn alloc_meta_frames(tot_nr_frames: usize) -> (usize, Paddr) {
         .checked_mul(size_of::<MetaSlot>())
         .unwrap()
         .div_ceil(PAGE_SIZE);
+    crate::early_println!("[meta] alloc_meta: nr_meta_pages={}, need {} bytes",
+        nr_meta_pages, nr_meta_pages * PAGE_SIZE);
     let paddr = allocator::early_alloc(
         Layout::from_size_align(nr_meta_pages * PAGE_SIZE, PAGE_SIZE).unwrap(),
     )
     .unwrap();
+    crate::early_println!("[meta] alloc_meta: early_alloc returned paddr={:#x}", paddr);
 
     let slots = paddr_to_vaddr(paddr) as *mut MetaSlot;
+    crate::early_println!("[meta] alloc_meta: vaddr of slots={:#x}", slots as usize);
+
+    // Test: write a single byte to the first slot to verify mapping.
+    crate::early_println!("[meta] alloc_meta: testing write to slots[0]...");
+    unsafe { (slots as *mut u8).write_volatile(0xAA) };
+    let readback = unsafe { (slots as *const u8).read_volatile() };
+    crate::early_println!("[meta] alloc_meta: write test OK (readback={:#x})", readback);
 
     // Initialize the metadata slots.
+    // First zero the entire region with write_bytes (faster + simpler).
+    crate::early_println!("[meta] zeroing {} bytes at slots...", tot_nr_frames * size_of::<MetaSlot>());
+    unsafe { core::ptr::write_bytes(slots as *mut u8, 0, tot_nr_frames * size_of::<MetaSlot>()) };
+    crate::early_println!("[meta] zeroing done");
+
+    // Then set ref_count = UNUSED for each slot.
     for i in 0..tot_nr_frames {
+        if i % 100000 == 0 {
+            crate::early_println!("[meta] init slots: {}/{}", i, tot_nr_frames);
+        }
         // SAFETY: The memory is successfully allocated with `tot_nr_frames`
         // slots so the index must be within the range.
         let slot = unsafe { slots.add(i) };

@@ -256,6 +256,35 @@ impl EarlyFrameAllocator {
     pub fn new() -> Self {
         let regions = &crate::boot::EARLY_INFO.get().unwrap().memory_regions;
 
+        // On aarch64, QEMU loads the kernel at 0x40000000, which is the
+        // start of the usable RAM region. The early allocator must NOT
+        // allocate from the kernel's own physical memory, or write_bytes
+        // will overwrite the running kernel code and immediately crash.
+        // We compute the kernel's physical range and exclude it.
+        #[cfg(target_arch = "aarch64")]
+        let kernel_phys_range = {
+            use crate::mm::kspace::kernel_loaded_offset;
+            unsafe extern "C" {
+                fn __kernel_start();
+                fn __kernel_end();
+            }
+            let ks = __kernel_start as *const () as usize;
+            let ke = __kernel_end as *const () as usize;
+            // If __kernel_start already equals the load address (no VMA offset
+            // in our linker script), subtracting the offset wraps around to
+            // a huge number. Guard against this.
+            if ks >= kernel_loaded_offset() {
+                let start = ks - kernel_loaded_offset();
+                let end = ke - kernel_loaded_offset();
+                Some(start..end)
+            } else {
+                // No VMA offset — __kernel_start IS the physical address.
+                Some(ks..ke)
+            }
+        };
+        #[cfg(not(target_arch = "aarch64"))]
+        let kernel_phys_range: Option<core::ops::Range<Paddr>> = None;
+
         let mut under_4g_range = 0..0;
         let mut max_range = 0..0;
         for region in regions.iter() {
@@ -287,7 +316,17 @@ impl EarlyFrameAllocator {
 
         Self {
             under_4g_range: under_4g_range.clone(),
-            under_4g_end: under_4g_range.start,
+            under_4g_end: {
+                // Skip the kernel's own physical memory to avoid overwriting
+                // the running kernel code during early allocations.
+                let mut start = under_4g_range.start;
+                if let Some(ref kr) = kernel_phys_range {
+                    if start < kr.end {
+                        start = kr.end.align_up(PAGE_SIZE);
+                    }
+                }
+                start
+            },
             max_range: max_range.clone(),
             max_end: max_range.start,
         }

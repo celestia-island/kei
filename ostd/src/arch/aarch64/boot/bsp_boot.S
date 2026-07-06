@@ -261,10 +261,12 @@ boot_l1_pt_identity:
     // Kernel RAM region - MUST use normal memory for code execution
     // New KERNEL_LMA: 0x40080000 (still within this 1GB block)
     .quad 0x40000709
-    // Entry 2: PA 0x80000000 -> VA 0x80000000 (device)
-    .quad 0x80000701
-    // Entry 3: PA 0xC0000000 -> VA 0xC0000000 (device)
-    .quad 0xC0000701
+    // Entry 2: PA 0x80000000 -> VA 0x80000000 (normal)
+    // Must be normal memory — the linear mapping (L0 entry 256) reuses this
+    // L1 table, and frame metadata is allocated from this region.
+    .quad 0x80000709
+    // Entry 3: PA 0xC0000000 -> VA 0xC0000000 (normal)
+    .quad 0xC0000709
     // Remaining entries: invalid
     .zero 508 * 8
 

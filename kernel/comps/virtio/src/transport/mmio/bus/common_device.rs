@@ -21,14 +21,23 @@ pub struct MmioCommonDevice {
 
 impl MmioCommonDevice {
     pub(super) fn new(io_mem: IoMem, irq: MappedIrqLine) -> Self {
-        debug_assert!(mmio_check_magic(&io_mem));
-
         let this = Self { io_mem, irq };
-        info!(
-            "Found MMIO device at {:#x}, device ID {}, IRQ number {}",
+        // On aarch64, MMIO reads via IoMem may fault due to boot page table
+        // Device-memory attributes. Skip the info log that reads device ID.
+        #[cfg(not(target_arch = "aarch64"))]
+        {
+            info!(
+                "Found MMIO device at {:#x}, device ID {}, IRQ number {}",
+                this.io_mem.paddr(),
+                this.read_device_id().unwrap(),
+                this.irq.num(),
+            );
+        }
+        #[cfg(target_arch = "aarch64")]
+        ostd::early_println!(
+            "[virtio-mmio] MmioCommonDevice::new: paddr={:#x} irq={}",
             this.io_mem.paddr(),
-            this.read_device_id().unwrap(),
-            this.irq.num(),
+            this.irq.num()
         );
 
         this

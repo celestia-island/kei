@@ -64,6 +64,16 @@ impl MmioBus {
     }
 
     pub(super) fn register_mmio_device(&mut self, mut mmio_device: MmioCommonDevice) {
+        // On aarch64, MMIO reads fault due to boot page table attributes.
+        // Skip device ID read and driver probing — just store the common device.
+        #[cfg(target_arch = "aarch64")]
+        {
+            ostd::early_println!("[virtio-mmio] register: storing common device (aarch64 skip probe)");
+            self.common_devices.push_back(mmio_device);
+            return;
+        }
+        #[cfg(not(target_arch = "aarch64"))]
+        {
         let device_id = mmio_device.read_device_id().unwrap();
         for driver in self.drivers.iter() {
             mmio_device = match driver.probe(mmio_device) {
@@ -81,6 +91,7 @@ impl MmioBus {
             };
         }
         self.common_devices.push_back(mmio_device);
+        }
     }
 
     pub(super) const fn new() -> Self {

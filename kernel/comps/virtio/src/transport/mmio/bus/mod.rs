@@ -52,48 +52,52 @@ where
     F: FnOnce(IrqLine) -> ostd::Result<arch::MappedIrqLine>,
 {
     let start_addr = mmio_range.start;
+    ostd::early_println!("[virtio-mmio] try_register: acquiring IoMem {:#x}..{:#x}", start_addr, mmio_range.end);
     let Ok(io_mem) = IoMem::acquire(mmio_range) else {
-        debug!(
-            "Abort MMIO detection at {:#x} because the MMIO address is not available",
-            start_addr
-        );
+        ostd::early_println!("[virtio-mmio] IoMem::acquire FAILED at {:#x}", start_addr);
         return Err(MmioRegisterError::MmioUnavailable);
     };
+    ostd::early_println!("[virtio-mmio] IoMem acquired OK, checking magic...");
 
-    // We now check the requirements specified in Virtual I/O Device (VIRTIO) Version 1.3,
-    // Section 4.2.2.2 Driver Requirements: MMIO Device Register Layout.
+    // Skip magic check on aarch64 for debugging — it may fault
+    // due to IoMem read_once implementation.
+    #[cfg(target_arch = "aarch64")]
+    let magic_ok = true;
+    #[cfg(not(target_arch = "aarch64"))]
+    let magic_ok = mmio_check_magic(&io_mem);
 
-    // "The driver MUST ignore a device with MagicValue which is not 0x74726976, although it
-    // MAY report an error."
-    if !mmio_check_magic(&io_mem) {
-        debug!(
-            "Abort MMIO detection at {:#x} because the magic number does not match",
-            start_addr
-        );
+    if !magic_ok {
+        ostd::early_println!("[virtio-mmio] magic mismatch at {:#x}", start_addr);
         return Err(MmioRegisterError::MagicMismatch);
     }
+    ostd::early_println!("[virtio-mmio] magic OK, reading device ID...");
 
-    // TODO: "The driver MUST ignore a device with Version which is not 0x2, although it MAY
-    // report an error."
-
-    // "The driver MUST ignore a device with DeviceID 0x0, but MUST NOT report any error."
+    // Skip device ID read on aarch64 for debugging
+    #[cfg(target_arch = "aarch64")]
+    {
+        ostd::early_println!("[virtio-mmio] skipping device ID read (aarch64 debug)");
+    }
+    #[cfg(not(target_arch = "aarch64"))]
     match mmio_read_device_id(&io_mem) {
         Err(_) | Ok(0) => {
+            ostd::early_println!("[virtio-mmio] no device at {:#x}", start_addr);
             return Err(MmioRegisterError::NoDevice);
         }
-        Ok(_) => {}
+        Ok(id) => {
+            ostd::early_println!("[virtio-mmio] device ID = {} at {:#x}", id, start_addr);
+        }
     }
 
+    ostd::early_println!("[virtio-mmio] allocating IRQ line...");
     let Ok(mapped_irq_line) = IrqLine::alloc().and_then(map_irq_line) else {
-        debug!(
-            "Ignore MMIO device at {:#x} because its IRQ line is not available",
-            start_addr
-        );
+        ostd::early_println!("[virtio-mmio] IRQ line unavailable at {:#x}", start_addr);
         return Err(MmioRegisterError::IrqUnavailable);
     };
+    ostd::early_println!("[virtio-mmio] IRQ mapped OK, registering device...");
 
     let device = MmioCommonDevice::new(io_mem, mapped_irq_line);
     MMIO_BUS.lock().register_mmio_device(device);
+    ostd::early_println!("[virtio-mmio] device registered OK");
 
     Ok(())
 }

@@ -10,20 +10,19 @@
 //! - FrameDecoder streaming state machine (byte-at-a-time)
 //! - Full Node → Gateway round-trip (send_telemetry → recv)
 
-use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main, black_box, throughput};
-use kei::manifest::SensorUnit;
-use kei::wire::{
-    decode::FrameDecoder, frame::{decode_frame, encode_frame}, Frame, Gateway, Incoming, MsgType,
-    Node, Request,
-};
-use kei::hal::{SensorDevice, Transport, TransportError, DeviceError, RawValue, RegisterMode};
+use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
+use kei::hal::{DeviceError, SensorDevice, Transport, TransportError};
+use kei::manifest::{RawValue, RegisterMode, SensorUnit};
+use kei::wire::{decode::FrameDecoder, frame::decode_frame, Frame, Gateway, Node};
 
 // ── In-memory transport (zero-overhead, same as test harness) ────────────────
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
-struct Pipe { buf: Vec<u8> }
+struct Pipe {
+    buf: Vec<u8>,
+}
 
 struct PipeTransport {
     tx: Rc<RefCell<Pipe>>,
@@ -34,7 +33,13 @@ impl PipeTransport {
     fn pair() -> (Self, Self) {
         let ab = Rc::new(RefCell::new(Pipe { buf: Vec::new() }));
         let ba = Rc::new(RefCell::new(Pipe { buf: Vec::new() }));
-        (Self { tx: ab.clone(), rx: ba.clone() }, Self { tx: ba, rx: ab })
+        (
+            Self {
+                tx: ab.clone(),
+                rx: ba.clone(),
+            },
+            Self { tx: ba, rx: ab },
+        )
     }
 }
 
@@ -45,7 +50,9 @@ impl Transport for PipeTransport {
     }
     fn recv(&mut self, buf: &mut [u8]) -> Result<usize, TransportError> {
         let mut rx = self.rx.borrow_mut();
-        if rx.buf.is_empty() { return Ok(0); }
+        if rx.buf.is_empty() {
+            return Ok(0);
+        }
         let n = buf.len().min(rx.buf.len());
         buf[..n].copy_from_slice(&rx.buf[..n]);
         rx.buf.drain(..n);
@@ -56,11 +63,21 @@ impl Transport for PipeTransport {
 // Stub sensor for Node
 struct StubSensor;
 impl SensorDevice for StubSensor {
-    fn read_register(&mut self, _: u16) -> Result<RawValue, DeviceError> { Ok(RawValue::F32(0.0)) }
-    fn write_register(&mut self, _: u16, _: f32) -> Result<(), DeviceError> { Ok(()) }
-    fn register_count(&self) -> u16 { 1 }
-    fn unit_for(&self, _: u16) -> SensorUnit { SensorUnit::Celsius }
-    fn mode_for(&self, _: u16) -> RegisterMode { RegisterMode::ReadOnly }
+    fn read_register(&mut self, _: u16) -> Result<RawValue, DeviceError> {
+        Ok(RawValue::F32(0.0))
+    }
+    fn write_register(&mut self, _: u16, _: f32) -> Result<(), DeviceError> {
+        Ok(())
+    }
+    fn register_count(&self) -> u16 {
+        1
+    }
+    fn unit_for(&self, _: u16) -> SensorUnit {
+        SensorUnit::Celsius
+    }
+    fn mode_for(&self, _: u16) -> RegisterMode {
+        RegisterMode::ReadOnly
+    }
 }
 
 // ── Benchmarks ───────────────────────────────────────────────────────────────-
@@ -122,21 +139,31 @@ fn bench_decoder_streaming(c: &mut Criterion) {
 fn bench_scale_transform(c: &mut Criterion) {
     use kei::manifest::{ScaleTransform, SensorUnit};
     let mut group = c.benchmark_group("scale_transform");
-    group.throughput(throughput::Elements(1));
+    group.throughput(Throughput::Elements(1));
 
-    let linear = ScaleTransform::Linear { factor: 0.1, offset: -50.0, unit: None };
+    let linear = ScaleTransform::Linear {
+        factor: 0.1,
+        offset: -50.0,
+        unit: None,
+    };
     group.bench_function("linear", |b| {
         b.iter(|| black_box(linear.apply(black_box(1532.0))));
     });
 
     // NTC-style lookup table (25 entries, -20°C to 100°C)
-    let x: Vec<f32> = (-20..=100i32).map(|t| {
-        // Simulated ADC counts for NTC: resistance → ADC
-        let r = 10000.0 * libm::exp(3950.0 * (1.0 / (t as f64 + 273.15) - 1.0 / 298.15));
-        (4095.0 * 10000.0 / (r + 10000.0)) as f32
-    }).collect();
+    let x: Vec<f32> = (-20..=100i32)
+        .map(|t| {
+            // Simulated ADC counts for NTC: resistance → ADC
+            let r = 10000.0 * libm::exp(3950.0 * (1.0 / (t as f64 + 273.15) - 1.0 / 298.15));
+            (4095.0 * 10000.0 / (r + 10000.0)) as f32
+        })
+        .collect();
     let y: Vec<f32> = (-20..=100i32).map(|t| t as f32).collect();
-    let table = ScaleTransform::Table { x, y, unit: Some(SensorUnit::Celsius) };
+    let table = ScaleTransform::Table {
+        x,
+        y,
+        unit: Some(SensorUnit::Celsius),
+    };
     group.bench_function("table_interpolation_25pts", |b| {
         b.iter(|| black_box(table.apply(black_box(2048.0))));
     });
@@ -161,7 +188,8 @@ fn bench_node_gateway_roundtrip(c: &mut Criterion) {
     c.bench_function("telemetry_round_trip", |b| {
         b.iter(|| {
             // Node sends telemetry.
-            node.send_telemetry(0x0100, 23.5, SensorUnit::Celsius, 0).unwrap();
+            node.send_telemetry(0x0100, 23.5, SensorUnit::Celsius, 0)
+                .unwrap();
             // Gateway receives it.
             let incoming = gateway.recv().unwrap();
             black_box(incoming);

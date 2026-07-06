@@ -29,18 +29,12 @@
 ## What problem does KEI solve?
 
 Industrial IoT gateways sit between field devices (sensors, PLCs, actuators)
-and the cloud. They need:
+and the cloud. They need real-time discipline for protocol polling, a full
+network stack for cloud connectivity, safety guarantees that C-based RTOSes
+and full Linux cannot provide, and a small auditable footprint.
 
-- **Real-time discipline** for time-critical protocol polling (Modbus, CAN)
-- **Full network stack** for cloud connectivity (MQTT, WebSocket, HTTP)
-- **Safety guarantees** that C-based RTOSes and full Linux cannot provide
-- **Small, auditable footprint** — not millions of lines of code
-
-No existing OS fills this gap well. Linux is too large and not deterministic.
-Traditional RTOSes (FreeRTOS, Zephyr) lack a full network stack and memory
-protection. KEI is built in Rust on a safe-kernel architecture, giving you
-memory safety, real-time capability, and a complete protocol stack in one
-system.
+KEI is built in Rust on a safe-kernel architecture, giving you memory safety,
+real-time capability, and a complete protocol stack in one system.
 
 ```mermaid
 flowchart TB
@@ -58,64 +52,36 @@ flowchart TB
 
 ## What's in this repo?
 
-Two components, one repository:
-
 | Component | Location | What it does |
 |-----------|----------|-------------|
-| **KEI kernel** | workspace root | Rust OS kernel for ARM64/RISC-V edge devices. Runs the [evernight](https://github.com/celestia-island/evernight) protocol broker and connects to cloud platforms. |
-| **kei library** | `packages/kei/` | `#![no_std]` library for embassy-based sensor nodes: wire protocol, manifest schema, HAL traits. Shared between MCU firmware and the gateway. |
+| **KEI kernel** | workspace root | Rust OS kernel for ARM64/RISC-V edge devices. Runs the [evernight](https://github.com/celestia-island/evernight) protocol broker. |
+| **kei library** | `packages/kei/` | `#![no_std]` library for embassy sensor nodes: wire protocol, manifest schema, HAL traits. |
 
-The library has its own Cargo workspace (targets `thumbv7em-none-eabi` for
-Cortex-M MCUs) and is excluded from the kernel's workspace.
+## Quick start
 
-### KEI kernel
-
+**Kernel:**
 ```bash
-just build              # Build kernel for default board (NanoPi R3S)
-just build-board BOARD  # Build for a specific board
-just test-all           # Boot-test all architectures in QEMU
+just build        # Build for default board (NanoPi R3S)
+just test-all     # Boot-test all architectures in QEMU
 ```
 
-Supported architectures: ARM64 (active), x86_64, RISC-V, LoongArch.
-
-### kei library (`packages/kei/`)
-
+**Library:**
 ```bash
 cd packages/kei
-cargo test --all-features              # Run unit + integration tests (20 tests)
-cargo bench --bench wire_bench         # Run criterion benchmarks
-cargo run --example host_demo          # Host-side wire protocol demo
-
-# QEMU end-to-end demo (Cortex-M4 firmware + host gateway):
-cd examples/qemu-mps2
-cargo build --release --target thumbv7em-none-eabi
-qemu-system-arm -M mps2-an386 -cpu cortex-m4 -m 16M \
-    -display none -serial stdio \
-    -kernel target/thumbv7em-none-eabi/release/kei-qemu-mps2
+cargo test --all-features    # 20 tests
+cargo run --example host_demo  # Wire protocol demo
 ```
 
-The QEMU demo includes an on-chip benchmark using the CMSDK hardware timer.
-Release-build results (Cortex-M4 @ 25 MHz):
-
-| Operation | Ticks | Time |
-|-----------|-------|------|
-| Frame encode (postcard + CRC16) | 14 | 560 ns |
-| Frame decode (CRC verify + deserialize) | 11 | 440 ns |
-| CRC16-Modbus (64 bytes) | 7 | 280 ns |
-| Encode + decode round-trip | 43 | 1.7 µs |
-
-At 115200 baud UART, a 23-byte frame takes ~2 ms to transmit — protocol
-overhead is **under 0.1%** of physical I/O time.
+See the [library guide](./docs/en/guides/kei-library.md) and
+[benchmark results](./docs/en/guides/wire-protocol-benchmarks.md) for details.
 
 ## Ecosystem
 
-KEI is part of the Celestia IoT platform:
-
-- **[aris](https://github.com/celestia-island/aris)** — gateway Linux distribution (operator-facing)
-- **[evernight](https://github.com/celestia-island/evernight)** — industrial protocol broker (Modbus, S7comm, CAN, MQTT)
-- **[kei](https://github.com/celestia-island/kei)** — this repo: kernel + sensor bridge library
+- **[aris](https://github.com/celestia-island/aris)** — gateway Linux distribution
+- **[evernight](https://github.com/celestia-island/evernight)** — industrial protocol broker
+- **[kei](https://github.com/celestia-island/kei)** — this repo
 
 ## License
 
-SySL-1.0 (Synthetic Source License) for KEI's own code. Vendored code
-remains under MPL-2.0. See [LICENSE](./LICENSE) and [LICENSE-MPL](./LICENSE-MPL).
+SySL-1.0 for KEI's own code. Vendored code under MPL-2.0.
+See [LICENSE](./LICENSE) and [LICENSE-MPL](./LICENSE-MPL).

@@ -302,18 +302,23 @@ pub fn init_kernel_page_table(meta_pages: Segment<MetaPageMeta>) {
 ///
 /// This function must only be called once per CPU.
 pub unsafe fn activate_kernel_page_table() {
+    crate::early_println!("[kpt] activate: getting KERNEL_PAGE_TABLE...");
     let kpt = KERNEL_PAGE_TABLE
         .get()
         .expect("The kernel page table is not initialized yet");
+    crate::early_println!("[kpt] activate: calling first_activate_unchecked...");
     // SAFETY: the kernel page table is initialized properly.
     unsafe {
         kpt.first_activate_unchecked();
+        crate::early_println!("[kpt] activate: TLB flush...");
         crate::arch::mm::tlb_flush_all_including_global();
     }
+    crate::early_println!("[kpt] activate: page table switched, reinit serial...");
 
     // After the page table switch, the identity mapping for the UART
     // (0x09000000) is gone. Reinitialize the serial port to use the
     // linear mapping address before any console output.
     #[cfg(target_arch = "aarch64")]
     crate::arch::serial::reinit_with_linear_mapping();
+    crate::early_println!("[kpt] activate: serial reinitialized OK");
 }

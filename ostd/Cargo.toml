@@ -87,8 +87,10 @@ loongArch64 = "0.2.5"
 fdt = { version = "0.1.5", features = ["pretty-printing"] }
 
 [features]
-default = ["cvm_guest"]
-# The guest OS support for Confidential VMs (CVMs), e.g., Intel TDX
+default = []
+# The guest OS support for Confidential VMs (CVMs), e.g., Intel TDX.
+# Only relevant on x86_64 with TDX hardware. Off by default so aarch64
+# and other non-CVM builds don't pull in x86-only dependencies.
 cvm_guest = ["dep:tdx-guest", "dep:iced-x86"]
 coverage = ["minicov"]
 riscv_sv39_mode = []

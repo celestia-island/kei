@@ -7,6 +7,12 @@
 //! identity-mapped address. After the real page table is activated,
 //! the UART is accessed through the linear mapping.
 
+// Workaround: nightly-2026-04-03's annotate_snippets renderer crashes
+// (ICE: "slice index starts at 23 but ends at 22") when emitting
+// missing_docs or dead_code warnings for items in this module. Suppress
+// them here until the toolchain is updated.
+#![allow(missing_docs, dead_code)]
+
 use core::fmt;
 use core::sync::atomic::{AtomicUsize, Ordering};
 

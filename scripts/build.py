@@ -48,7 +48,7 @@ def find_nightly_cargo() -> list[str]:
     nightly toolchain's bin directory to PATH so OSDK's internal cargo picks
     up the nightly compiler.
     """
-    toolchain = "nightly-2026-04-03"
+    toolchain = "nightly-2026-05-01"
     host_triple = "x86_64-unknown-linux-gnu"
     rustup_home = Path(os.environ.get("RUSTUP_HOME", os.path.expanduser("~/.rustup")))
     nightly_bin = rustup_home / "toolchains" / f"{toolchain}-{host_triple}" / "bin"
@@ -61,7 +61,7 @@ def find_nightly_cargo() -> list[str]:
 
 def find_llvm_objcopy() -> str | None:
     """Locate llvm-objcopy from the nightly toolchain."""
-    toolchain = "nightly-2026-04-03"
+    toolchain = "nightly-2026-05-01"
     host_triple = "x86_64-unknown-linux-gnu"
     rustup_home = Path(os.environ.get("RUSTUP_HOME", os.path.expanduser("~/.rustup")))
     candidates = [
@@ -143,7 +143,7 @@ def main() -> int:
     if result.returncode != 0:
         cf.fail("Kernel build failed")
         cf.info("  TIP: verify ostd/src/arch/aarch64/ exists")
-        cf.info("  TIP: ensure nightly-2026-04-03 toolchain is installed")
+        cf.info("  TIP: ensure nightly-2026-05-01 toolchain is installed")
         return 1
 
     cf.blank()

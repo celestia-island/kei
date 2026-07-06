@@ -58,13 +58,10 @@ libm = "0.2"
 name = "wire_bench"
 harness = false
 
-# Release profile for the workspace — no LTO (LTO eliminates benchmark
-# loops in the QEMU firmware even with core::hint::black_box due to the
-# cortex-m-rt entry macro interaction). opt-level 3 for max performance.
-[profile.release]
-opt-level = 3
-lto = false
+[profile.dev]
 panic = "abort"
 
-[profile.dev]
+[profile.release]
+opt-level = "s"
+lto = true
 panic = "abort"

@@ -1,14 +1,14 @@
-<p align="center"><img src="./docs/logo.webp" alt="KEI-KERNEL" width="240" /></p>
+<p align="center"><img src="./docs/logo.webp" alt="KEI" width="240" /></p>
 
-<h1 align="center">KEI-KERNEL</h1>
+<h1 align="center">KEI</h1>
 
-<p align="center"><strong>An IoT-oriented OS kernel — RTOS discipline on Asterinas, with Linux ecosystem access</strong></p>
+<p align="center"><strong>IoT OS kernel (Asterinas fork) + no_std bridge library for embassy sensor nodes</strong></p>
 
 <div align="center">
 
 [![License: SySL](https://img.shields.io/badge/license-SySL%201.0-blue)](./LICENSE)
 [![License: MPL-2.0](https://img.shields.io/badge/vendored-MPL--2.0-blue)](./LICENSE-MPL)
-[![Checks](https://img.shields.io/github/actions/workflow/status/celestia-island/kei-kernel/ci.yml)](https://github.com/celestia-island/kei-kernel/actions/workflows/ci.yml)
+[![Checks](https://img.shields.io/github/actions/workflow/status/celestia-island/kei/ci.yml)](https://github.com/celestia-island/kei/actions/workflows/ci.yml)
 
 </div>
 
@@ -53,12 +53,19 @@ flowchart LR
 | Footprint | Large | Medium | Small, auditable |
 | Linux ecosystem | — (is Linux) | Limited | ✅ bridged |
 
-KEI-KERNEL is a sibling of [aris](https://github.com/celestia-island/aris)
-and [kei](https://github.com/celestia-island/kei) in the Celestia ecosystem.
-KEI-KERNEL is the device-side IoT kernel (this repo); [kei](https://github.com/celestia-island/kei)
-is the shared `#![no_std]` bridge library (manifest schema, wire protocol,
-protocol codecs) consumed by both embassy sensor nodes and the evernight
-gateway. KEI-KERNEL depends on kei for manifest/codec types.
+This repository contains **two related but independent components**:
+
+- **The kei kernel** (workspace root) — an IoT-oriented OS kernel, an
+  Asterinas fork with ARM64 support and BSPs for industrial SoCs.
+- **The kei no_std bridge library** (`packages/kei/`) — a `#![no_std]`
+  library providing manifest schema, wire protocol, and HAL traits shared
+  between embassy-based sensor nodes and the evernight gateway broker.
+  It has its own workspace (target: `thumbv7em-none-eabi` and host) and is
+  excluded from the kernel's workspace.
+
+KEI is a sibling of [aris](https://github.com/celestia-island/aris) and
+[evernight](https://github.com/celestia-island/evernight) in the Celestia
+ecosystem.
 
 ## Fork Model
 

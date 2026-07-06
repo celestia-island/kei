@@ -15,7 +15,6 @@
 
 extern crate alloc;
 
-mod timer;
 mod transport;
 mod uart;
 
@@ -24,8 +23,8 @@ use core::panic::PanicInfo;
 use cortex_m_rt::entry;
 
 use kei::hal::{DeviceError, SensorDevice, Transport};
-use kei::manifest::{RawValue, RegisterMode, ScaleTransform, SensorUnit};
-use kei::wire::{decode_frame, encode_frame, Frame, MsgType, Node, Request};
+use kei::manifest::{RawValue, RegisterMode, SensorUnit};
+use kei::wire::{Node, Request};
 
 // ── Heap allocator (kei's wire protocol uses Vec<u8>) ────────────────────────-
 
@@ -116,115 +115,6 @@ fn main() -> ! {
     uart::write_str("[node] boot complete, station_id=1\r\n");
     let _ = node.send_status(kei::wire::NodeState::Boot, "kei-qemu-demo v0.1", 0);
     delay_ms(100);
-
-    // ── Benchmark: measure kei operations in CMSDK timer ticks (25 MHz) ────────
-    timer::init();
-    uart::write_str("\r\n=== BENCHMARK (CMSDK TIMER @ 25MHz, 1 tick = 40ns) ===\r\n");
-
-    let frame = Frame::telemetry(1, 0x0100, 23.5, SensorUnit::Celsius);
-    let iterations: u32 = 1000;
-
-    // 1. Frame encode (postcard + CRC16)
-    let t0 = timer::now();
-    for _ in 0..iterations {
-        let w = frame.encode();
-        core::hint::black_box(&w);
-    }
-    let t1 = timer::now();
-    let ticks_encode = timer::elapsed(t0, t1) / iterations;
-    uart::write_str("frame_encode:       ");
-    uart::write_uint(ticks_encode);
-    uart::write_str(" ticks = ");
-    uart::write_uint(ticks_encode / 25);
-    uart::write_str(" us\r\n");
-
-    // 2. Frame decode (CRC verify + postcard deserialize)
-    let wire_bytes = frame.encode();
-    let t0 = timer::now();
-    for _ in 0..iterations {
-        let f = decode_frame(core::hint::black_box(&wire_bytes));
-        core::hint::black_box(&f);
-    }
-    let t1 = timer::now();
-    let ticks_decode = timer::elapsed(t0, t1) / iterations;
-    uart::write_str("frame_decode:       ");
-    uart::write_uint(ticks_decode);
-    uart::write_str(" ticks = ");
-    uart::write_uint(ticks_decode / 25);
-    uart::write_str(" us\r\n");
-
-    // 3. CRC16 only (64 bytes)
-    let crc_input: [u8; 64] = [
-        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
-        25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
-        48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63,
-    ];
-    let t0 = timer::now();
-    for _ in 0..iterations {
-        let c = kei::wire::frame::crc16_modbus(core::hint::black_box(&crc_input));
-        core::hint::black_box(c);
-    }
-    let t1 = timer::now();
-    let ticks_crc = timer::elapsed(t0, t1) / iterations;
-    uart::write_str("crc16_64bytes:      ");
-    uart::write_uint(ticks_crc);
-    uart::write_str(" ticks = ");
-    uart::write_uint(ticks_crc / 25);
-    uart::write_str(" us\r\n");
-
-    // 4. ScaleTransform: Linear
-    let linear = ScaleTransform::Linear {
-        factor: 0.1,
-        offset: -50.0,
-        unit: None,
-    };
-    let t0 = timer::now();
-    for _ in 0..iterations {
-        let v = linear.apply(core::hint::black_box(1532.0_f64));
-        core::hint::black_box(v);
-    }
-    let t1 = timer::now();
-    let ticks_linear = timer::elapsed(t0, t1) / iterations;
-    uart::write_str("scale_linear:       ");
-    uart::write_uint(ticks_linear);
-    uart::write_str(" ticks = ");
-    uart::write_uint(ticks_linear / 25);
-    uart::write_str(" us\r\n");
-
-    // 5. ScaleTransform: Polynomial (degree 2)
-    let poly = ScaleTransform::Polynomial {
-        coeffs: alloc::vec![1.0, 2.0, 3.0],
-        unit: None,
-    };
-    let t0 = timer::now();
-    for _ in 0..iterations {
-        let v = poly.apply(core::hint::black_box(500.0_f64));
-        core::hint::black_box(v);
-    }
-    let t1 = timer::now();
-    let ticks_poly = timer::elapsed(t0, t1) / iterations;
-    uart::write_str("scale_polynomial:   ");
-    uart::write_uint(ticks_poly);
-    uart::write_str(" ticks = ");
-    uart::write_uint(ticks_poly / 25);
-    uart::write_str(" us\r\n");
-
-    // 6. Full encode+decode combined
-    let t0 = timer::now();
-    for _ in 0..iterations {
-        let f = Frame::telemetry(1, 0x0100, 23.5, SensorUnit::Celsius);
-        let w = f.encode();
-        let _ = decode_frame(core::hint::black_box(&w));
-    }
-    let t1 = timer::now();
-    let ticks_round = timer::elapsed(t0, t1) / iterations;
-    uart::write_str("encode+decode:      ");
-    uart::write_uint(ticks_round);
-    uart::write_str(" ticks = ");
-    uart::write_uint(ticks_round / 25);
-    uart::write_str(" us\r\n");
-
-    uart::write_str("=== BENCHMARK COMPLETE ===\r\n\r\n");
 
     let mut tick: u32 = 0;
 

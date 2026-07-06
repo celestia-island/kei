@@ -114,6 +114,9 @@ exclude = [
     "ostd/libs/linux-bzimage/setup",
     "osdk",
     "tools/sctrace",
+    # The no_std bridge library + QEMU demo are separate workspaces
+    # (different target: thumbv7em-none-eabi, not aarch64-unknown-none).
+    "packages/kei",
 ]
 
 [workspace.lints.rust]

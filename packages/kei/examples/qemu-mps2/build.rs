@@ -8,8 +8,7 @@ fn main() {
     File::create(out.join("memory.x"))
         .unwrap()
         .write_all(
-            &std::fs::read(&memory_x)
-                .expect("failed to read memory.x from CARGO_MANIFEST_DIR"),
+            &std::fs::read(&memory_x).expect("failed to read memory.x from CARGO_MANIFEST_DIR"),
         )
         .unwrap();
     println!("cargo:rustc-link-search={}", out.display());

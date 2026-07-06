@@ -117,7 +117,9 @@ fn init_gpu(mmio_base: usize) {
     let used_off = (desc_sz + avail_sz + 4095) & !4095;
     let total = used_off + used_sz;
     let base_pa = vq_alloc(total);
-    let base_va = LINEAR_BASE + base_pa;
+    // On identity mapping (no page table switch), physical address = virtual address.
+    // Do NOT add LINEAR_BASE — that would create a linear-mapping address
+    // whose writes may not be visible to QEMU's DMA (cache coherence).
 
     ostd::early_println!("[virtio-gpu] vq base_pa={:#x} pfn={}", base_pa, base_pa / 4096);
     ostd::early_println!("[virtio-gpu] desc_sz={} avail_sz={} used_sz={} used_off={}", desc_sz, avail_sz, used_sz, used_off);
@@ -142,9 +144,11 @@ fn init_gpu(mmio_base: usize) {
         write_volatile(p.add(8) as *mut u64, 1); // fence_id
     }
 
-    // Setup descriptors
+    // Setup descriptors — write through IDENTITY mapping (phys=virt) 
+    // to avoid cache coherence issues with QEMU's DMA.
+    // base_pa is the identity-mapped address (= base_pa on our setup).
     unsafe {
-        let d = base_va;
+        let d = base_pa; // identity-mapped: use physical address directly
         // desc[0]: cmd (device-readable)
         write_volatile(d as *mut u64, cmd_va as u64); // identity-mapped: vaddr=paddr
         write_volatile((d + 8) as *mut u32, 24);
@@ -159,18 +163,47 @@ fn init_gpu(mmio_base: usize) {
         write_volatile((d1 + 14) as *mut u16, 0); // no next
 
         // Avail ring
-        let av = base_va + avail_off;
+        let av = base_pa + avail_off;
         write_volatile(av as *mut u16, 0); // flags
         write_volatile((av + 4) as *mut u16, 0); // ring[0] = 0
+        // Memory barrier before incrementing idx
+        core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
         write_volatile((av + 2) as *mut u16, 1); // idx = 1
     }
 
+    // Memory barrier before notify
+    core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
+
     // Notify
+    core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
     mmio_w(mmio_base, REG_QUEUE_NOTIFY, 0);
+
+    // Debug: read back descriptor[0] to verify writes are visible
+    unsafe {
+        let d = base_pa;
+        let d0_addr = read_volatile(d as *const u64);
+        let d0_len = read_volatile((d + 8) as *const u32);
+        let d0_flags = read_volatile((d + 12) as *const u16);
+        let d0_next = read_volatile((d + 14) as *const u16);
+        ostd::early_println!("[virtio-gpu] desc[0]: addr={:#x} len={} flags={} next={}", d0_addr, d0_len, d0_flags, d0_next);
+
+        let av = base_pa + avail_off;
+        let av_flags = read_volatile(av as *const u16);
+        let av_idx = read_volatile((av + 2) as *const u16);
+        let av_ring0 = read_volatile((av + 4) as *const u16);
+        ostd::early_println!("[virtio-gpu] avail: flags={} idx={} ring[0]={}", av_flags, av_idx, av_ring0);
+
+        // Check used ring initial state
+        let used = base_pa + used_off;
+        let used_flags = read_volatile(used as *const u16);
+        let used_idx = read_volatile((used + 2) as *const u16);
+        ostd::early_println!("[virtio-gpu] used: flags={} idx={}", used_flags, used_idx);
+    }
+
     ostd::early_println!("[virtio-gpu] GET_DISPLAY_INFO sent...");
 
     // Poll used ring
-    let used = base_va + used_off;
+    let used = base_pa + used_off;
     let mut ok = false;
     for _ in 0..1_000_000 {
         let ui = unsafe { read_volatile((used + 2) as *const u16) };

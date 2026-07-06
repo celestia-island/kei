@@ -2,7 +2,7 @@
 
 <h1 align="center">KEI</h1>
 
-<p align="center"><strong>IoT OS kernel (Asterinas fork) + no_std bridge library for embassy sensor nodes</strong></p>
+<p align="center"><strong>Rust OS kernel for industrial IoT gateways + no_std bridge library for embedded sensor nodes</strong></p>
 
 <div align="center">
 
@@ -26,98 +26,96 @@
 
 </div>
 
-## Introduction
+## What problem does KEI solve?
 
-KEI is an operating-system kernel purpose-built for industrial IoT. It takes
-[Asterinas](https://github.com/asterinas/asterinas) and shapes it into an
-RTOS-style facility — small, real-time, auditable — yet keeps a bridge into the
-Linux ecosystem so existing drivers, tooling, and binaries remain within reach.
+Industrial IoT gateways sit between field devices (sensors, PLCs, actuators)
+and the cloud. They need:
 
-It is neither a Linux distribution nor stock Asterinas. The closest analogue is
-an RTOS that happens to speak Linux: real-time determinism for the workload that
-needs it, Linux-grade software compatibility for everything else.
+- **Real-time discipline** for time-critical protocol polling (Modbus, CAN)
+- **Full network stack** for cloud connectivity (MQTT, WebSocket, HTTP)
+- **Safety guarantees** that C-based RTOSes and full Linux cannot provide
+- **Small, auditable footprint** — not millions of lines of code
 
-```mermaid
-flowchart LR
-    AST["Asterinas\nsafe Rust framekernel"] --> KEI["KEI\nRTOS-grade IoT kernel"]
-    KEI -->|"compat bridge"| LINUX["Linux ecosystem\ndrivers · tooling · binaries"]
-    KEI --> DEV["Industrial IoT Devices\nARM / RISC-V edge"]
-```
-
-## Where KEI sits
-
-| | Linux | Asterinas (official) | **KEI** |
-|---|---|---|---|
-| Target | General-purpose servers / desktops | Research safe-kernel | Industrial IoT devices |
-| Real-time discipline | ❌ best-effort | ⚠️ partial | ✅ RTOS-grade |
-| Footprint | Large | Medium | Small, auditable |
-| Linux ecosystem | — (is Linux) | Limited | ✅ bridged |
-
-This repository contains **two related but independent components**:
-
-- **The kei kernel** (workspace root) — an IoT-oriented OS kernel, an
-  Asterinas fork with ARM64 support and BSPs for industrial SoCs.
-- **The kei no_std bridge library** (`packages/kei/`) — a `#![no_std]`
-  library providing manifest schema, wire protocol, and HAL traits shared
-  between embassy-based sensor nodes and the evernight gateway broker.
-  It has its own workspace (target: `thumbv7em-none-eabi` and host) and is
-  excluded from the kernel's workspace.
-
-KEI is a sibling of [aris](https://github.com/celestia-island/aris) and
-[evernight](https://github.com/celestia-island/evernight) in the Celestia
-ecosystem.
-
-## Fork Model
-
-KEI is **not** a branch that tracks upstream. It is an independent fork that
-periodically absorbs upstream changes on its own schedule — the same model Apple
-uses for its LLVM fork.
+No existing OS fills this gap well. Linux is too large and not deterministic.
+Traditional RTOSes (FreeRTOS, Zephyr) lack a full network stack and memory
+protection. KEI is built in Rust on a safe-kernel architecture, giving you
+memory safety, real-time capability, and a complete protocol stack in one
+system.
 
 ```mermaid
-flowchart LR
-    UP["asterinas/asterinas\n(active upstream)"] -->|vendor-upstream.sh\nsquash every N months| KEI["KEI (this repo)\nfully independent"]
-    WNY["wanywhn/asterinas\n(arm64-support)"] -->|pull-arm64.sh\none-time snapshot| KEI
+flowchart TB
+    subgraph Gateway["KEI kernel (this repo)"]
+        KERN["RTOS-grade kernel\nARM64 / RISC-V"]
+        NET["Full network stack\nMQTT · WebSocket · HTTP"]
+        DRV["Industrial protocol drivers\nModbus · CAN · S7comm"]
+    end
+    subgraph Sensors["Sensor nodes"]
+        EMB["embassy MCU firmware\nusing kei no_std library"]
+    end
+    SENSORS -->|"kei wire protocol\n(UART / RS-485)"| Gateway
+    Gateway -->|"WebSocket / MQTT"| CLOUD["Cloud platform\n(Entelecheia)"]
 ```
 
-KEI independently maintains `ostd/src/arch/aarch64/`, `kernel/src/arch/aarch64/`,
-`bsp/`, `board/`, `configs/`, and `docs/`. See the
-[Upstream Sync guide](./docs/en/guides/upstream-sync.md) for how vendoring works.
+## What's in this repo?
 
-## Quick Start
+Two components, one repository:
+
+| Component | Location | What it does |
+|-----------|----------|-------------|
+| **KEI kernel** | workspace root | Rust OS kernel for ARM64/RISC-V edge devices. Runs the [evernight](https://github.com/celestia-island/evernight) protocol broker and connects to cloud platforms. |
+| **kei library** | `packages/kei/` | `#![no_std]` library for embassy-based sensor nodes: wire protocol, manifest schema, HAL traits. Shared between MCU firmware and the gateway. |
+
+The library has its own Cargo workspace (targets `thumbv7em-none-eabi` for
+Cortex-M MCUs) and is excluded from the kernel's workspace.
+
+### KEI kernel
 
 ```bash
-just setup        # Configure git remotes and Rust targets
-just vendor       # Absorb latest upstream asterinas (squash)
-just pull-arm64   # Pull ARM64 code from wanywhn fork (one-time)
-just versions     # Show what upstream versions we're based on
-just build        # Build kernel for nanopi-r3s (aarch64)
-just test-all     # Boot-test all architectures in QEMU
+just build              # Build kernel for default board (NanoPi R3S)
+just build-board BOARD  # Build for a specific board
+just test-all           # Boot-test all architectures in QEMU
 ```
 
-## What Lives Where
+Supported architectures: ARM64 (active), x86_64, RISC-V, LoongArch.
 
-| Directory | Origin | Maintenance |
-|-----------|--------|-------------|
-| `ostd/` | Upstream asterinas | Vendored periodically, bugs fixed in-place |
-| `ostd/src/arch/aarch64/` | wanywhn fork (PR #3270) | **Independent** — we own this |
-| `kernel/` | Upstream asterinas | Vendored periodically |
-| `kernel/src/arch/aarch64/` | wanywhn fork (PR #3270) | **Independent** — we own this |
-| `osdk/` | Upstream asterinas | Vendored periodically |
-| `bsp/` | KEI | **100% ours** — Board Support Packages |
-| `board/` `configs/` | KEI | **100% ours** — board definitions |
-| `scripts/` `docs/` | KEI | **100% ours** — tooling and docs |
+### kei library (`packages/kei/`)
 
-## Supported Architectures
+```bash
+cd packages/kei
+cargo test --all-features              # Run unit + integration tests (20 tests)
+cargo bench --bench wire_bench         # Run criterion benchmarks
+cargo run --example host_demo          # Host-side wire protocol demo
 
-| Arch | Status | QEMU Test |
-|------|--------|-----------|
-| x86_64 | Upstream Tier 1 | ✅ q35 |
-| aarch64 | kei-maintained (from PR #3270) | ✅ virt/cortex-a55 |
-| riscv64 | Upstream Tier 2 | ⚠️ virt/rv64 |
-| loongarch64 | Upstream Tier 3 | ⚠️ virt/max |
+# QEMU end-to-end demo (Cortex-M4 firmware + host gateway):
+cd examples/qemu-mps2
+cargo build --release --target thumbv7em-none-eabi
+qemu-system-arm -M mps2-an386 -cpu cortex-m4 -m 16M \
+    -display none -serial stdio \
+    -kernel target/thumbv7em-none-eabi/release/kei-qemu-mps2
+```
+
+The QEMU demo includes an on-chip benchmark using the CMSDK hardware timer.
+Release-build results (Cortex-M4 @ 25 MHz):
+
+| Operation | Ticks | Time |
+|-----------|-------|------|
+| Frame encode (postcard + CRC16) | 14 | 560 ns |
+| Frame decode (CRC verify + deserialize) | 11 | 440 ns |
+| CRC16-Modbus (64 bytes) | 7 | 280 ns |
+| Encode + decode round-trip | 43 | 1.7 µs |
+
+At 115200 baud UART, a 23-byte frame takes ~2 ms to transmit — protocol
+overhead is **under 0.1%** of physical I/O time.
+
+## Ecosystem
+
+KEI is part of the Celestia IoT platform:
+
+- **[aris](https://github.com/celestia-island/aris)** — gateway Linux distribution (operator-facing)
+- **[evernight](https://github.com/celestia-island/evernight)** — industrial protocol broker (Modbus, S7comm, CAN, MQTT)
+- **[kei](https://github.com/celestia-island/kei)** — this repo: kernel + sensor bridge library
 
 ## License
 
-SySL-1.0 (Synthetic Source License) for KEI's own code — see
-[LICENSE](./LICENSE). Vendored Asterinas code (`ostd/`, `kernel/`, `osdk/`)
-remains under MPL-2.0 — see [LICENSE-MPL](./LICENSE-MPL).
+SySL-1.0 (Synthetic Source License) for KEI's own code. Vendored code
+remains under MPL-2.0. See [LICENSE](./LICENSE) and [LICENSE-MPL](./LICENSE-MPL).

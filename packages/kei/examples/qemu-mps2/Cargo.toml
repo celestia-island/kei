@@ -20,4 +20,6 @@ critical-section = "1"
 
 [profile.release]
 debug = 2
-opt-level = "s"
+opt-level = 3
+lto = false
+panic = "abort"

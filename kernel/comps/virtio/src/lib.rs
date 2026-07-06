@@ -66,6 +66,48 @@ fn virtio_component_init_inner() -> Result<(), ComponentInitError> {
     ostd::early_println!("[virtio] socket::init...");
     device::socket::init();
     ostd::early_println!("[virtio] device sub-inits done");
+
+    // On aarch64, the IoMem KVirtArea mapping doesn't work without the
+    // kernel page table switch. Instead, manually probe each MMIO device
+    // using raw volatile reads through the linear mapping.
+    #[cfg(target_arch = "aarch64")]
+    {
+        // Raw MMIO probe via linear mapping. The virtio crate has
+        // #![deny(unsafe_code)], so we use a dedicated module with allow.
+        mod raw_probe {
+            #![allow(unsafe_code)]
+            use core::ptr::read_volatile;
+
+            pub fn probe() {
+                let mmio_bases: [usize; 32] = [
+                    0xa000000, 0xa000200, 0xa000400, 0xa000600,
+                    0xa000800, 0xa000a00, 0xa000c00, 0xa000e00,
+                    0xa001000, 0xa001200, 0xa001400, 0xa001600,
+                    0xa001800, 0xa001a00, 0xa001c00, 0xa001e00,
+                    0xa002000, 0xa002200, 0xa002400, 0xa002600,
+                    0xa002800, 0xa002a00, 0xa002c00, 0xa002e00,
+                    0xa003000, 0xa003200, 0xa003400, 0xa003600,
+                    0xa003800, 0xa003a00, 0xa003c00, 0xa003e00,
+                ];
+                let linear_base = 0xffff_8000_0000_0000usize;
+                for &paddr in &mmio_bases {
+                    let vaddr = linear_base + paddr;
+                    let magic = unsafe { read_volatile(vaddr as *const u32) };
+                    if magic != 0x74726976 {
+                        continue;
+                    }
+                    let device_id = unsafe { read_volatile((vaddr + 0x008) as *const u32) };
+                    ostd::early_println!("[virtio] device at MMIO {:#x}: id={}", paddr, device_id);
+                    if device_id == 16 {
+                        ostd::early_println!("[virtio] *** FOUND VIRTIO-GPU at {:#x}! ***", paddr);
+                    }
+                }
+            }
+        }
+        ostd::early_println!("[virtio] raw MMIO probe via linear mapping...");
+        raw_probe::probe();
+    }
+
     let mut dev_idx = 0;
     while let Some(mut transport) = pop_device_transport() {
         dev_idx += 1;

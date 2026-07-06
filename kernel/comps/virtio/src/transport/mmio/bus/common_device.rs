@@ -22,23 +22,12 @@ pub struct MmioCommonDevice {
 impl MmioCommonDevice {
     pub(super) fn new(io_mem: IoMem, irq: MappedIrqLine) -> Self {
         let this = Self { io_mem, irq };
-        // On aarch64, MMIO reads via IoMem may fault due to boot page table
-        // Device-memory attributes. Skip the info log that reads device ID.
-        #[cfg(not(target_arch = "aarch64"))]
-        {
-            info!(
-                "Found MMIO device at {:#x}, device ID {}, IRQ number {}",
-                this.io_mem.paddr(),
-                this.read_device_id().unwrap(),
-                this.irq.num(),
-            );
-        }
+        // On aarch64 without kernel page table switch, IoMem's KVirtArea
+        // mapping doesn't work. But the boot page table's linear mapping
+        // (0xffff800000000000 + paddr) already covers MMIO regions.
+        // We rely on that mapping for all MMIO reads/writes.
         #[cfg(target_arch = "aarch64")]
-        ostd::early_println!(
-            "[virtio-mmio] MmioCommonDevice::new: paddr={:#x} irq={}",
-            this.io_mem.paddr(),
-            this.irq.num()
-        );
+        ostd::early_println!("[virtio-mmio] MmioCommonDevice::new: paddr={:#x} irq={}", this.io_mem.paddr(), this.irq.num());
 
         this
     }
@@ -46,6 +35,11 @@ impl MmioCommonDevice {
     /// Returns a reference to the I/O memory.
     pub fn io_mem(&self) -> &IoMem {
         &self.io_mem
+    }
+
+    /// Returns the physical address of the MMIO region (aarch64 debug).
+    pub fn io_mem_paddr(&self) -> usize {
+        self.io_mem.paddr()
     }
 
     /// Reads the device ID from the I/O memory.

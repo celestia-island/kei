@@ -111,4 +111,14 @@ impl MmioBus {
             drivers: Vec::new(),
         }
     }
+
+    /// Returns the number of common devices (aarch64 debug helper).
+    pub fn common_devices_len(&self) -> usize {
+        self.common_devices.len()
+    }
+
+    /// Returns a reference to the i-th common device (aarch64 debug helper).
+    pub fn common_devices_get(&self, i: usize) -> &MmioCommonDevice {
+        &self.common_devices[i]
+    }
 }

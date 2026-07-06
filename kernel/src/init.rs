@@ -36,8 +36,27 @@ pub(super) fn main() {
 
     // Initialize the global states for all CPUs.
     ostd::early_println!("OSTD initialized. Preparing components.");
-    if let Err(e) = component::init_all(InitStage::Bootstrap, component::parse_metadata!()) {
-        ostd::early_println!("[WARN] component::init_all(Bootstrap) failed: {:?}", e);
+    // Skip component init on aarch64 for now — inventory::iter panics.
+    // Instead, manually initialize the framebuffer component.
+    #[cfg(target_arch = "aarch64")]
+    {
+        ostd::early_println!("[init] skipping component::init_all on aarch64");
+        // Manually init framebuffer
+        ostd::early_println!("[init] manual framebuffer::init...");
+        // The framebuffer component init is just: framebuffer::init()
+        // which reads boot_info().framebuffer_arg (None on aarch64).
+        // So it's a no-op. We need virtio-gpu to publish first.
+    }
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        ostd::early_println!("[init] about to call parse_metadata...");
+        let metadata = component::parse_metadata!();
+        ostd::early_println!("[init] parse_metadata returned {} items", metadata.len());
+        ostd::early_println!("[init] calling component::init_all(Bootstrap)...");
+        match component::init_all(InitStage::Bootstrap, metadata) {
+            Ok(()) => ostd::early_println!("[init] component::init_all(Bootstrap) OK"),
+            Err(e) => ostd::early_println!("[WARN] component::init_all(Bootstrap) failed: {:?}", e),
+        }
     }
     ostd::early_println!("Components Bootstrap done.");
     init();
@@ -45,10 +64,33 @@ pub(super) fn main() {
     ostd::early_println!("Kernel init done.");
 
     // Initialize the per-CPU states for BSP.
+    #[cfg(not(target_arch = "aarch64"))]
     init_on_each_cpu();
+    #[cfg(target_arch = "aarch64")]
+    ostd::early_println!("Per-CPU init skipped (aarch64).");
     ostd::early_println!("Per-CPU init done.");
 
+    // On aarch64: skip SMP + scheduler init, go directly to device init.
+    #[cfg(target_arch = "aarch64")]
+    {
+        // Directly call virtio + framebuffer init, skip everything else.
+        ostd::early_println!("[init] calling virtio_component_init_pub...");
+        let _ = aster_virtio::virtio_component_init_pub();
+        ostd::early_println!("[init] virtio init done");
+        ostd::early_println!("[init] calling framebuffer::init_component_fn...");
+        let _ = aster_framebuffer::init_component_fn();
+        ostd::early_println!("[init] framebuffer init done");
+
+        // Loop forever to keep the kernel running.
+        ostd::early_println!("[init] entering idle loop...");
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
     // Enable APs.
+    #[cfg(not(target_arch = "aarch64"))]
+    {
     ostd::boot::smp::register_ap_entry(ap_init);
     ostd::early_println!("Spawning BSP idle thread...");
 
@@ -58,6 +100,7 @@ pub(super) fn main() {
         .sched_policy(SchedPolicy::Idle)
         .spawn();
     ostd::early_println!("BSP idle thread spawned.");
+    }
 }
 
 fn init() {
@@ -68,19 +111,41 @@ fn init() {
     ostd::early_println!("[init] random::init");
     crate::util::random::init();
     ostd::early_println!("[init] driver::init");
+    // driver::init uses inventory (broken on aarch64), skip for now.
+    #[cfg(not(target_arch = "aarch64"))]
     crate::driver::init();
+    #[cfg(target_arch = "aarch64")]
+    ostd::early_println!("[init] driver::init (SKIPPED on aarch64)");
     ostd::early_println!("[init] time::init");
+    #[cfg(not(target_arch = "aarch64"))]
     crate::time::init();
+    #[cfg(target_arch = "aarch64")]
+    ostd::early_println!("[init] time::init (SKIPPED on aarch64)");
     ostd::early_println!("[init] net::init");
+    #[cfg(not(target_arch = "aarch64"))]
     crate::net::init();
+    #[cfg(target_arch = "aarch64")]
+    ostd::early_println!("[init] net::init (SKIPPED on aarch64)");
     ostd::early_println!("[init] sched::init");
+    #[cfg(not(target_arch = "aarch64"))]
     crate::sched::init();
+    #[cfg(target_arch = "aarch64")]
+    ostd::early_println!("[init] sched::init (SKIPPED on aarch64)");
     ostd::early_println!("[init] process::init");
+    #[cfg(not(target_arch = "aarch64"))]
     crate::process::init();
+    #[cfg(target_arch = "aarch64")]
+    ostd::early_println!("[init] process::init (SKIPPED on aarch64)");
     ostd::early_println!("[init] fs::init");
+    #[cfg(not(target_arch = "aarch64"))]
     crate::fs::init();
+    #[cfg(target_arch = "aarch64")]
+    ostd::early_println!("[init] fs::init (SKIPPED on aarch64)");
     ostd::early_println!("[init] security::init");
+    #[cfg(not(target_arch = "aarch64"))]
     crate::security::init();
+    #[cfg(target_arch = "aarch64")]
+    ostd::early_println!("[init] security::init (SKIPPED on aarch64)");
     ostd::early_println!("[init] done");
 }
 
@@ -185,8 +250,23 @@ fn first_kthread() {
 static INIT_PROCESS: Once<Arc<Process>> = Once::new();
 
 fn init_in_first_kthread(path_resolver: &PathResolver) {
+    #[cfg(not(target_arch = "aarch64"))]
     if let Err(e) = component::init_all(InitStage::Kthread, component::parse_metadata!()) {
         ostd::early_println!("[WARN] component::init_all(Kthread) failed: {:?}", e);
+    }
+    #[cfg(target_arch = "aarch64")]
+    {
+        // Skip component init — manually call virtio and framebuffer init.
+        ostd::early_println!("[kthread] manual component init (aarch64 bypass)...");
+        // virtio_component_init is normally called by the component system.
+        // Call it directly here.
+        ostd::early_println!("[kthread] calling virtio_component_init...");
+        let _ = aster_virtio::virtio_component_init_pub();
+        ostd::early_println!("[kthread] virtio init done");
+        // framebuffer init
+        ostd::early_println!("[kthread] calling framebuffer::init_component_fn...");
+        let _ = aster_framebuffer::init_component_fn();
+        ostd::early_println!("[kthread] framebuffer init done");
     }
     // Work queue should be initialized before interrupt is enabled,
     // in case any irq handler uses work queue as bottom half

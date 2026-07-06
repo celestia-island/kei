@@ -40,16 +40,29 @@ mod transport;
 
 static VIRTIO_BLOCK_MAJOR_ID: Once<MajorIdOwner> = Once::new();
 
+/// Public init function for manual invocation (aarch64 bypass path).
+pub fn virtio_component_init_pub() -> Result<(), ComponentInitError> {
+    virtio_component_init_inner()
+}
+
 #[init_component]
 fn virtio_component_init() -> Result<(), ComponentInitError> {
+    virtio_component_init_inner()
+}
+
+fn virtio_component_init_inner() -> Result<(), ComponentInitError> {
+    ostd::early_println!("[virtio] allocating major ID...");
     VIRTIO_BLOCK_MAJOR_ID.call_once(|| aster_block::allocate_major().unwrap());
 
+    ostd::early_println!("[virtio] transport::init...");
     // Find all devices and register them to the corresponding crate
     transport::init();
+    ostd::early_println!("[virtio] transport::init done");
 
     device::entropy::init();
     device::network::init();
     device::socket::init();
+    ostd::early_println!("[virtio] device sub-inits done");
 
     while let Some(mut transport) = pop_device_transport() {
         // Reset device

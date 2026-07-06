@@ -218,6 +218,21 @@ el1_setup:
 .text
 
 bsp_boot_virt:
+    // Zero the BSS section. This is critical — many static variables
+    // (inventory linked lists, Once cells, etc.) rely on being zero-initialized.
+    // Without this, inventory::iter follows garbage pointers and faults.
+    // Save x0 (FDT physical address) first!
+    mov     x20, x0
+    ldr     x0, =__bss_start
+    ldr     x1, =__bss_end
+1:
+    cmp     x0, x1
+    b.ge    2f
+    str     xzr, [x0], #8
+    b       1b
+2:
+    mov     x0, x20    // Restore FDT physical address
+
     // Initialize tpidr_el1 to the CPU-local storage's base address.
     // __cpu_local_start is at virtual address
     .extern __cpu_local_start

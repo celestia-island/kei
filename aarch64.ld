@@ -67,10 +67,12 @@ SECTIONS
     } :data
     __cpu_local_end = .;
 
+    __bss_start = .;
     .bss : {
         *(.bss .bss.*)
         *(COMMON)
     } :data
+    __bss_end = .;
 
     . = ALIGN(4096);
     __kernel_end = .;

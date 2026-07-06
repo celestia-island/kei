@@ -106,8 +106,23 @@ unsafe fn init() {
     crate::early_println!("[ostd] init: kspace::init_kernel_page_table");
     mm::kspace::init_kernel_page_table(meta_pages);
 
-    crate::early_println!("[ostd] init: kspace::activate_kernel_page_table");
-    unsafe { mm::kspace::activate_kernel_page_table() };
+    // On aarch64, skip the page table switch for now — the boot page table
+    // already has identity + linear mapping covering all needed addresses.
+    // The ostd cursor-built page table has a structural mismatch with
+    // TCR_EL1's TTBR0/TTBR1 split that needs a deeper fix.
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        crate::early_println!("[ostd] init: kspace::activate_kernel_page_table");
+        unsafe { mm::kspace::activate_kernel_page_table() };
+    }
+    #[cfg(target_arch = "aarch64")]
+    {
+        crate::early_println!("[ostd] init: kspace::activate_kernel_page_table (SKIPPED on aarch64)");
+        // Reinitialize serial with linear mapping (the identity mapping for
+        // UART is still present in boot page table, so this is redundant but
+        // matches what activate would have done).
+        crate::arch::serial::reinit_with_linear_mapping();
+    }
 
     // Serial port is reinitialized inside activate_kernel_page_table
     // for aarch64 (the identity mapping is gone after the switch).
@@ -129,7 +144,12 @@ unsafe fn init() {
     smp::init();
 
     crate::early_println!("[ostd] init: boot_pt::dismiss");
+    // On aarch64 we skipped page table activation, so dismiss is a no-op
+    // (the boot page table is still active and needed).
+    #[cfg(not(target_arch = "aarch64"))]
     unsafe { mm::page_table::boot_pt::dismiss() };
+    #[cfg(target_arch = "aarch64")]
+    crate::early_println!("[ostd] init: boot_pt::dismiss (SKIPPED on aarch64)");
 
     crate::early_println!("[ostd] init: irq::enable_local");
     arch::irq::enable_local();
@@ -153,12 +173,16 @@ fn invoke_ffi_init_funcs() {
         fn __einit_array();
     }
     let call_len = (__einit_array as *const () as usize - __sinit_array as *const () as usize) / 8;
+    crate::early_println!("[ostd] ffi_init: {} functions at [{:#x}..{:#x}]",
+        call_len, __sinit_array as usize, __einit_array as usize);
     for i in 0..call_len {
         unsafe {
             let function = (__sinit_array as *const () as usize + 8 * i) as *const fn();
+            crate::early_println!("[ostd] ffi_init: calling function {} at {:#x}", i, function as usize);
             (*function)();
         }
     }
+    crate::early_println!("[ostd] ffi_init: done ({} called)", call_len);
 }
 
 mod feature_validation {

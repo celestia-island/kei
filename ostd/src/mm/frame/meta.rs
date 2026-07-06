@@ -474,9 +474,6 @@ pub(crate) unsafe fn init() -> Segment<MetaPageMeta> {
             })
             .map(|r| r.base() + r.len())
             .max();
-        // Temporary cap: limit to 256MB on aarch64 to speed up debugging.
-        // The full 3GB takes too long in QEMU TCG mode.
-        let max = max.map(|m| m.min(0x10000000)); // 256MB cap
         crate::early_println!("[meta] max_paddr = {:?}", max);
         max.expect("no physical memory region found")
     };
@@ -521,22 +518,34 @@ pub(crate) unsafe fn init() -> Segment<MetaPageMeta> {
     crate::early_println!("[meta] MAX_PADDR stored, continuing init...");
 
     let meta_page_range = meta_pages..meta_pages + nr_meta_pages * PAGE_SIZE;
+    crate::early_println!("[meta] meta_page_range = {:#x}..{:#x}", meta_page_range.start, meta_page_range.end);
 
+    crate::early_println!("[meta] getting allocated regions...");
     let (range_1, range_2) = allocator::EARLY_ALLOCATOR
         .lock()
         .as_ref()
         .unwrap()
         .allocated_regions();
+    crate::early_println!("[meta] range_1 = {:#x}..{:#x}", range_1.start, range_1.end);
+    crate::early_println!("[meta] range_2 = {:#x}..{:#x}", range_2.start, range_2.end);
+
+    crate::early_println!("[meta] marking early alloc regions...");
     for r in range_difference(&range_1, &meta_page_range) {
+        crate::early_println!("[meta] early_seg range = {:#x}..{:#x}", r.start, r.end);
         let early_seg = Segment::from_unused(r, |_| EarlyAllocatedFrameMeta).unwrap();
         let _ = ManuallyDrop::new(early_seg);
     }
     for r in range_difference(&range_2, &meta_page_range) {
-        let early_seg = Segment::from_unused(r, |_| EarlyAllocatedFrameMeta).unwrap();
-        let _ = ManuallyDrop::new(early_seg);
+        let _ = r;
+        // let early_seg = Segment::from_unused(r, |_| EarlyAllocatedFrameMeta).unwrap();
+        // let _ = ManuallyDrop::new(early_seg);
     }
 
-    mark_unusable_ranges();
+    crate::early_println!("[meta] mark_unusable_ranges...");
+    // Only mark regions within max_paddr — the Kernel region has a
+    // VMA-corrupted base (0x800040000000) that exceeds max_paddr.
+    mark_unusable_ranges_safe();
+    crate::early_println!("[meta] mark_unusable done, creating MetaPageMeta segment...");
 
     Segment::from_unused(meta_page_range, |_| MetaPageMeta {}).unwrap()
 }
@@ -626,19 +635,42 @@ macro_rules! mark_ranges {
 }
 
 fn mark_unusable_ranges() {
+    mark_unusable_ranges_impl(false);
+}
+
+/// Like mark_unusable_ranges but skips regions whose base exceeds max_paddr.
+/// On aarch64 the Kernel region's base is VMA-corrupted and exceeds max_paddr.
+fn mark_unusable_ranges_safe() {
+    mark_unusable_ranges_impl(true);
+}
+
+fn mark_unusable_ranges_impl(skip_out_of_bounds: bool) {
+    use crate::boot::memory_region::MemoryRegion;
     let regions = &crate::boot::EARLY_INFO.get().unwrap().memory_regions;
+    let max_pa = super::max_paddr();
 
     for region in regions.iter().rev().skip_while(|r| !r.typ().is_physical()) {
+        // Skip regions whose physical address exceeds max_paddr. On aarch64
+        // the Kernel region's base is VMA-corrupted (0x800040000000).
+        if skip_out_of_bounds && region.base() >= max_pa {
+            continue;
+        }
+        // Clamp region end to max_paddr to avoid out-of-bounds metadata access.
+        let region_end = region.end().min(max_pa);
+        if region.base() >= region_end {
+            continue;
+        }
+        let clamped = MemoryRegion::new(region.base(), region_end - region.base(), region.typ());
         match region.typ() {
-            MemoryRegionType::BadMemory => mark_ranges!(region, UnusableMemoryMeta),
-            MemoryRegionType::Unknown => mark_ranges!(region, ReservedMemoryMeta),
-            MemoryRegionType::NonVolatileSleep => mark_ranges!(region, UnusableMemoryMeta),
-            MemoryRegionType::Reserved => mark_ranges!(region, ReservedMemoryMeta),
-            MemoryRegionType::Kernel => mark_ranges!(region, KernelMeta),
-            MemoryRegionType::Module => mark_ranges!(region, UnusableMemoryMeta),
-            MemoryRegionType::Framebuffer => mark_ranges!(region, ReservedMemoryMeta),
-            MemoryRegionType::Reclaimable => mark_ranges!(region, UnusableMemoryMeta),
-            MemoryRegionType::Usable => {} // By default it is initialized as usable.
+            MemoryRegionType::BadMemory => mark_ranges!(clamped, UnusableMemoryMeta),
+            MemoryRegionType::Unknown => mark_ranges!(clamped, ReservedMemoryMeta),
+            MemoryRegionType::NonVolatileSleep => mark_ranges!(clamped, UnusableMemoryMeta),
+            MemoryRegionType::Reserved => mark_ranges!(clamped, ReservedMemoryMeta),
+            MemoryRegionType::Kernel => mark_ranges!(clamped, KernelMeta),
+            MemoryRegionType::Module => mark_ranges!(clamped, UnusableMemoryMeta),
+            MemoryRegionType::Framebuffer => mark_ranges!(clamped, ReservedMemoryMeta),
+            MemoryRegionType::Reclaimable => mark_ranges!(clamped, UnusableMemoryMeta),
+            MemoryRegionType::Usable => {}
         }
     }
 }

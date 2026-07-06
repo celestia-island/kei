@@ -103,7 +103,7 @@ impl RamFs {
             root: Arc::new_cyclic(|weak_root| RamInode {
                 inner: Inner::new_dir(weak_root.clone(), weak_root.clone()),
                 metadata: SpinLock::new(InodeMeta::new_dir(
-                    mkmod!(a+rx, u+w),
+                    mkmod!(a + rx, u + w),
                     Uid::new_root(),
                     Gid::new_root(),
                 )),

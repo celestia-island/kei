@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent / "utils"))
+import build_env
 import cli_format as cf
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -72,17 +73,17 @@ def test_arch(arch: str, output_dir: Path) -> str:
 
     # Build kernel for this architecture
     cf.pending(f"Building kernel ({cfg['target']})...")
-    build_env = dict(os.environ)
+    nightly_env = dict(os.environ)
     rustup_home = os.environ.get("RUSTUP_HOME", os.path.expanduser("~/.rustup"))
     nightly_bin = os.path.join(rustup_home, "toolchains", "nightly-2026-04-03-x86_64-unknown-linux-gnu", "bin")
     if os.path.isdir(nightly_bin):
-        build_env["PATH"] = nightly_bin + ":" + build_env.get("PATH", "")
+        nightly_env["PATH"] = nightly_bin + ":" + nightly_env.get("PATH", "")
 
     build_cmd = ["cargo", "osdk", "build", "--target-arch", arch, "--release"]
     scheme = {"aarch64": "aarch64", "riscv64": "riscv", "loongarch64": "loongarch"}.get(arch)
     if scheme:
         build_cmd.extend(["--scheme", scheme])
-    build_result = subprocess.run(build_cmd, cwd=PROJECT_ROOT, capture_output=True, env=build_env)
+    build_result = subprocess.run(build_cmd, cwd=PROJECT_ROOT, capture_output=True, env=nightly_env)
     if build_result.returncode != 0:
         cf.fail(f"Build failed for {arch}")
         return "FAIL"
@@ -141,6 +142,8 @@ def test_arch(arch: str, output_dir: Path) -> str:
 
 
 def main() -> int:
+    if build_env.wsl_main_guard():
+        return 0
     all_archs = list(ARCH_CONFIG.keys())
     selected = sys.argv[1:] if len(sys.argv) > 1 else all_archs
 

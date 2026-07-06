@@ -28,6 +28,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent / "utils"))
+import build_env
 import cli_format as cf
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -123,7 +124,7 @@ def find_busybox(arch: str) -> Path | None:
         return prebuilt
 
     # 3. Host busybox (only if arch matches host)
-    host_arch = os.uname().machine
+    host_arch = build_env.host_machine()
     if host_arch == arch or (host_arch == "x86_64" and arch == "x86_64"):
         bb = shutil.which("busybox")
         if bb:
@@ -211,6 +212,8 @@ def create_initramfs(arch: str, force: bool = False) -> Path:
 
 
 def main() -> int:
+    if build_env.wsl_main_guard():
+        return 0
     import argparse
 
     parser = argparse.ArgumentParser(description="Create initramfs for kei")

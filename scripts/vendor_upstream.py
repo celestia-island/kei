@@ -11,6 +11,7 @@ Usage:
 from __future__ import annotations
 
 import datetime
+import os
 import shutil
 import subprocess
 import sys
@@ -103,7 +104,7 @@ def main() -> int:
                 dst = stash_dir / rel
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 if src.is_dir():
-                    shutil.copytree(src, dst)
+                    shutil.copytree(src, dst, symlinks=True)
                 else:
                     shutil.copy2(src, dst)
         cf.ok(f"Snapshot saved ({len(OUR_PATHS)} paths)")
@@ -137,7 +138,7 @@ def main() -> int:
                         target.unlink()
                 target.parent.mkdir(parents=True, exist_ok=True)
                 if stash_path.is_dir():
-                    shutil.copytree(stash_path, target)
+                    shutil.copytree(stash_path, target, symlinks=True)
                 else:
                     shutil.copy2(stash_path, target)
         cf.ok("kei code restored")

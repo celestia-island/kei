@@ -177,12 +177,12 @@ fn config_fs() {
     // --- Create demo objects ---
     // path: /sys/kernel/config/demo_set/demo_foo
     let demo_foo = demo_set_inode
-        .create("demo_foo", InodeType::Dir, mkmod!(a+rx, u+w))
+        .create("demo_foo", InodeType::Dir, mkmod!(a + rx, u + w))
         .expect("creating demo 'demo_foo' fails");
 
     // path: /sys/kernel/config/demo_set/demo_bar
     let demo_bar = demo_set_inode
-        .create("demo_bar", InodeType::Dir, mkmod!(a+rx, u+w))
+        .create("demo_bar", InodeType::Dir, mkmod!(a + rx, u + w))
         .expect("creating demo 'demo_bar' fails");
 
     // --- Test attribute access for demo_foo ---

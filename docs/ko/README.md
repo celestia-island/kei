@@ -2,7 +2,7 @@
 
 <h1 align="center">KEI</h1>
 
-<p align="center"><strong>Asterinas ARM64 포크 —— 산업용 IoT 게이트웨이용 독립 커널</strong></p>
+<p align="center"><strong>IoT 지향 OS 커널 — Asterinas 위의 RTOS 규율, Linux 생태계 접근 포함</strong></p>
 
 <div align="center">
 
@@ -28,9 +28,7 @@
 
 ## 소개
 
-kei는 [asterinas/asterinas](https://github.com/asterinas/asterinas)의 독립 포크로,
-ARM64 지원과 산업용 IoT 게이트웨이용 보드 지원 패키지(BSP)를 제공합니다.
-[aris](https://github.com/celestia-island/aris)가 사용하는 `kei-kernel.bin`을 생성합니다.
+KEI는 산업용 IoT를 위해 목적 구축된 운영체제 커널입니다. Asterinas를 가져와 RTOS 스타일의 설비 — 작고, 실시간이며, 감사 가능한 — 로 빚어내면서도, Linux 생태계로의 다리를 유지하여 기존 드라이버·도구·바이너리를 계속 손에 둡니다. Linux 배포판도 아니고 날것의 Asterinas도 아닙니다. 가장 가까운 유사품은 '우연히 Linux를 구사하는 RTOS'입니다 — 필요한 워크로드에는 실시간 결정론을, 그 외 모든 곳에는 Linux 급 소프트웨어 호환성을 제공합니다.
 
 ## 포크 모델
 
@@ -45,25 +43,6 @@ flowchart LR
 
 kei는 `ostd/src/arch/aarch64/`, `kernel/src/arch/aarch64/`,
 `bsp/`, `board/`, `configs/`, `docs/`를 독자적으로 유지 관리합니다.
-
-## aris와의 관계
-
-```mermaid
-flowchart TB
-    subgraph KEI["kei(이 리포지토리)"]
-        OSTD["ostd/ — 주기적 벤더링"]
-        KERN["kernel/ — 주기적 벤더링"]
-        BSP["bsp/ — 100% 자체 코드"]
-        BRD["board/ — 100% 자체 코드"]
-    end
-    subgraph ARIS["aris(게이트웨이 펌웨어)"]
-        CORE["packages/core/ — 수퍼바이저"]
-        BUILDER["packages/builder/ — 이미지 빌더"]
-        OVL["overlay/ — rootfs 파일"]
-        SCR["scripts/ — 빌드 + 플래시"]
-    end
-    KEI -->|kei-kernel.bin| ARIS
-```
 
 ## 빠른 시작
 

@@ -53,7 +53,7 @@ impl MemfdInode {
 
         // Reference: <https://elixir.bootlin.com/linux/v6.16.5/source/mm/memfd.c#L262-L266>
         if new_seals.contains(FileSeals::F_SEAL_EXEC)
-            && self.mode().unwrap().intersects(mkmod!(a+x))
+            && self.mode().unwrap().intersects(mkmod!(a + x))
         {
             new_seals |= FileSeals::F_SEAL_SHRINK
                 | FileSeals::F_SEAL_GROW
@@ -191,7 +191,7 @@ impl Inode for MemfdInode {
     fn set_mode(&self, mode: InodeMode) -> Result<()> {
         let seals = self.seals.lock();
         if seals.contains(FileSeals::F_SEAL_EXEC)
-            && (self.mode().unwrap() ^ mode).intersects(mkmod!(a+x))
+            && (self.mode().unwrap() ^ mode).intersects(mkmod!(a + x))
         {
             return_errno_with_message!(
                 Errno::EPERM,
@@ -241,9 +241,9 @@ impl MemfdInodeHandle for InodeHandle {
             };
 
             let mode = if executable {
-                mkmod!(a+rwx)
+                mkmod!(a + rwx)
             } else {
-                mkmod!(a+rw)
+                mkmod!(a + rw)
             };
 
             let ram_inode = RamInode::new_file_detached_in_memfd(

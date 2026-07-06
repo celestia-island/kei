@@ -2,7 +2,7 @@
 
 <h1 align="center">KEI</h1>
 
-<p align="center"><strong>Asterinas ARM64 分支 —— 面向工业物联网网关的独立内核</strong></p>
+<p align="center"><strong>面向物联网的操作系统内核 —— 基于 Asterinas 的 RTOS 级设施，兼顾 Linux 生态接入</strong></p>
 
 <div align="center">
 
@@ -28,9 +28,7 @@
 
 ## 简介
 
-KEI 是 [asterinas/asterinas](https://github.com/asterinas/asterinas) 的独立分支，
-提供 ARM64 支持以及面向工业物联网网关的板级支持包（BSP）。它生成被
-[aris](https://github.com/celestia-island/aris) 使用的 `kei-kernel.bin`。
+KEI 是为工业物联网打造的操作系统内核。它在 Asterinas 之上做成一套 RTOS 风格的设施——小、实时、可审计——同时保留通往 Linux 生态的桥梁，让既有的驱动、工具与二进制仍触手可及。它既不是 Linux 发行版，也不是原版 Asterinas。最接近的类比是「一个恰好会说 Linux 的 RTOS」：需要实时确定性的负载得到实时确定性，其余一切享有 Linux 级的软件兼容性。
 
 ## 分支模式
 
@@ -45,25 +43,6 @@ flowchart LR
 
 KEI 独立维护 `ostd/src/arch/aarch64/`、`kernel/src/arch/aarch64/`、
 `bsp/`、`board/`、`configs/` 以及 `docs/`。
-
-## 与 aris 的关系
-
-```mermaid
-flowchart TB
-    subgraph KEI["kei（本仓库）"]
-        OSTD["ostd/ — 定期引入"]
-        KERN["kernel/ — 定期引入"]
-        BSP["bsp/ — 100% 自研代码"]
-        BRD["board/ — 100% 自研代码"]
-    end
-    subgraph ARIS["aris（网关固件）"]
-        CORE["packages/core/ — 监管进程"]
-        BUILDER["packages/builder/ — 镜像构建器"]
-        OVL["overlay/ — rootfs 文件"]
-        SCR["scripts/ — 构建与烧录"]
-    end
-    KEI -->|kei-kernel.bin| ARIS
-```
 
 ## 快速开始
 

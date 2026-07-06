@@ -1,6 +1,6 @@
 [site]
 title = "KEI"
-description = "Asterinas ARM64 fork for industrial IoT gateways"
+description = "IoT-oriented OS kernel — RTOS discipline on Asterinas, with Linux ecosystem access"
 
 [languages]
 default = "en"

@@ -17,7 +17,7 @@ pub struct EnvironFileOps(TidDirOps);
 impl EnvironFileOps {
     pub fn new_inode(dir: &TidDirOps, parent: Weak<dyn Inode>) -> Arc<dyn Inode> {
         // Reference: <https://elixir.bootlin.com/linux/v6.16.5/source/fs/proc/base.c#L3324>
-        ProcFile::new(Self(dir.clone()), parent, mkmod!(u+r))
+        ProcFile::new(Self(dir.clone()), parent, mkmod!(u + r))
     }
 }
 

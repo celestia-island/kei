@@ -16,7 +16,7 @@ use bitflags::bitflags;
 use component::{ComponentInitError, init_component};
 use device::{
     VirtioDeviceType, block::device::BlockDevice, console::device::ConsoleDevice,
-    entropy::device::EntropyDevice, filesystem::device::FileSystemDevice,
+    entropy::device::EntropyDevice, filesystem::device::FileSystemDevice, gpu::device::GpuDevice,
     input::device::InputDevice, network::device::NetworkDevice, socket::device::SocketDevice,
 };
 use ostd::{error, warn};
@@ -79,6 +79,7 @@ fn virtio_component_init() -> Result<(), ComponentInitError> {
             VirtioDeviceType::Block => BlockDevice::init(transport),
             VirtioDeviceType::Console => ConsoleDevice::init(transport),
             VirtioDeviceType::Entropy => EntropyDevice::init(transport),
+            VirtioDeviceType::Gpu => GpuDevice::init(transport),
             VirtioDeviceType::Input => InputDevice::init(transport),
             VirtioDeviceType::Network => NetworkDevice::init(transport),
             VirtioDeviceType::Socket => SocketDevice::init(transport),
@@ -117,6 +118,7 @@ fn negotiate_features(transport: &mut Box<dyn VirtioTransport>) {
         VirtioDeviceType::Block => BlockDevice::negotiate_features(device_specified_features),
         VirtioDeviceType::Input => InputDevice::negotiate_features(device_specified_features),
         VirtioDeviceType::Console => ConsoleDevice::negotiate_features(device_specified_features),
+        VirtioDeviceType::Gpu => GpuDevice::negotiate_features(device_specified_features),
         VirtioDeviceType::Socket => SocketDevice::negotiate_features(device_specified_features),
         VirtioDeviceType::FileSystem => {
             FileSystemDevice::negotiate_features(device_specified_features)

@@ -18,7 +18,7 @@ pub struct CapLastCapFileOps;
 impl CapLastCapFileOps {
     pub fn new_inode(parent: Weak<dyn Inode>) -> Arc<dyn Inode> {
         // Reference: <https://elixir.bootlin.com/linux/v6.16.5/source/kernel/sysctl.c#L1701>
-        ProcFile::new(Self, parent, mkmod!(a+r))
+        ProcFile::new(Self, parent, mkmod!(a + r))
     }
 }
 

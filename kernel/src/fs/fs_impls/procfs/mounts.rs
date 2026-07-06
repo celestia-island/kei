@@ -17,7 +17,7 @@ impl MountsSymOps {
         // Reference:
         // <https://elixir.bootlin.com/linux/v6.16.5/source/fs/proc/root.c#L291>
         // <https://elixir.bootlin.com/linux/v6.16.5/source/fs/proc/generic.c#L466>
-        ProcSym::new(Self, parent, mkmod!(a+rwx))
+        ProcSym::new(Self, parent, mkmod!(a + rwx))
     }
 }
 

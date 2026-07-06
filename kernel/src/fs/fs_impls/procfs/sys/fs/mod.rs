@@ -26,7 +26,7 @@ impl FsDirOps {
         // Reference:
         // <https://elixir.bootlin.com/linux/v6.16.5/source/fs/file_table.c#L139>
         // <https://elixir.bootlin.com/linux/v6.16.5/source/fs/proc/proc_sysctl.c#L978>
-        ProcDir::new(Self, parent, mkmod!(a+rx))
+        ProcDir::new(Self, parent, mkmod!(a + rx))
     }
 
     const STATIC_ENTRIES: &'static [StaticEntry] =

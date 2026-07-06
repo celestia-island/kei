@@ -1,20 +1,123 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use alloc::{sync::Arc, vec::Vec};
+use core::sync::atomic::{AtomicBool, Ordering};
 
 use ostd::{
     Error, Result,
     boot::boot_info,
     io::IoMem,
-    mm::{CachePolicy, HasSize, VmIo},
-    sync::Mutex,
+    mm::{CachePolicy, HasPaddr, HasSize, VmIo},
+    sync::{Mutex, SpinLock},
 };
-use spin::Once;
 
 use crate::pixel::{Pixel, PixelFormat, RenderedPixel};
 
 /// Maximum number of colormap entries (standard 8-bit palette)
 pub const MAX_CMAP_SIZE: usize = 256;
+
+/// The backing storage for a framebuffer's pixel data.
+///
+/// A framebuffer is either backed by a memory-mapped I/O region (the classic
+/// EFI/VBE linear framebuffer exposed by firmware at a fixed physical address)
+/// or by an in-kernel DMA buffer that must be blitted to a host resource on
+/// every flush (the virtio-gpu 2D scanout model).
+#[derive(Debug)]
+pub enum FrameBufferBackend {
+    /// A directly-mapped linear framebuffer (EFI/VBE/Bochs VGA).
+    /// Writes are immediately visible on screen; no flush is needed.
+    Mmio(IoMem),
+    /// A guest-allocated DMA buffer that must be blitted to a host-side
+    /// scanout resource via a flush callback. Used by virtio-gpu.
+    Blit(BlitBackend),
+}
+
+/// The blit-flush callback signature. Given a dirty rect (in pixels), the
+/// driver pushes the corresponding region of the backing buffer to the host
+/// scanout resource. Registered by the virtio-gpu driver at probe time.
+pub type FlushCallback = fn(&BlitBackend, x: usize, y: usize, width: usize, height: usize);
+
+/// The in-kernel backing for a blit-based framebuffer.
+///
+/// Holds a pointer to the DMA buffer's pixel data and the driver-specific
+/// flush routine. The flush callback is a plain `fn` (not a closure) to keep
+/// the struct `Debug`-derivable and avoid lifetime/HRTB complexity; the
+/// virtio-gpu driver stores its device state in a static and the callback
+/// recovers it from there.
+///
+/// Raw pointer I/O is confined to a `#[allow(unsafe_code)]` module because
+/// accessing a DMA backing buffer is inherently unsafe (the pointer is
+/// obtained from the virtio-gpu driver and outlives this struct). The rest
+/// of this crate remains `#![deny(unsafe_code)]`.
+#[derive(Debug)]
+pub struct BlitBackend {
+    /// Virtual address of the pixel backing buffer (coherent DMA region).
+    /// The buffer is `width * height * bytes_per_pixel` bytes, tightly packed
+    /// (`line_size == width * bpp/8`).
+    pub base: usize,
+    /// Total size of the backing buffer in bytes.
+    pub size: usize,
+    /// The driver-provided flush routine. `None` means flushing is a no-op
+    /// (e.g. during early construction before the driver wires it up).
+    pub flush: Option<FlushCallback>,
+    /// Marker so the struct can derive Debug despite containing a raw pointer
+    /// equivalent (the `usize` base). No actual marker field is needed.
+    _phantom: (),
+}
+
+impl BlitBackend {
+    /// Creates a new blit backend over a coherent DMA pixel buffer.
+    ///
+    /// `base` is the kernel-virtual address of the buffer, `size` its
+    /// byte length. `flush` is called by `FrameBuffer::flush` to push
+    /// pixels to the host scanout.
+    pub fn new(base: usize, size: usize, flush: FlushCallback) -> Self {
+        Self {
+            base,
+            size,
+            flush: Some(flush),
+            _phantom: (),
+        }
+    }
+}
+
+/// Unsafe I/O helpers for [`BlitBackend`], isolated so the rest of the crate
+/// can keep `#![deny(unsafe_code)]`.
+#[allow(unsafe_code)]
+mod unsafe_io {
+    use super::BlitBackend;
+
+    impl BlitBackend {
+        /// Reads `bytes.len()` bytes at the given byte offset from the backing
+        /// buffer.
+        pub(crate) fn read_bytes(&self, offset: usize, bytes: &mut [u8]) {
+            debug_assert!(offset + bytes.len() <= self.size);
+            // SAFETY: `base` points to a valid coherent DMA buffer of `size`
+            // bytes that remains valid for the lifetime of this backend. The
+            // caller guarantees `offset + len <= size`.
+            unsafe {
+                core::ptr::copy_nonoverlapping(
+                    (self.base as *const u8).add(offset),
+                    bytes.as_mut_ptr(),
+                    bytes.len(),
+                );
+            }
+        }
+
+        /// Writes `bytes` at the given byte offset into the backing buffer.
+        pub(crate) fn write_bytes(&self, offset: usize, bytes: &[u8]) {
+            debug_assert!(offset + bytes.len() <= self.size);
+            // SAFETY: as above; the caller ensures bounds.
+            unsafe {
+                core::ptr::copy_nonoverlapping(
+                    bytes.as_ptr(),
+                    (self.base as *mut u8).add(offset),
+                    bytes.len(),
+                );
+            }
+        }
+    }
+}
 
 /// The framebuffer used for text or graphical output.
 ///
@@ -26,7 +129,7 @@ pub const MAX_CMAP_SIZE: usize = 256;
 /// or unspecified behavior during rendering.
 #[derive(Debug)]
 pub struct FrameBuffer {
-    io_mem: IoMem,
+    backend: FrameBufferBackend,
     width: usize,
     height: usize,
     line_size: usize,
@@ -57,8 +160,47 @@ struct FbCmap {
     entries: Vec<ColorMapEntry>,
 }
 
-pub static FRAMEBUFFER: Once<Arc<FrameBuffer>> = Once::new();
+/// The process-wide framebuffer singleton.
+///
+/// This holds an `Option<Arc<FrameBuffer>>` rather than a `Once` so that a
+/// late-arriving display device (e.g. virtio-gpu, which is probed during the
+/// Kthread component stage, long after early boot) can publish a framebuffer
+/// via [`publish`]. The x86 EFI/VBE path populates it during the Bootstrap
+/// component stage via [`init`].
+static FRAMEBUFFER: SpinLock<Option<Arc<FrameBuffer>>> = SpinLock::new(None);
 
+/// Guards against a second `publish` overwriting an already-installed framebuffer.
+static PUBLISHED: AtomicBool = AtomicBool::new(false);
+
+/// Returns a clone of the process-wide framebuffer, if one has been installed.
+///
+/// Replaces the old `FRAMEBUFFER.get()` (which returned `Option<&Arc<_>>`).
+/// Callers that previously wrote `FRAMEBUFFER.get().clone()` should call this
+/// directly.
+pub fn get() -> Option<Arc<FrameBuffer>> {
+    FRAMEBUFFER.lock().clone()
+}
+
+/// Installs a framebuffer published by a late-arriving display device.
+///
+/// Called by the virtio-gpu driver once it has attached a 2D scanout resource.
+/// The first caller wins; subsequent calls are logged and ignored to match the
+/// old `Once::call_once` semantics. The framebuffer is cleared before install.
+pub fn publish(fb: Arc<FrameBuffer>) {
+    if PUBLISHED
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        ostd::warn!("FrameBuffer already published, ignoring late publish");
+        return;
+    }
+    fb.clear();
+    *FRAMEBUFFER.lock() = Some(fb);
+}
+
+/// The boot-time init path: reads the bootloader-provided framebuffer arg and
+/// installs a `Mmio`-backed framebuffer. No-op on architectures where the
+/// bootloader provides no framebuffer (e.g. aarch64 before virtio-gpu).
 pub(crate) fn init() {
     let Some(framebuffer_arg) = boot_info().framebuffer_arg else {
         ostd::warn!("Framebuffer not found");
@@ -86,44 +228,82 @@ pub(crate) fn init() {
         }
     };
 
-    let framebuffer = {
-        // FIXME: There can be more than `width` pixels per framebuffer line due to alignment
-        // purposes. We need to collect this information during the boot phase.
-        let line_size = framebuffer_arg
-            .width
-            .checked_mul(pixel_format.nbytes())
-            .unwrap();
-        let fb_size = framebuffer_arg.height.checked_mul(line_size).unwrap();
-
-        let fb_base = framebuffer_arg.address;
-        // Use write-combining for framebuffer to enable faster write operations.
-        // Write-combining allows the CPU to combine multiple writes into fewer bus transactions,
-        // which is ideal for framebuffer access patterns (sequential writes).
-        let io_mem = IoMem::acquire_with_cache_policy(
-            fb_base..fb_base.checked_add(fb_size).unwrap(),
-            CachePolicy::WriteCombining,
-        )
+    let line_size = framebuffer_arg
+        .width
+        .checked_mul(pixel_format.nbytes())
         .unwrap();
+    let fb_size = framebuffer_arg.height.checked_mul(line_size).unwrap();
 
-        let default_cmap = FbCmap {
-            entries: Vec::new(),
-        };
+    let fb_base = framebuffer_arg.address;
+    // Use write-combining for framebuffer to enable faster write operations.
+    // Write-combining allows the CPU to combine multiple writes into fewer bus transactions,
+    // which is ideal for framebuffer access patterns (sequential writes).
+    let io_mem = IoMem::acquire_with_cache_policy(
+        fb_base..fb_base.checked_add(fb_size).unwrap(),
+        CachePolicy::WriteCombining,
+    )
+    .unwrap();
 
-        FrameBuffer {
-            io_mem,
-            width: framebuffer_arg.width,
-            height: framebuffer_arg.height,
-            line_size,
-            pixel_format,
-            cmap: Mutex::new(default_cmap),
-        }
-    };
+    let framebuffer = FrameBuffer::new_mmio(
+        io_mem,
+        framebuffer_arg.width,
+        framebuffer_arg.height,
+        line_size,
+        pixel_format,
+    );
 
-    framebuffer.clear();
-    FRAMEBUFFER.call_once(|| Arc::new(framebuffer));
+    publish(Arc::new(framebuffer));
 }
 
 impl FrameBuffer {
+    /// Creates an Mmio-backed framebuffer (the classic EFI/VBE linear FB).
+    ///
+    /// `line_size` is the byte stride between rows (may exceed
+    /// `width * bpp/8` for aligned framebuffers).
+    pub fn new_mmio(
+        io_mem: IoMem,
+        width: usize,
+        height: usize,
+        line_size: usize,
+        pixel_format: PixelFormat,
+    ) -> Self {
+        Self {
+            backend: FrameBufferBackend::Mmio(io_mem),
+            width,
+            height,
+            line_size,
+            pixel_format,
+            cmap: Mutex::new(FbCmap {
+                entries: Vec::new(),
+            }),
+        }
+    }
+
+    /// Creates a blit-backed framebuffer over a guest DMA pixel buffer.
+    ///
+    /// Used by virtio-gpu: the driver allocates a coherent DMA region for the
+    /// pixel data and provides a flush callback that issues
+    /// `TRANSFER_TO_HOST_2D` to push dirty regions to the host scanout.
+    /// `line_size` is the byte stride (typically `width * 4` for XRGB8888).
+    pub fn new_blit(
+        backing: BlitBackend,
+        width: usize,
+        height: usize,
+        line_size: usize,
+        pixel_format: PixelFormat,
+    ) -> Self {
+        Self {
+            backend: FrameBufferBackend::Blit(backing),
+            width,
+            height,
+            line_size,
+            pixel_format,
+            cmap: Mutex::new(FbCmap {
+                entries: Vec::new(),
+            }),
+        }
+    }
+
     /// Returns the width of the framebuffer in pixels.
     pub fn width(&self) -> usize {
         self.width
@@ -134,14 +314,48 @@ impl FrameBuffer {
         self.height
     }
 
-    /// Returns the line size of the framebuffer in bytes.
+    /// Returns the line size (byte stride) of the framebuffer.
     pub fn line_size(&self) -> usize {
         self.line_size
     }
 
-    /// Returns a reference to the `IoMem` instance of the framebuffer.
-    pub fn io_mem(&self) -> &IoMem {
-        &self.io_mem
+    /// Returns the backing buffer size in bytes.
+    ///
+    /// For Mmio backends this is the IoMem size; for Blit backends the DMA
+    /// buffer size.
+    pub fn buffer_size(&self) -> usize {
+        match &self.backend {
+            FrameBufferBackend::Mmio(io) => io.size(),
+            FrameBufferBackend::Blit(b) => b.size,
+        }
+    }
+
+    /// Returns the physical base address of the backing store, if any.
+    ///
+    /// For Mmio backends this is the IoMem physical address (used for the
+    /// `/dev/fb0` `smem_start` fix-screen-info field). Blit backends return
+    /// `None` — the pixel data lives in kernel RAM, not a fixed MMIO hole.
+    pub fn physical_address(&self) -> Option<usize> {
+        match &self.backend {
+            FrameBufferBackend::Mmio(io) => Some(io.paddr()),
+            FrameBufferBackend::Blit(_) => None,
+        }
+    }
+
+    /// Returns a reference to the `IoMem` of an Mmio-backed framebuffer.
+    ///
+    /// Returns `None` for Blit-backed framebuffers. Used by `/dev/fb0` mmap.
+    pub fn io_mem(&self) -> Option<&IoMem> {
+        match &self.backend {
+            FrameBufferBackend::Mmio(io) => Some(io),
+            FrameBufferBackend::Blit(_) => None,
+        }
+    }
+
+    /// Returns whether this framebuffer is backed by a directly-mapped MMIO
+    /// region (vs. a blit-based DMA buffer).
+    pub fn is_mmio(&self) -> bool {
+        matches!(self.backend, FrameBufferBackend::Mmio(_))
     }
 
     /// Returns the pixel format of the framebuffer.
@@ -164,18 +378,60 @@ impl FrameBuffer {
 
     /// Writes a pixel at the specified position.
     pub fn write_pixel_at(&self, offset: PixelOffset, pixel: RenderedPixel) -> Result<()> {
-        self.io_mem.write_bytes(offset.as_usize(), pixel.as_slice())
+        self.write_bytes_at(offset.as_usize(), pixel.as_slice())
     }
 
-    /// Writes raw bytes at the specified offset.
+    /// Writes raw bytes at the specified byte offset.
+    ///
+    /// For Mmio backends writes go directly to the linear framebuffer; for
+    /// Blit backends writes go to the guest DMA buffer (a subsequent
+    /// [`flush`] pushes them to the host scanout).
     pub fn write_bytes_at(&self, offset: usize, bytes: &[u8]) -> Result<()> {
-        self.io_mem.write_bytes(offset, bytes)
+        match &self.backend {
+            FrameBufferBackend::Mmio(io) => io.write_bytes(offset, bytes),
+            FrameBufferBackend::Blit(b) => {
+                b.write_bytes(offset, bytes);
+                Ok(())
+            }
+        }
+    }
+
+    /// Reads raw bytes at the specified byte offset.
+    pub fn read_bytes_at(&self, offset: usize, buf: &mut [u8]) -> Result<()> {
+        match &self.backend {
+            FrameBufferBackend::Mmio(io) => io.read_bytes(offset, buf),
+            FrameBufferBackend::Blit(b) => {
+                b.read_bytes(offset, buf);
+                Ok(())
+            }
+        }
+    }
+
+    /// Flushes a dirty region to the host scanout, for Blit-backed framebuffers.
+    ///
+    /// No-op for Mmio-backed framebuffers (writes are already on screen).
+    /// Callers should invoke this after modifying pixels via
+    /// [`write_bytes_at`] / [`write_pixel_at`] to make the changes visible.
+    pub fn flush(&self, x: usize, y: usize, width: usize, height: usize) {
+        if let FrameBufferBackend::Blit(b) = &self.backend {
+            if let Some(flush) = b.flush {
+                flush(b, x, y, width, height);
+            }
+        }
+    }
+
+    /// Flushes the entire framebuffer.
+    pub fn flush_all(&self) {
+        self.flush(0, 0, self.width, self.height);
     }
 
     /// Clears the framebuffer with default color (black).
     pub fn clear(&self) {
-        let frame = alloc::vec![0u8; self.io_mem().size()];
+        let size = self.buffer_size();
+        // Allocate once; for large framebuffers this is a single memset.
+        let frame = alloc::vec![0u8; size];
         self.write_bytes_at(0, &frame).unwrap();
+        self.flush_all();
     }
 
     /// Sets color map entries starting from the given index.

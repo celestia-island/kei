@@ -200,7 +200,10 @@ fn match_and_call(
         let str = str.trim_end_matches('/').to_owned();
 
         let Some(mut info) = components.remove(&str) else {
-            debug!("Component path '{}' not found in Components.toml, skipping", str);
+            debug!(
+                "Component path '{}' not found in Components.toml, skipping",
+                str
+            );
             continue;
         };
         info.function.replace(registry.function);

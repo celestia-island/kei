@@ -2,7 +2,7 @@
 
 <h1 align="center">KEI</h1>
 
-<p align="center"><strong>Форк ARM64 от Asterinas — независимое ядро для промышленных IoT-шлюзов</strong></p>
+<p align="center"><strong>IoT-ориентированное ядро ОС — RTOS-дисциплина на Asterinas с доступом к экосистеме Linux</strong></p>
 
 <div align="center">
 
@@ -28,9 +28,14 @@
 
 ## Введение
 
-KEI — это независимый форк [asterinas/asterinas](https://github.com/asterinas/asterinas)
-с поддержкой ARM64 и Board Support Packages для промышленных IoT-шлюзов. Он
-предоставляет `kei-kernel.bin`, используемый проектом [aris](https://github.com/celestia-island/aris).
+KEI — это ядро операционной системы, специально созданное для промышленного IoT.
+Оно берёт [Asterinas](https://github.com/asterinas/asterinas) и превращает её в
+средство в стиле RTOS — компактное, работающее в реальном времени, аудируемое —
+но сохраняет мост в экосистему Linux, чтобы существующие драйверы, инструменты и
+бинарники оставались в пределах досягаемости. Это ни дистрибутив Linux, ни штатная
+Asterinas. Ближайший аналог — RTOS, которая случаем говорит на Linux: детерминизм
+реального времени для нагрузки, которой он нужен, и программная совместимость
+уровня Linux для всего остального.
 
 ## Модель форка
 
@@ -46,25 +51,6 @@ flowchart LR
 
 KEI самостоятельно поддерживает `ostd/src/arch/aarch64/`, `kernel/src/arch/aarch64/`,
 `bsp/`, `board/`, `configs/` и `docs/`.
-
-## Связь с aris
-
-```mermaid
-flowchart TB
-    subgraph KEI["kei (этот репозиторий)"]
-        OSTD["ostd/ — периодическое вендоринг"]
-        KERN["kernel/ — периодическое вендоринг"]
-        BSP["bsp/ — 100% наш код"]
-        BRD["board/ — 100% наш код"]
-    end
-    subgraph ARIS["aris (прошивка шлюза)"]
-        CORE["packages/core/ — супервизор"]
-        BUILDER["packages/builder/ — сборщик образов"]
-        OVL["overlay/ — файлы rootfs"]
-        SCR["scripts/ — сборка + прошивка"]
-    end
-    KEI -->|kei-kernel.bin| ARIS
-```
 
 ## Быстрый старт
 

@@ -20,6 +20,7 @@ except ModuleNotFoundError:
     import tomli as tomllib
 
 sys.path.insert(0, str(Path(__file__).parent / "utils"))
+import build_env
 import cli_format as cf
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -86,6 +87,8 @@ def load_board_config(board: str) -> dict:
 
 
 def main() -> int:
+    if build_env.wsl_main_guard():
+        return 0
     import argparse
 
     parser = argparse.ArgumentParser(description="Build kei kernel")
@@ -131,12 +134,12 @@ def main() -> int:
 
     cf.blank()
     cf.step("[3/5] Building kernel via cargo osdk")
-    build_env = find_nightly_cargo()
+    nightly_env = find_nightly_cargo()
     scheme = ARCH_TO_SCHEME.get(arch)
     cmd = ["cargo", "osdk", "build", "--target-arch", arch, "--profile", profile]
     if scheme:
         cmd.extend(["--scheme", scheme])
-    result = subprocess.run(cmd, cwd=PROJECT_ROOT, env=build_env)
+    result = subprocess.run(cmd, cwd=PROJECT_ROOT, env=nightly_env)
     if result.returncode != 0:
         cf.fail("Kernel build failed")
         cf.info("  TIP: verify ostd/src/arch/aarch64/ exists")

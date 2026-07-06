@@ -2,7 +2,7 @@
 
 <h1 align="center">KEI</h1>
 
-<p align="center"><strong>Asterinas ARM64 フォーク —— 産業用 IoT ゲートウェイ向けの独立カーネル</strong></p>
+<p align="center"><strong>IoT 向け OS カーネル — Asterinas 上の RTOS 規律、Linux エコシステムへのアクセス付き</strong></p>
 
 <div align="center">
 
@@ -28,9 +28,7 @@
 
 ## はじめに
 
-KEI は [asterinas/asterinas](https://github.com/asterinas/asterinas) の独立フォークであり、
-ARM64 サポートと産業用 IoT ゲートウェイ向けのボードサポートパッケージ（BSP）を提供します。
-[aris](https://github.com/celestia-island/aris) が使用する `kei-kernel.bin` を生成します。
+KEI は産業用 IoT のために専用構築された OS カーネルです。[asterinas/asterinas](https://github.com/asterinas/asterinas) を取り込み、それを RTOS 風の施設へと形作ります —— 小さく、リアルタイムで、監査可能 —— 一方で Linux エコシステムへの橋を保ち、既存のドライバ、ツール、バイナリが手の届く範囲に残るようにします。Linux ディストリビューションでも、ストックの Asterinas でもありません。最も近い類似物は、たまたま Linux を話す RTOS です。必要なワークロードにはリアルタイムの決定性を、それ以外のすべてには Linux グレードのソフトウェア互換性を提供します。
 
 ## フォークモデル
 
@@ -45,25 +43,6 @@ flowchart LR
 
 KEI は `ostd/src/arch/aarch64/`、`kernel/src/arch/aarch64/`、
 `bsp/`、`board/`、`configs/`、`docs/` を独自に保守しています。
-
-## aris との関係
-
-```mermaid
-flowchart TB
-    subgraph KEI["kei（本リポジトリ）"]
-        OSTD["ostd/ — 定期的にベンダー取り込み"]
-        KERN["kernel/ — 定期的にベンダー取り込み"]
-        BSP["bsp/ — 100% 自作コード"]
-        BRD["board/ — 100% 自作コード"]
-    end
-    subgraph ARIS["aris（ゲートウェイファームウェア）"]
-        CORE["packages/core/ — スーパバイザ"]
-        BUILDER["packages/builder/ — イメージビルダ"]
-        OVL["overlay/ — rootfs ファイル"]
-        SCR["scripts/ — ビルド + 書き込み"]
-    end
-    KEI -->|kei-kernel.bin| ARIS
-```
 
 ## クイックスタート
 

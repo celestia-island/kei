@@ -38,7 +38,7 @@ impl NsDirOps {
             Self { dir: dir.clone() },
             parent,
             // Reference: <https://elixir.bootlin.com/linux/v6.18/source/fs/proc/base.c#L3321>
-            mkmod!(u+r, a+x),
+            mkmod!(u + r, a + x),
         )
     }
 }
@@ -267,7 +267,7 @@ impl<T: NsCommonOps> NsSymOps<T> {
             },
             parent,
             // Reference: <https://elixir.bootlin.com/linux/v6.18/source/fs/proc/namespaces.c#L105>
-            mkmod!(a+rwx),
+            mkmod!(a + rwx),
         )
     }
 }

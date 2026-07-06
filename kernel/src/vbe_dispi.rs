@@ -41,13 +41,17 @@ const BOCHS_VGA_PCI_ADDR: u32 = 0x80000000; // PCI config address port base
 
 #[cfg(target_arch = "x86_64")]
 unsafe fn port_write16(port: u16, val: u16) {
-    unsafe { core::arch::asm!("out dx, ax", in("dx") port, in("ax") val); }
+    unsafe {
+        core::arch::asm!("out dx, ax", in("dx") port, in("ax") val);
+    }
 }
 
 #[cfg(target_arch = "x86_64")]
 unsafe fn port_read16(port: u16) -> u16 {
     let val: u16;
-    unsafe { core::arch::asm!("in ax, dx", out("ax") val, in("dx") port); }
+    unsafe {
+        core::arch::asm!("in ax, dx", out("ax") val, in("dx") port);
+    }
     val
 }
 
@@ -93,7 +97,11 @@ unsafe fn find_vga_framebuffer() -> Option<usize> {
 ///
 /// This programs the QEMU Bochs VGA to a graphics mode with a linear
 /// framebuffer, without needing INT 10h (BIOS calls).
-pub fn set_graphics_mode(width: u16, height: u16, bpp: u16) -> Option<(usize, usize, usize, usize)> {
+pub fn set_graphics_mode(
+    width: u16,
+    height: u16,
+    bpp: u16,
+) -> Option<(usize, usize, usize, usize)> {
     unsafe {
         // Check VBE DISPI ID
         port_write16(VBE_DISPI_IOPORT_INDEX, VBE_DISPI_INDEX_ID);

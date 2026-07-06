@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use aster_framebuffer::{
-    framebuffer::{ColorMapEntry, FRAMEBUFFER, FrameBuffer, MAX_CMAP_SIZE},
+    framebuffer::{self, ColorMapEntry, FrameBuffer, MAX_CMAP_SIZE},
     pixel::PixelFormat,
 };
 use device_id::{DeviceId, MajorId, MinorId};
-use ostd::mm::{HasPaddr, HasSize, VmIo};
+use ostd::mm::{HasPaddr, HasSize, VmIo, VmReader, VmWriter};
 
 use super::{Device, DeviceType, DevtmpfsInodeMeta, registry::char};
 use crate::{
@@ -207,14 +207,15 @@ mod ioctl_defs {
     // Reference: <https://elixir.bootlin.com/linux/v6.17/source/include/uapi/linux/fb.h#L13-L38>
 
     pub(super) type GetVarScreenInfo = ioc!(FBIOGET_VSCREENINFO, 0x4600, OutData<FbVarScreenInfo>);
-    pub(super) type PutVarScreenInfo = ioc!(FBIOPUT_VSCREENINFO, 0x4601, InOutData<FbVarScreenInfo>);
+    pub(super) type PutVarScreenInfo =
+        ioc!(FBIOPUT_VSCREENINFO, 0x4601, InOutData<FbVarScreenInfo>);
     pub(super) type GetFixScreenInfo = ioc!(FBIOGET_FSCREENINFO, 0x4602, OutData<FbFixScreenInfo>);
-    pub(super) type GetColorMap      = ioc!(FBIOGETCMAP,         0x4604, InData<FbCmapUser>);
-    pub(super) type PutColorMap      = ioc!(FBIOPUTCMAP,         0x4605, InData<FbCmapUser>);
+    pub(super) type GetColorMap = ioc!(FBIOGETCMAP, 0x4604, InData<FbCmapUser>);
+    pub(super) type PutColorMap = ioc!(FBIOPUTCMAP, 0x4605, InData<FbCmapUser>);
 
     // `NoData` is used below because they're not supported by efifb.
-    pub(super) type PanDisplay       = ioc!(FBIOPAN_DISPLAY,     0x4606, NoData);
-    pub(super) type Blank            = ioc!(FBIOBLANK,           0x4611, NoData);
+    pub(super) type PanDisplay = ioc!(FBIOPAN_DISPLAY, 0x4606, NoData);
+    pub(super) type Blank = ioc!(FBIOBLANK, 0x4611, NoData);
 }
 
 impl Device for Fb {
@@ -236,13 +237,12 @@ impl Device for Fb {
     }
 
     fn open(&self) -> Result<Box<dyn PerOpenFileOps>> {
-        let Some(framebuffer) = FRAMEBUFFER.get() else {
+        let Some(framebuffer) = framebuffer::get() else {
             return Err(Error::with_message(
                 Errno::ENODEV,
                 "the framebuffer device is not present",
             ));
         };
-        let framebuffer = framebuffer.clone();
         Ok(Box::new(FbHandle { framebuffer }))
     }
 }
@@ -304,9 +304,16 @@ impl FbHandle {
 
     /// Collects the information in the [`FbFixScreenInfo`].
     fn collect_fix_screen_info(&self) -> FbFixScreenInfo {
+        // For Mmio-backed framebuffers expose the physical address/size so
+        // userspace can mmap; for Blit-backed (virtio-gpu) framebuffers
+        // smem_start is 0 and mmap falls back to the ioctl read/write path.
+        let (smem_start, smem_len) = match self.framebuffer.io_mem() {
+            Some(io) => (io.paddr() as u64, io.size() as u32),
+            None => (0, self.framebuffer.buffer_size() as u32),
+        };
         FbFixScreenInfo {
-            smem_start: self.framebuffer.io_mem().paddr() as u64,
-            smem_len: self.framebuffer.io_mem().size() as u32,
+            smem_start,
+            smem_len,
             line_length: self.framebuffer.line_size() as u32,
             ..Default::default()
         }
@@ -415,8 +422,7 @@ impl FileOps for FbHandle {
             return Ok(0);
         }
 
-        let io_mem = self.framebuffer.io_mem();
-        let size = io_mem.size();
+        let size = self.framebuffer.buffer_size();
         if offset >= size {
             return Ok(0);
         }
@@ -426,23 +432,44 @@ impl FileOps for FbHandle {
             return Ok(0);
         }
 
-        let mut new_writer = writer.clone_exclusive();
-        new_writer.limit(len);
-
-        let result = io_mem.read_fallible(offset, &mut new_writer);
-        let copied = match result {
-            Ok(copied) => copied,
-            Err((err, copied)) => {
-                if copied > 0 {
-                    copied
-                } else {
-                    return Err(err.into());
+        // For Mmio-backed framebuffers, use the fallible VmIo path so a
+        // faulting userspace page still yields a partial copy. For Blit
+        // backends, fall back to a single non-fallible read into a stack
+        // buffer then copy to userspace.
+        if let Some(io_mem) = self.framebuffer.io_mem() {
+            let mut new_writer = writer.clone_exclusive();
+            new_writer.limit(len);
+            let result = io_mem.read_fallible(offset, &mut new_writer);
+            let copied = match result {
+                Ok(copied) => copied,
+                Err((err, copied)) => {
+                    if copied > 0 {
+                        copied
+                    } else {
+                        return Err(err.into());
+                    }
                 }
+            };
+            writer.skip(copied);
+            Ok(copied)
+        } else {
+            let mut buf = vec![0u8; len];
+            self.framebuffer.read_bytes_at(offset, &mut buf)?;
+            // Copy kernel buffer to userspace writer. VmWriter does not
+            // implement VmIo, so we fall back to a direct cursor-based copy.
+            // A faulting userspace page would abort here rather than yield a
+            // partial copy, which is acceptable for the kernel-RAM-backed
+            // blit framebuffer (no MMIO fault semantics to honor).
+            let avail = writer.avail().min(buf.len());
+            // SAFETY: writer.cursor() points to a valid userspace buffer of
+            // at least `avail` bytes for the duration of this call.
+            #[allow(unsafe_code)]
+            unsafe {
+                core::ptr::copy_nonoverlapping(buf.as_ptr(), writer.cursor(), avail);
             }
-        };
-
-        writer.skip(copied);
-        Ok(copied)
+            writer.skip(avail);
+            Ok(avail)
+        }
     }
 
     fn write_at(
@@ -455,8 +482,7 @@ impl FileOps for FbHandle {
             return Ok(0);
         }
 
-        let io_mem = self.framebuffer.io_mem();
-        let size = io_mem.size();
+        let size = self.framebuffer.buffer_size();
         if offset >= size {
             return_errno_with_message!(
                 Errno::ENOSPC,
@@ -469,23 +495,42 @@ impl FileOps for FbHandle {
             return Ok(0);
         }
 
-        let mut new_reader = reader.clone();
-        new_reader.limit(len);
-
-        let result = io_mem.write_fallible(offset, &mut new_reader);
-        let copied = match result {
-            Ok(copied) => copied,
-            Err((err, copied)) => {
-                if copied > 0 {
-                    copied
-                } else {
-                    return Err(err.into());
+        // For Mmio-backed framebuffers, use the fallible VmIo path. For Blit
+        // backends, copy via a stack buffer then push to the backing DMA
+        // region (and flush so the host scanout updates).
+        if let Some(io_mem) = self.framebuffer.io_mem() {
+            let mut new_reader = reader.clone();
+            new_reader.limit(len);
+            let result = io_mem.write_fallible(offset, &mut new_reader);
+            let copied = match result {
+                Ok(copied) => copied,
+                Err((err, copied)) => {
+                    if copied > 0 {
+                        copied
+                    } else {
+                        return Err(err.into());
+                    }
                 }
+            };
+            reader.skip(copied);
+            Ok(copied)
+        } else {
+            let mut buf = vec![0u8; len];
+            let remain = reader.remain().min(buf.len());
+            // Copy userspace reader into kernel buffer. VmReader does not
+            // implement VmIo, so we use a direct cursor-based copy.
+            // SAFETY: reader.cursor() points to a valid userspace buffer of
+            // at least `remain` bytes for the duration of this call.
+            #[allow(unsafe_code)]
+            unsafe {
+                core::ptr::copy_nonoverlapping(reader.cursor(), buf.as_mut_ptr(), remain);
             }
-        };
-
-        reader.skip(copied);
-        Ok(copied)
+            reader.skip(remain);
+            self.framebuffer.write_bytes_at(offset, &buf[..remain])?;
+            // Push the dirty region to the host scanout for blit-backed FBs.
+            self.framebuffer.flush_all();
+            Ok(remain)
+        }
     }
 }
 
@@ -499,7 +544,17 @@ impl PerOpenFileOps for FbHandle {
     }
 
     fn mappable(&self) -> Result<Mappable> {
-        let iomem = self.framebuffer.io_mem();
+        // Only Mmio-backed framebuffers support direct mmap into userspace.
+        // Blit-backed (virtio-gpu) framebuffers must be accessed via
+        // read/write ioctls; mmap returns ENODEV until a Blit Mappable
+        // variant is added (future work, requires mediating writes through
+        // the flush callback).
+        let Some(iomem) = self.framebuffer.io_mem() else {
+            return_errno_with_message!(
+                Errno::ENODEV,
+                "mmap is not supported for blit-backed framebuffers"
+            );
+        };
         Ok(Mappable::IoMem(iomem.clone()))
     }
 
@@ -550,9 +605,19 @@ impl PerOpenFileOps for FbHandle {
 }
 
 pub(super) fn init_in_first_kthread() {
-    if FRAMEBUFFER.get().is_none() {
+    if framebuffer::get().is_none() {
         return;
     }
 
+    char::register(Arc::new(Fb)).expect("failed to register framebuffer char device");
+}
+
+/// Registers the framebuffer char device after a late-arriving display device
+/// (e.g. virtio-gpu) has published a framebuffer.
+///
+/// Called by the virtio-gpu driver once `framebuffer::publish` has installed
+/// a `FrameBuffer`. Idempotent: the char device registration is a no-op if
+/// already registered (the `Fb` device is stateless).
+pub(super) fn register_late() {
     char::register(Arc::new(Fb)).expect("failed to register framebuffer char device");
 }

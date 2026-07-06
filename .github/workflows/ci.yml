@@ -20,16 +20,20 @@ jobs:
       - name: Show vendored upstream versions
         run: |
           echo "=== Upstream asterinas ==="
-          cat .vendored-upstream 2>/dev/null || echo "  (not vendored yet — run 'just vendor')"
+          cat .vendored-upstream 2>/dev/null || echo "  (not vendored yet)"
           echo ""
           echo "=== ARM64 source ==="
-          cat .vendored-arm64 2>/dev/null || echo "  (not pulled yet — run 'just pull-arm64')"
+          cat .vendored-arm64 2>/dev/null || echo "  (not pulled yet)"
 
   fmt:
     runs-on: ubuntu-latest
+    env:
+      # Override rust-toolchain.toml so fmt uses stable (nightly's rustfmt
+      # is not always available for pinned toolchains).
+      RUSTUP_TOOLCHAIN: stable
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
+      - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
       - run: cargo fmt --all -- --check

@@ -2,7 +2,7 @@
 
 <h1 align="center">KEI</h1>
 
-<p align="center" dir="rtl"><strong>تفرّع ARM64 من Asterinas — نواة مستقلة لبوابات IoT الصناعية</strong></p>
+<p align="center" dir="rtl"><strong>نواة نظام تشغيل موجّهة لِإنترنت الأشياء (IoT) — انضباط RTOS فوق Asterinas، مع الوصول إلى منظومة لينكس</strong></p>
 
 <div align="center">
 
@@ -28,9 +28,12 @@
 
 ## مقدمة
 
-KEI هو تفرّع مستقل عن [asterinas/asterinas](https://github.com/asterinas/asterinas)
-يدعم ARM64 وحزم دعم اللوحات (BSP) لبوابات IoT الصناعية. يوفّر
-`kei-kernel.bin` الذي يستهلكه [aris](https://github.com/celestia-island/aris).
+KEI نواة نظام تشغيل مبنية خصيصاً لِإنترنت الأشياء الصناعي. تأخذ Asterinas وتصوغها
+على هيئة بنية بأسلوب RTOS — صغيرة وزمنية حقيقية وقابلة للتدقيق — لكنها تحتفظ
+بجسر إلى منظومة لينكس بحيث تبقى التعريفات والأدوات والملفات الثنائية القائمة في
+المتناول. ليست توزيعة لينكس ولا Asterinas كما هي. أقرب نظيرٍ لها RTOSٌ يحدث أن
+يتحدّث لينكس: حتمية زمنية حقيقية للأحمال التي تحتاجها، وتوافقٌ برمجي بمستوى
+لينكس لكل ما سوى ذلك.
 
 ## نموذج التفرّع
 
@@ -46,25 +49,6 @@ flowchart LR
 
 يحافظ kei بشكل مستقل على `ostd/src/arch/aarch64/` و `kernel/src/arch/aarch64/`
 و `bsp/` و `board/` و `configs/` و `docs/`.
-
-## العلاقة مع aris
-
-```mermaid
-flowchart TB
-    subgraph KEI["kei (هذا المستودع)"]
-        OSTD["ostd/ — مُدمج دورياً"]
-        KERN["kernel/ — مُدمج دورياً"]
-        BSP["bsp/ — 100% كودنا"]
-        BRD["board/ — 100% كودنا"]
-    end
-    subgraph ARIS["aris (برنامج البوابة الثابت)"]
-        CORE["packages/core/ — المشرف"]
-        BUILDER["packages/builder/ — منشئ الصور"]
-        OVL["overlay/ — ملفات rootfs"]
-        SCR["scripts/ — البناء + الوميض"]
-    end
-    KEI -->|kei-kernel.bin| ARIS
-```
 
 ## البداية السريعة
 

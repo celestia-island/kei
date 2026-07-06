@@ -66,6 +66,16 @@ unwinding = { version = "=0.2.8", default-features = false, features = ["fde-sta
 tock-registers = "0.9"
 arm-gic = "0.8.1"
 
+# cargo-osdk builds aarch64 with the -softfloat target variant
+# (aarch64-unknown-none-softfloat), so the same deps must be declared for
+# that triple or they won't be resolved (causing "unresolved import fdt /
+# arm_gic / unwinding" errors during aarch64 kernel builds).
+[target.aarch64-unknown-none-softfloat.dependencies]
+fdt = { version = "0.1.5", features = ["pretty-printing"] }
+unwinding = { version = "=0.2.8", default-features = false, features = ["fde-static", "hide-trace", "panic", "personality", "unwinder"] }
+tock-registers = "0.9"
+arm-gic = "0.8.1"
+
 [target.riscv64imac-unknown-none-elf.dependencies]
 riscv = { version = "0.15.0", features = ["s-mode"] }
 sbi-rt = "0.0.3"

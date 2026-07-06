@@ -25,7 +25,7 @@ impl PtySlaveInode {
         let devpts = fs.upgrade().unwrap();
         let metadata = Metadata::new_device(
             device.index() as u64 + FIRST_SLAVE_INO,
-            mkmod!(u+rw, g+w),
+            mkmod!(u + rw, g + w),
             BLOCK_SIZE,
             device.as_ref(),
             devpts.sb().container_dev_id,

@@ -97,8 +97,7 @@ pub(super) fn serial0_device() -> Option<&'static Arc<Tty<SerialDriver>>> {
 
 pub(super) fn init_in_first_process() -> Result<()> {
     let devices = aster_console::all_devices();
-    for (name, _) in &devices {
-    }
+    for (name, _) in &devices {}
 
     // Initialize the `ttyS0` device if the serial console is available.
 

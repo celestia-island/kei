@@ -465,7 +465,16 @@ pub(crate) unsafe fn init() -> Segment<MetaPageMeta> {
         }
         let max = regions
             .iter()
-            .filter(|r| r.typ().is_physical())
+            .filter(|r| {
+                if cfg!(target_arch = "aarch64") {
+                    // On aarch64 the Kernel region's base address can be
+                    // corrupted by the VMA offset, producing a huge
+                    // max_paddr. Only use Usable regions.
+                    r.typ() == crate::boot::memory_region::MemoryRegionType::Usable
+                } else {
+                    r.typ().is_physical()
+                }
+            })
             .map(|r| r.base() + r.len())
             .max();
         crate::early_println!("[meta] max_paddr = {:?}", max);

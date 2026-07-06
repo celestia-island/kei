@@ -29,8 +29,6 @@ SECTIONS
     } :text
 
     . = ALIGN(4096);
-
-    /* Exception table for fallible MMIO (atomic_cmpxchg_fallible, etc.) */
     __ex_table_start = .;
     __ex_table = .;
     .ex_table : {
@@ -48,8 +46,6 @@ SECTIONS
     } :rodata
 
     . = ALIGN(4096);
-
-    /* Init array */
     __sinit_array = .;
     .init_array : {
         *(.init_array .init_array.*)
@@ -64,7 +60,6 @@ SECTIONS
         *(.data .data.*)
     } :data
 
-    /* CPU-local data section (per-CPU storage) */
     . = ALIGN(4096);
     __cpu_local_start = .;
     .cpu_local : {

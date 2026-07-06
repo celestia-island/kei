@@ -40,6 +40,15 @@ pub struct MmioBus {
 impl MmioBus {
     /// Registers a MMIO driver to the MMIO bus.
     pub fn register_driver(&mut self, driver: Arc<dyn MmioDriver>) {
+        // On aarch64, MMIO reads fault in boot page table. Skip probe loop.
+        #[cfg(target_arch = "aarch64")]
+        {
+            ostd::early_println!("[virtio-mmio] register_driver: skipping probe loop (aarch64)");
+            self.drivers.push(driver);
+            return;
+        }
+        #[cfg(not(target_arch = "aarch64"))]
+        {
         debug!("Register driver: {:#x?}", driver);
         let length = self.common_devices.len();
         for _ in (0..length).rev() {
@@ -61,6 +70,7 @@ impl MmioBus {
             self.common_devices.push_back(device);
         }
         self.drivers.push(driver);
+        }
     }
 
     pub(super) fn register_mmio_device(&mut self, mut mmio_device: MmioCommonDevice) {

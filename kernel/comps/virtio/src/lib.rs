@@ -59,13 +59,19 @@ fn virtio_component_init_inner() -> Result<(), ComponentInitError> {
     transport::init();
     ostd::early_println!("[virtio] transport::init done");
 
+    ostd::early_println!("[virtio] entropy::init...");
     device::entropy::init();
+    ostd::early_println!("[virtio] network::init...");
     device::network::init();
+    ostd::early_println!("[virtio] socket::init...");
     device::socket::init();
     ostd::early_println!("[virtio] device sub-inits done");
-
+    let mut dev_idx = 0;
     while let Some(mut transport) = pop_device_transport() {
+        dev_idx += 1;
+        ostd::early_println!("[virtio] processing device #{}", dev_idx);
         // Reset device
+        ostd::early_println!("[virtio] dev #{}: resetting...", dev_idx);
         transport
             .write_device_status(DeviceStatus::empty())
             .unwrap();

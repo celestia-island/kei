@@ -1,6 +1,6 @@
-<p align="center"><img src="./docs/logo.webp" alt="KEI" width="240" /></p>
+<p align="center"><img src="./docs/logo.webp" alt="KEI-KERNEL" width="240" /></p>
 
-<h1 align="center">KEI</h1>
+<h1 align="center">KEI-KERNEL</h1>
 
 <p align="center"><strong>An IoT-oriented OS kernel — RTOS discipline on Asterinas, with Linux ecosystem access</strong></p>
 
@@ -8,7 +8,7 @@
 
 [![License: SySL](https://img.shields.io/badge/license-SySL%201.0-blue)](./LICENSE)
 [![License: MPL-2.0](https://img.shields.io/badge/vendored-MPL--2.0-blue)](./LICENSE-MPL)
-[![Checks](https://img.shields.io/github/actions/workflow/status/celestia-island/kei/ci.yml)](https://github.com/celestia-island/kei/actions/workflows/ci.yml)
+[![Checks](https://img.shields.io/github/actions/workflow/status/celestia-island/kei-kernel/ci.yml)](https://github.com/celestia-island/kei-kernel/actions/workflows/ci.yml)
 
 </div>
 
@@ -53,10 +53,12 @@ flowchart LR
 | Footprint | Large | Medium | Small, auditable |
 | Linux ecosystem | — (is Linux) | Limited | ✅ bridged |
 
-KEI is a sibling of [aris](https://github.com/celestia-island/aris) in the
-Celestia ecosystem — aris is the operator-facing Linux distribution, kei is the
-device-side IoT kernel. They are independent projects and do not depend on each
-other.
+KEI-KERNEL is a sibling of [aris](https://github.com/celestia-island/aris)
+and [kei](https://github.com/celestia-island/kei) in the Celestia ecosystem.
+KEI-KERNEL is the device-side IoT kernel (this repo); [kei](https://github.com/celestia-island/kei)
+is the shared `#![no_std]` bridge library (manifest schema, wire protocol,
+protocol codecs) consumed by both embassy sensor nodes and the evernight
+gateway. KEI-KERNEL depends on kei for manifest/codec types.
 
 ## Fork Model
 

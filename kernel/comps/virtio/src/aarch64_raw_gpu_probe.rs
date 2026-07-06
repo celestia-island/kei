@@ -37,14 +37,19 @@ fn mmio_w(base: usize, off: usize, v: u32) {
     unsafe { write_volatile((base + off) as *mut u32, v) }
 }
 
-// Static backing for virtqueue
-static mut VQ_MEM: [u8; 16384] = [0; 16384];
+// Static backing for virtqueue. MUST be page-aligned for legacy virtio-mmio.
+#[repr(C, align(4096))]
+struct PageAligned<const N: usize>([u8; N]);
+
+static mut VQ_MEM: PageAligned<16384> = PageAligned([0; 16384]);
 static mut VQ_OFF: usize = 0;
 fn vq_alloc(n: usize) -> usize {
     unsafe {
         let a = (VQ_OFF + 4095) & !4095;
         VQ_OFF = a + n;
-        (core::ptr::addr_of!(VQ_MEM) as usize + a) - LINEAR_BASE
+        // We're running on identity mapping (no page table switch).
+        // The vaddr IS the paddr for kernel code/data.
+        core::ptr::addr_of!(VQ_MEM) as *const u8 as usize + a
     }
 }
 
@@ -52,6 +57,8 @@ fn vq_alloc(n: usize) -> usize {
 static mut CMD_MEM: [u8; 4096] = [0; 4096];
 static mut CMD_OFF: usize = 0;
 fn cmd_alloc(n: usize) -> usize {
+    // Returns the VIRTUAL address of the buffer (for kernel access).
+    // On identity mapping, vaddr == paddr.
     unsafe {
         let o = CMD_OFF;
         CMD_OFF += n;
@@ -112,6 +119,10 @@ fn init_gpu(mmio_base: usize) {
     let base_pa = vq_alloc(total);
     let base_va = LINEAR_BASE + base_pa;
 
+    ostd::early_println!("[virtio-gpu] vq base_pa={:#x} pfn={}", base_pa, base_pa / 4096);
+    ostd::early_println!("[virtio-gpu] desc_sz={} avail_sz={} used_sz={} used_off={}", desc_sz, avail_sz, used_sz, used_off);
+    ostd::early_println!("[virtio-gpu] total_alloc={}", total);
+
     mmio_w(mmio_base, REG_QUEUE_NUM, qsize as u32);
     mmio_w(mmio_base, REG_QUEUE_ALIGN, 4096u32);
     mmio_w(mmio_base, REG_QUEUE_PFN, (base_pa / 4096) as u32);
@@ -123,25 +134,26 @@ fn init_gpu(mmio_base: usize) {
 
     // cmd hdr: type=0x0100, fence=1
     let cmd_va = cmd_alloc(24);
+    let resp_va = cmd_alloc(80); // resp_hdr(24) + display info(56)
+    ostd::early_println!("[virtio-gpu] cmd_va={:#x} resp_va={:#x}", cmd_va, resp_va);
     unsafe {
         let p = cmd_va as *mut u8;
         write_volatile(p.add(0) as *mut u32, 0x0100); // GET_DISPLAY_INFO
         write_volatile(p.add(8) as *mut u64, 1); // fence_id
     }
-    let resp_va = cmd_alloc(80); // resp_hdr(24) + display info(56)
 
     // Setup descriptors
     unsafe {
         let d = base_va;
         // desc[0]: cmd (device-readable)
-        write_volatile(d as *mut u64, (cmd_va - LINEAR_BASE) as u64);
+        write_volatile(d as *mut u64, cmd_va as u64); // identity-mapped: vaddr=paddr
         write_volatile((d + 8) as *mut u32, 24);
         write_volatile((d + 12) as *mut u16, 0); // flags
         write_volatile((d + 14) as *mut u16, 1); // next
 
         // desc[1]: resp (device-writable)
         let d1 = d + 16;
-        write_volatile(d1 as *mut u64, (resp_va - LINEAR_BASE) as u64);
+        write_volatile(d1 as *mut u64, resp_va as u64);
         write_volatile((d1 + 8) as *mut u32, 80);
         write_volatile((d1 + 12) as *mut u16, 1); // WRITE flag
         write_volatile((d1 + 14) as *mut u16, 0); // no next

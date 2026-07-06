@@ -207,14 +207,15 @@ mod ioctl_defs {
     // Reference: <https://elixir.bootlin.com/linux/v6.17/source/include/uapi/linux/fb.h#L13-L38>
 
     pub(super) type GetVarScreenInfo = ioc!(FBIOGET_VSCREENINFO, 0x4600, OutData<FbVarScreenInfo>);
-    pub(super) type PutVarScreenInfo = ioc!(FBIOPUT_VSCREENINFO, 0x4601, InOutData<FbVarScreenInfo>);
+    pub(super) type PutVarScreenInfo =
+        ioc!(FBIOPUT_VSCREENINFO, 0x4601, InOutData<FbVarScreenInfo>);
     pub(super) type GetFixScreenInfo = ioc!(FBIOGET_FSCREENINFO, 0x4602, OutData<FbFixScreenInfo>);
-    pub(super) type GetColorMap      = ioc!(FBIOGETCMAP,         0x4604, InData<FbCmapUser>);
-    pub(super) type PutColorMap      = ioc!(FBIOPUTCMAP,         0x4605, InData<FbCmapUser>);
+    pub(super) type GetColorMap = ioc!(FBIOGETCMAP, 0x4604, InData<FbCmapUser>);
+    pub(super) type PutColorMap = ioc!(FBIOPUTCMAP, 0x4605, InData<FbCmapUser>);
 
     // `NoData` is used below because they're not supported by efifb.
-    pub(super) type PanDisplay       = ioc!(FBIOPAN_DISPLAY,     0x4606, NoData);
-    pub(super) type Blank            = ioc!(FBIOBLANK,           0x4611, NoData);
+    pub(super) type PanDisplay = ioc!(FBIOPAN_DISPLAY, 0x4606, NoData);
+    pub(super) type Blank = ioc!(FBIOBLANK, 0x4611, NoData);
 }
 
 impl Device for Fb {

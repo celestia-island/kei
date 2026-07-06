@@ -98,7 +98,6 @@ impl InodeHandle {
         // Fallback: use the inode directly. This happens when the char device
         // lookup failed during open (device not registered or ID mismatch).
         #[cfg(target_arch = "aarch64")]
-
         let inode = self.path.inode();
         let is_offset_aware = inode.type_().is_seekable();
         (inode.as_ref(), is_offset_aware)

@@ -16,9 +16,8 @@ use bitflags::bitflags;
 use component::{ComponentInitError, init_component};
 use device::{
     VirtioDeviceType, block::device::BlockDevice, console::device::ConsoleDevice,
-    entropy::device::EntropyDevice, filesystem::device::FileSystemDevice,
-    gpu::device::GpuDevice, input::device::InputDevice, network::device::NetworkDevice,
-    socket::device::SocketDevice,
+    entropy::device::EntropyDevice, filesystem::device::FileSystemDevice, gpu::device::GpuDevice,
+    input::device::InputDevice, network::device::NetworkDevice, socket::device::SocketDevice,
 };
 use ostd::{error, warn};
 use spin::Once;

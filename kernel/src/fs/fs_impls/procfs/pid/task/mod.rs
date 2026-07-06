@@ -52,7 +52,7 @@ pub struct TaskDirOps(Arc<PidEntry>);
 impl TaskDirOps {
     pub fn new_inode(dir: &PidDirOps, parent: Weak<dyn Inode>) -> Arc<dyn Inode> {
         // Reference: <https://elixir.bootlin.com/linux/v6.16.5/source/fs/proc/base.c#L3316>
-        ProcDir::new(Self(dir.pid_entry().clone()), parent, mkmod!(a+rx))
+        ProcDir::new(Self(dir.pid_entry().clone()), parent, mkmod!(a + rx))
     }
 
     fn process(&self) -> Option<Arc<Process>> {
@@ -76,7 +76,7 @@ impl TidDirOps {
             Self { pid_entry },
             parent,
             // Reference: <https://elixir.bootlin.com/linux/v6.16.5/source/fs/proc/base.c#L3796>
-            mkmod!(a+rx),
+            mkmod!(a + rx),
         )
     }
 

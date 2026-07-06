@@ -31,7 +31,7 @@ impl Ptmx {
         let inner = Inner(fs.clone());
         let metadata = Metadata::new_device(
             PTMX_INO,
-            mkmod!(a+rw),
+            mkmod!(a + rw),
             BLOCK_SIZE,
             &inner,
             sb.container_dev_id,

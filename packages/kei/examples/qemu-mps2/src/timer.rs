@@ -48,9 +48,9 @@ pub fn elapsed(before: u32, after: u32) -> u32 {
 #[inline]
 pub fn ticks_to_ns(ticks: u32) -> u32 {
     ticks / 25 // 25 ticks per µs, so /25 = µs... no:
-    // 25 MHz → 25 ticks/µs → 1 tick = 40 ns
-    // ticks * 40 = ns, but that overflows u32 at ~107M ticks (~4.3s)
-    // Use: ticks / 25 = µs, then * 1000 for ns
+               // 25 MHz → 25 ticks/µs → 1 tick = 40 ns
+               // ticks * 40 = ns, but that overflows u32 at ~107M ticks (~4.3s)
+               // Use: ticks / 25 = µs, then * 1000 for ns
 }
 
 /// Convert timer ticks to microseconds (at 25 MHz).

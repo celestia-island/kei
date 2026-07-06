@@ -19,12 +19,12 @@
 
 extern crate alloc;
 
-pub mod gpio;
 pub mod ethernet;
+pub mod gpio;
+pub mod i2c;
+pub mod spi;
 pub mod uart;
 pub mod watchdog;
-pub mod spi;
-pub mod i2c;
 
 /// Initialize all RK3566 platform devices.
 ///

@@ -154,7 +154,11 @@ fn main() -> ! {
     uart::write_str(" us\r\n");
 
     // 3. CRC16 only (64 bytes)
-    let crc_input: [u8; 64] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63];
+    let crc_input: [u8; 64] = [
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+        25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
+        48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63,
+    ];
     let t0 = timer::now();
     for _ in 0..iterations {
         let c = kei::wire::frame::crc16_modbus(core::hint::black_box(&crc_input));
@@ -169,7 +173,11 @@ fn main() -> ! {
     uart::write_str(" us\r\n");
 
     // 4. ScaleTransform: Linear
-    let linear = ScaleTransform::Linear { factor: 0.1, offset: -50.0, unit: None };
+    let linear = ScaleTransform::Linear {
+        factor: 0.1,
+        offset: -50.0,
+        unit: None,
+    };
     let t0 = timer::now();
     for _ in 0..iterations {
         let v = linear.apply(core::hint::black_box(1532.0_f64));
@@ -184,7 +192,10 @@ fn main() -> ! {
     uart::write_str(" us\r\n");
 
     // 5. ScaleTransform: Polynomial (degree 2)
-    let poly = ScaleTransform::Polynomial { coeffs: alloc::vec![1.0, 2.0, 3.0], unit: None };
+    let poly = ScaleTransform::Polynomial {
+        coeffs: alloc::vec![1.0, 2.0, 3.0],
+        unit: None,
+    };
     let t0 = timer::now();
     for _ in 0..iterations {
         let v = poly.apply(core::hint::black_box(500.0_f64));

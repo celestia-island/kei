@@ -195,7 +195,7 @@ impl PerOpenFileOps for PtyMaster {
                     let fs_path = FsPath::try_from(slave_name.as_str())?;
 
                     let inode_handle = {
-                        let open_args = OpenArgs::from_modes(AccessMode::O_RDWR, mkmod!(u+rw));
+                        let open_args = OpenArgs::from_modes(AccessMode::O_RDWR, mkmod!(u + rw));
                         path_resolver.lookup(&fs_path)?.open(open_args)?
                     };
                     Arc::new(inode_handle)

@@ -42,7 +42,7 @@ pub struct MountStatsFileOps(TidDirOps);
 
 impl MountStatsFileOps {
     pub fn new_inode(dir: &TidDirOps, parent: Weak<dyn Inode>) -> Arc<dyn Inode> {
-        ProcFile::new(Self(dir.clone()), parent, mkmod!(a+r))
+        ProcFile::new(Self(dir.clone()), parent, mkmod!(a + r))
     }
 
     /// Reads mount statistics for `/proc/[pid]/mountstats`.

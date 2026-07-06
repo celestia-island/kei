@@ -21,8 +21,14 @@ pub fn init() -> Vec<EthernetController> {
     // TODO: probe device tree, find gmac nodes,
     //       reset PHY, configure RGMII, enable clocks
     alloc::vec![
-        EthernetController { index: 0, phy_addr: 0 },
-        EthernetController { index: 1, phy_addr: 1 },
+        EthernetController {
+            index: 0,
+            phy_addr: 0
+        },
+        EthernetController {
+            index: 1,
+            phy_addr: 1
+        },
     ]
 }
 

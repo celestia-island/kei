@@ -37,15 +37,15 @@ mod ioctl_defs {
 
     // Reference: <https://elixir.bootlin.com/linux/v6.18/source/include/uapi/linux/input.h>
 
-    pub(super) type GetDriverVer  = ioc!(EVIOCGVERSION, b'E', 0x01, OutData<i32>);
-    pub(super) type GetInputId    = ioc!(EVIOCGID,      b'E', 0x02, OutData<InputId>);
-    pub(super) type GetDeviceName = ioc!(EVIOCGNAME,    b'E', 0x06, OutData<[u8]>);
-    pub(super) type GetDevicePhys = ioc!(EVIOCGPHYS,    b'E', 0x07, OutData<[u8]>);
-    pub(super) type GetDeviceUniq = ioc!(EVIOCGUNIQ,    b'E', 0x08, OutData<[u8]>);
-    pub(super) type GetKeyState   = ioc!(EVIOCGKEY,     b'E', 0x18, OutData<[u8]>);
-    pub(super) type GetLedState   = ioc!(EVIOCGLED,     b'E', 0x19, OutData<[u8]>);
-    pub(super) type GetSwState    = ioc!(EVIOCGSW,      b'E', 0x1B, OutData<[u8]>);
-    pub(super) type SetClockId    = ioc!(EVIOCSCLOCKID, b'E', 0xA0, InData<i32>);
+    pub(super) type GetDriverVer = ioc!(EVIOCGVERSION, b'E', 0x01, OutData<i32>);
+    pub(super) type GetInputId = ioc!(EVIOCGID, b'E', 0x02, OutData<InputId>);
+    pub(super) type GetDeviceName = ioc!(EVIOCGNAME, b'E', 0x06, OutData<[u8]>);
+    pub(super) type GetDevicePhys = ioc!(EVIOCGPHYS, b'E', 0x07, OutData<[u8]>);
+    pub(super) type GetDeviceUniq = ioc!(EVIOCGUNIQ, b'E', 0x08, OutData<[u8]>);
+    pub(super) type GetKeyState = ioc!(EVIOCGKEY, b'E', 0x18, OutData<[u8]>);
+    pub(super) type GetLedState = ioc!(EVIOCGLED, b'E', 0x19, OutData<[u8]>);
+    pub(super) type GetSwState = ioc!(EVIOCGSW, b'E', 0x1B, OutData<[u8]>);
+    pub(super) type SetClockId = ioc!(EVIOCSCLOCKID, b'E', 0xA0, InData<i32>);
 
     /// The `EVIOCGBIT` ioctl enum.
     pub(super) type GetEventBits = IoctlEnum<b'E', 0x20, 0x1F, OutData<[u8]>>;

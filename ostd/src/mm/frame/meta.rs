@@ -455,7 +455,13 @@ pub(crate) unsafe fn init() -> Segment<MetaPageMeta> {
         let regions = &crate::boot::EARLY_INFO.get().unwrap().memory_regions;
         crate::early_println!("[meta] memory regions count: {}", regions.len());
         for (i, r) in regions.iter().enumerate() {
-            crate::early_println!("[meta] region {}: base={:#x} len={:#x} typ={:?}", i, r.base(), r.len(), r.typ());
+            crate::early_println!(
+                "[meta] region {}: base={:#x} len={:#x} typ={:?}",
+                i,
+                r.base(),
+                r.len(),
+                r.typ()
+            );
         }
         let max = regions
             .iter()

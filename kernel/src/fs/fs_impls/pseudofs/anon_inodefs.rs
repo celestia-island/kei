@@ -68,7 +68,7 @@ impl AnonInodeFs {
         SHARED_INODE.call_once(|| {
             let shared_inode = Self::singleton().alloc_inode(
                 PseudoInodeType::AnonInode,
-                mkmod!(u+rw),
+                mkmod!(u + rw),
                 Uid::new_root(),
                 Gid::new_root(),
             );

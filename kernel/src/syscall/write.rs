@@ -24,7 +24,9 @@ pub fn sys_write(
             let mut reader = user_space.reader(user_buf_ptr, user_buf_len)?;
             let mut buf = vec![0u8; user_buf_len];
             use ostd::mm::VmWriter;
-            let len = reader.read_fallible(&mut VmWriter::from(buf.as_mut_slice())).map_err(|e| Error::from(e))?;
+            let len = reader
+                .read_fallible(&mut VmWriter::from(buf.as_mut_slice()))
+                .map_err(|e| Error::from(e))?;
             for &byte in &buf[..len] {
                 if byte == b'\n' {
                     ostd::arch::serial::pl011_send_byte(b'\r');

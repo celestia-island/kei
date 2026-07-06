@@ -76,7 +76,7 @@ pub(in crate::fs) struct NsInode<T: NsCommonOps> {
 
 impl<T: NsCommonOps> NsInode<T> {
     fn new(ino: u64, uid: Uid, gid: Gid, ns: Arc<T>, fs: Weak<NaivePseudoFs>) -> Self {
-        let mode = mkmod!(a+r);
+        let mode = mkmod!(a + r);
         let fs = fs.upgrade().unwrap();
         let common = PseudoInode::new(
             ino,
@@ -439,31 +439,31 @@ mod ioctl_defs {
     // Legacy encoding ioctl commands
 
     /// Returns a file descriptor of the owner user namespace.
-    pub type GetUserNs       = ioc!(NS_GET_USERNS,     0xb701, NoData);
+    pub type GetUserNs = ioc!(NS_GET_USERNS, 0xb701, NoData);
     /// Returns a file descriptor of the parent namespace.
-    pub type GetParent       = ioc!(NS_GET_PARENT,     0xb702, NoData);
+    pub type GetParent = ioc!(NS_GET_PARENT, 0xb702, NoData);
     /// Gets the type of the namespace (e.g., user, pid, mnt, etc.).
-    pub type GetType         = ioc!(NS_GET_NSTYPE,     0xb703, NoData);
+    pub type GetType = ioc!(NS_GET_NSTYPE, 0xb703, NoData);
     /// Gets the user ID of the namespace owner.
     ///
     /// Only user namespaces support this operation.
-    pub type GetOwnerUid     = ioc!(NS_GET_OWNER_UID,  0xb704, OutData<u32>);
+    pub type GetOwnerUid = ioc!(NS_GET_OWNER_UID, 0xb704, OutData<u32>);
 
     // Modern encoding ioctl commands
 
     /// Gets the ID of the mount namespace.
     #[expect(unused)]
-    pub type GetMntNsId      = ioc!(NS_GET_MNTNS_ID,        0xb7, 0x5, OutData<u64>);
+    pub type GetMntNsId = ioc!(NS_GET_MNTNS_ID, 0xb7, 0x5, OutData<u64>);
     /// Translates a thread ID from the target PID namespace into the caller's PID namespace.
     #[expect(unused)]
-    pub type GetTidFromPidNs = ioc!(NS_GET_PID_FROM_PIDNS,  0xb7, 0x6, InData<i32>);
+    pub type GetTidFromPidNs = ioc!(NS_GET_PID_FROM_PIDNS, 0xb7, 0x6, InData<i32>);
     /// Translates a process ID from the target PID namespace into the caller's PID namespace.
     #[expect(unused)]
     pub type GetPidFromPidNs = ioc!(NS_GET_TGID_FROM_PIDNS, 0xb7, 0x7, InData<i32>);
     /// Translates a thread ID from the caller's PID namespace into the target PID namespace.
     #[expect(unused)]
-    pub type GetTidInPidNs   = ioc!(NS_GET_PID_IN_PIDNS,    0xb7, 0x8, InData<i32>);
+    pub type GetTidInPidNs = ioc!(NS_GET_PID_IN_PIDNS, 0xb7, 0x8, InData<i32>);
     /// Translates a process ID from the caller's PID namespace into the target PID namespace.
     #[expect(unused)]
-    pub type GetPidInPidNs   = ioc!(NS_GET_TGID_IN_PIDNS,   0xb7, 0x9, InData<i32>);
+    pub type GetPidInPidNs = ioc!(NS_GET_TGID_IN_PIDNS, 0xb7, 0x9, InData<i32>);
 }

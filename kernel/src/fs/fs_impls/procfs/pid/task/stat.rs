@@ -110,7 +110,7 @@ impl StatFileOps {
         parent: Weak<dyn Inode>,
     ) -> Arc<dyn Inode> {
         // Reference: <https://elixir.bootlin.com/linux/v6.16.5/source/fs/proc/base.c#L3341>
-        ProcFile::new(Self { dir, mode }, parent, mkmod!(a+r))
+        ProcFile::new(Self { dir, mode }, parent, mkmod!(a + r))
     }
 }
 

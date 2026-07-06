@@ -222,10 +222,7 @@ pub(super) fn on_first_process_startup(ctx: &Context) {
 ///   dup(fd);  // stderr
 fn open_initial_console(ctx: &Context) {
     use crate::fs::{
-        file::{
-            AccessMode, FileLike, InodeHandle, StatusFlags,
-            file_table::FdFlags,
-        },
+        file::{AccessMode, FileLike, InodeHandle, StatusFlags, file_table::FdFlags},
         vfs::path::FsPath,
     };
 
@@ -236,9 +233,9 @@ fn open_initial_console(ctx: &Context) {
     let resolver_guard = resolver.read();
 
     let path = console_paths.iter().find_map(|p| {
-        FsPath::try_from(*p).ok().and_then(|fp| {
-            resolver_guard.lookup(&fp).ok().map(|path| (*p, path))
-        })
+        FsPath::try_from(*p)
+            .ok()
+            .and_then(|fp| resolver_guard.lookup(&fp).ok().map(|path| (*p, path)))
     });
     drop(resolver_guard);
 
@@ -246,10 +243,11 @@ fn open_initial_console(ctx: &Context) {
         return;
     };
 
-    let file: Arc<dyn FileLike> = match InodeHandle::new(path, AccessMode::O_RDWR, StatusFlags::empty()) {
-        Ok(f) => Arc::new(f),
-        Err(_) => return,
-    };
+    let file: Arc<dyn FileLike> =
+        match InodeHandle::new(path, AccessMode::O_RDWR, StatusFlags::empty()) {
+            Ok(f) => Arc::new(f),
+            Err(_) => return,
+        };
 
     let file_table = ctx.thread_local.borrow_file_table();
     let mut ft = file_table.unwrap().write();

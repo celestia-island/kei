@@ -18,7 +18,7 @@ pub struct PidMaxFileOps;
 impl PidMaxFileOps {
     pub fn new_inode(parent: Weak<dyn Inode>) -> Arc<dyn Inode> {
         // Reference: <https://elixir.bootlin.com/linux/v6.16.5/source/kernel/pid.c#L721>
-        ProcFile::new(Self, parent, mkmod!(a+r, u+w))
+        ProcFile::new(Self, parent, mkmod!(a + r, u + w))
     }
 }
 

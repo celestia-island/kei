@@ -40,7 +40,7 @@ pub fn init_in_first_process(ctx: &Context) {
     // Initialize the file table for the first process.
     let tty_path = FsPath::try_from("/dev/console").unwrap();
     let stdin = {
-        let open_args = OpenArgs::from_modes(AccessMode::O_RDONLY, mkmod!(u+r));
+        let open_args = OpenArgs::from_modes(AccessMode::O_RDONLY, mkmod!(u + r));
         path_resolver
             .lookup(&tty_path)
             .unwrap()
@@ -48,7 +48,7 @@ pub fn init_in_first_process(ctx: &Context) {
             .unwrap()
     };
     let stdout = {
-        let open_args = OpenArgs::from_modes(AccessMode::O_WRONLY, mkmod!(u+w));
+        let open_args = OpenArgs::from_modes(AccessMode::O_WRONLY, mkmod!(u + w));
         path_resolver
             .lookup(&tty_path)
             .unwrap()
@@ -56,7 +56,7 @@ pub fn init_in_first_process(ctx: &Context) {
             .unwrap()
     };
     let stderr = {
-        let open_args = OpenArgs::from_modes(AccessMode::O_WRONLY, mkmod!(u+w));
+        let open_args = OpenArgs::from_modes(AccessMode::O_WRONLY, mkmod!(u + w));
         path_resolver
             .lookup(&tty_path)
             .unwrap()

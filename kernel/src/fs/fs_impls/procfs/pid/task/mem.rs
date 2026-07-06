@@ -23,7 +23,7 @@ pub struct MemFileOps(TidDirOps);
 impl MemFileOps {
     pub fn new_inode(dir: &TidDirOps, parent: Weak<dyn Inode>) -> Arc<dyn Inode> {
         // Reference: <https://elixir.bootlin.com/linux/v6.16.5/source/fs/proc/base.c#L3347>
-        ProcFile::new(Self(dir.clone()), parent, mkmod!(u+rw))
+        ProcFile::new(Self(dir.clone()), parent, mkmod!(u + rw))
     }
 }
 

@@ -56,7 +56,7 @@ impl Device for TtyDevice {
 
     fn devtmpfs_meta(&self) -> Option<DevtmpfsInodeMeta<'_>> {
         // Reference: <https://elixir.bootlin.com/linux/v6.18/source/drivers/tty/tty_io.c#L3511>.
-        Some(DevtmpfsInodeMeta::with_mode("tty", mkmod!(a+rw)))
+        Some(DevtmpfsInodeMeta::with_mode("tty", mkmod!(a + rw)))
     }
 
     fn open(&self) -> Result<Box<dyn PerOpenFileOps>> {

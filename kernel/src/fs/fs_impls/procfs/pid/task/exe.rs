@@ -19,7 +19,7 @@ impl ExeSymOps {
         // Reference:
         // <https://elixir.bootlin.com/linux/v6.16.5/source/fs/proc/base.c#L3350>
         // <https://elixir.bootlin.com/linux/v6.16.5/source/fs/proc/base.c#L174-L175>
-        ProcSym::new(Self(dir.clone()), parent, mkmod!(a+rwx))
+        ProcSym::new(Self(dir.clone()), parent, mkmod!(a + rwx))
     }
 }
 

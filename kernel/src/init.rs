@@ -64,48 +64,27 @@ pub(super) fn main() {
     ostd::early_println!("Kernel init done.");
 
     // Initialize the per-CPU states for BSP.
-    #[cfg(not(target_arch = "aarch64"))]
+    // This must run even on aarch64 single-CPU: sched/process/fs/time need
+    // their per-CPU runqueues and state initialized on the BSP before any
+    // thread can be spawned. Without this, bsp_idle_loop cannot spawn
+    // first_kthread. (aarch64 count_processors()==1, so APs never boot and
+    // ap_init is never called — BSP is the only CPU.)
+    ostd::early_println!("Initializing per-CPU states for BSP...");
     init_on_each_cpu();
-    #[cfg(target_arch = "aarch64")]
-    ostd::early_println!("Per-CPU init skipped (aarch64).");
     ostd::early_println!("Per-CPU init done.");
 
-    // On aarch64: skip SMP + scheduler init, go directly to device init.
-    #[cfg(target_arch = "aarch64")]
-    {
-        // Directly call virtio + framebuffer init, skip everything else.
-        ostd::early_println!("[init] calling virtio_component_init_pub...");
-        let _ = aster_virtio::virtio_component_init_pub();
-        ostd::early_println!("[init] virtio init done");
-        ostd::early_println!("[init] calling framebuffer::init_component_fn...");
-        let _ = aster_framebuffer::init_component_fn();
-        ostd::early_println!("[init] framebuffer init done");
+    // On aarch64, virtio/framebuffer/fb_console init is deferred to
+    // first_kthread (see init_in_first_kthread) rather than done here in the
+    // boot context. Reason: virtio init calls allocate_major() →
+    // ostd::sync::Mutex::lock(), and ostd's Mutex uses a WaitQueue whose
+    // scheduling hooks are only valid inside a task context. Calling it from
+    // the boot context (before bsp_idle_loop) panics. x86_64 does its device
+    // init in first_kthread via the component system; we mirror that.
 
-        // Now that the virtio-gpu display is live, initialize the on-screen
-        // framebuffer console and render the boot log so it is visible in the
-        // QEMU window (not just on the serial port).
-        crate::fb_console::init();
-        crate::fb_console::println("== kei kernel boot complete ==");
-        crate::fb_console::println("virtio-gpu 2D display online");
-        crate::fb_console::println("aarch64 (cortex-a72) @ QEMU virt");
-
-        // Loop forever to keep the kernel running. Periodically re-flush so
-        // the display stays live if the host compositor damages it.
-        ostd::early_println!("[init] entering idle loop...");
-        let mut tick: u64 = 0;
-        loop {
-            core::hint::spin_loop();
-            tick = tick.wrapping_add(1);
-            // Every ~few million iterations, redraw to keep the display fresh.
-            if tick % 8_000_000 == 0 {
-                crate::fb_console::print_str("");
-            }
-        }
-    }
-
-    // Enable APs.
-    #[cfg(not(target_arch = "aarch64"))]
-    {
+    // Enable APs. On aarch64 single-CPU, register_ap_entry stores the entry
+    // fn but count_processors()==1 means APs never boot, so ap_init never
+    // runs. Spawning bsp_idle_loop is required on all architectures: it is
+    // the only path that creates the first non-idle kernel thread.
     ostd::boot::smp::register_ap_entry(ap_init);
     ostd::early_println!("Spawning BSP idle thread...");
 
@@ -115,7 +94,6 @@ pub(super) fn main() {
         .sched_policy(SchedPolicy::Idle)
         .spawn();
     ostd::early_println!("BSP idle thread spawned.");
-    }
 }
 
 fn init() {
@@ -131,36 +109,50 @@ fn init() {
     crate::driver::init();
     #[cfg(target_arch = "aarch64")]
     ostd::early_println!("[init] driver::init (SKIPPED on aarch64)");
+    // driver::init and net::init use the inventory-based component system,
+    // which panics on aarch64 (boot page table doesn't activate the cursor-
+    // built kernel page table, so component init functions that touch MMIO
+    // fault). They are bypassed on aarch64: devices are initialized manually
+    // in `init_in_first_kthread` (virtio + framebuffer) instead.
+    ostd::early_println!("[init] driver::init");
+    #[cfg(not(target_arch = "aarch64"))]
+    crate::driver::init();
+    #[cfg(target_arch = "aarch64")]
+    ostd::early_println!("[init] driver::init (SKIPPED on aarch64)");
     ostd::early_println!("[init] time::init");
+    // time::init → system_time::init → aster_time::read_start_time() depends
+    // on aster_time::START_TIME, which is only initialized by the time
+    // component's #[init_component] (RTC driver + TSC calibration). The
+    // component system is bypassed on aarch64 and there is no RTC hardware,
+    // so START_TIME stays uninitialized and read_start_time().unwrap() panics.
+    // Keep time skipped on aarch64 until RTC/component init is wired up.
     #[cfg(not(target_arch = "aarch64"))]
     crate::time::init();
     #[cfg(target_arch = "aarch64")]
-    ostd::early_println!("[init] time::init (SKIPPED on aarch64)");
+    ostd::early_println!("[init] time::init (SKIPPED on aarch64 — needs RTC)");
     ostd::early_println!("[init] net::init");
     #[cfg(not(target_arch = "aarch64"))]
     crate::net::init();
     #[cfg(target_arch = "aarch64")]
     ostd::early_println!("[init] net::init (SKIPPED on aarch64)");
     ostd::early_println!("[init] sched::init");
-    #[cfg(not(target_arch = "aarch64"))]
     crate::sched::init();
-    #[cfg(target_arch = "aarch64")]
-    ostd::early_println!("[init] sched::init (SKIPPED on aarch64)");
     ostd::early_println!("[init] process::init");
-    #[cfg(not(target_arch = "aarch64"))]
     crate::process::init();
-    #[cfg(target_arch = "aarch64")]
-    ostd::early_println!("[init] process::init (SKIPPED on aarch64)");
     ostd::early_println!("[init] fs::init");
+    // fs::init → vfs::init → fs_apis::init → registry::init calls
+    // sysfs::systree_singleton().root().add_child(...).unwrap(), which depends
+    // on the sysfs/aster-systree singleton being initialized. That singleton
+    // is set up by fs_impls::init (also part of fs::init), but the order
+    // within vfs::init calls fs_apis::init first. On aarch64 the lazy creation
+    // of the systree fails (needs deeper investigation). Skip fs::init here;
+    // rootfs is mounted later in first_kthread via fs::init_in_first_kthread.
     #[cfg(not(target_arch = "aarch64"))]
     crate::fs::init();
     #[cfg(target_arch = "aarch64")]
-    ostd::early_println!("[init] fs::init (SKIPPED on aarch64)");
+    ostd::early_println!("[init] fs::init (SKIPPED on aarch64 — systree init)");
     ostd::early_println!("[init] security::init");
-    #[cfg(not(target_arch = "aarch64"))]
     crate::security::init();
-    #[cfg(target_arch = "aarch64")]
-    ostd::early_println!("[init] security::init (SKIPPED on aarch64)");
     ostd::early_println!("[init] done");
 }
 
@@ -272,21 +264,32 @@ fn init_in_first_kthread(path_resolver: &PathResolver) {
     #[cfg(target_arch = "aarch64")]
     {
         // Skip component init — manually call virtio and framebuffer init.
+        // This runs in first_kthread (task context), which is required because
+        // virtio's allocate_major() uses ostd Mutex (WaitQueue-backed) and that
+        // only works inside a task context, not the boot context.
         ostd::early_println!("[kthread] manual component init (aarch64 bypass)...");
-        // virtio_component_init is normally called by the component system.
-        // Call it directly here.
         ostd::early_println!("[kthread] calling virtio_component_init...");
         let _ = aster_virtio::virtio_component_init_pub();
         ostd::early_println!("[kthread] virtio init done");
-        // framebuffer init
         ostd::early_println!("[kthread] calling framebuffer::init_component_fn...");
         let _ = aster_framebuffer::init_component_fn();
         ostd::early_println!("[kthread] framebuffer init done");
+
+        // Now that the display is live, bring up the framebuffer console.
+        crate::fb_console::init();
+        crate::fb_console::println("== kei kernel boot complete ==");
+        crate::fb_console::println("virtio-gpu 2D display online");
+        crate::fb_console::println("aarch64 (cortex-a72) @ QEMU virt");
     }
     // Work queue should be initialized before interrupt is enabled,
     // in case any irq handler uses work queue as bottom half
     crate::thread::work_queue::init_in_first_kthread();
+    // device::init_in_first_kthread walks the device registry via the
+    // inventory-based component system, which panics on aarch64. Devices are
+    // initialized manually above (virtio + framebuffer) on aarch64.
+    #[cfg(not(target_arch = "aarch64"))]
     crate::device::init_in_first_kthread();
+    #[cfg(not(target_arch = "aarch64"))]
     crate::net::init_in_first_kthread();
     crate::fs::init_in_first_kthread(path_resolver);
     #[cfg(any(target_arch = "x86_64", target_arch = "riscv64"))]
@@ -299,8 +302,19 @@ fn print_banner() {
 }
 
 pub(super) fn on_first_process_startup(ctx: &Context) {
-    component::init_all(InitStage::Process, component::parse_metadata!()).unwrap();
-    crate::device::init_in_first_process(ctx).unwrap();
+    // The inventory-based component system panics on aarch64 (boot page table
+    // doesn't activate the cursor-built kernel page table). Skip the Process
+    // stage of component init and device init there — they depend on the
+    // component/driver registration that aarch64 bypasses manually.
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        component::init_all(InitStage::Process, component::parse_metadata!()).unwrap();
+        crate::device::init_in_first_process(ctx).unwrap();
+    }
+    #[cfg(target_arch = "aarch64")]
+    {
+        ostd::early_println!("[first_proc] component/device init skipped (aarch64)");
+    }
     crate::fs::init_in_first_process(ctx);
 
     // Open /dev/console as fd 0 (stdin), 1 (stdout), 2 (stderr) for the init

@@ -312,12 +312,18 @@ fn init_gpu(mmio_base: usize) {
     let total = used_off + used_sz;
 
     // Carve the rings out of the page-aligned VQ_MEM.
-    let base_pa = unsafe { core::ptr::addr_of!(VQ_MEM) as usize };
-    let avail_base = base_pa + desc_sz;
-    let used_base = base_pa + used_off;
+    // VQ_MEM is a static in .bss, linked at the linear-mapping VMA. The CPU
+    // accesses the rings via the VA; the virtio-mmio device needs the physical
+    // address (QueuePfn = PA / page_size, decoded as PA << page_shift). With
+    // the kernel at the linear VMA, VA != PA, so compute both.
+    let base_va = unsafe { core::ptr::addr_of!(VQ_MEM) as usize };
+    let base_pa = base_va - LINEAR_BASE;
+    let avail_base = base_va + desc_sz;
+    let used_base = base_va + used_off;
 
     ostd::early_println!(
-        "[virtio-gpu] vq base_pa={:#x} pfn={} (desc {} avail {} used_off {})",
+        "[virtio-gpu] vq base_va={:#x} base_pa={:#x} pfn={} (desc {} avail {} used_off {})",
+        base_va,
         base_pa,
         base_pa / 4096,
         desc_sz,
@@ -342,7 +348,7 @@ fn init_gpu(mmio_base: usize) {
             p,
             GpuQueue {
                 mmio_base,
-                desc_base: base_pa,
+                desc_base: base_va,
                 avail_base,
                 used_base,
                 qsize,
@@ -409,7 +415,12 @@ fn init_gpu(mmio_base: usize) {
         cmd_reset();
         let cmd_va = cmd_alloc(48);
         let resp_va = cmd_alloc(24);
-        let fb_pa = core::ptr::addr_of!(FRAMEBUFFER) as usize;
+        // FRAMEBUFFER is a static in .bss, linked at the linear-mapping VMA.
+        // virtio-gpu ATTACH_BACKING needs the *physical* address (the device
+        // DMAs from it). With the kernel linked at the linear VMA, the VA
+        // (addr_of) != PA; convert VA -> PA by subtracting LINEAR_BASE.
+        let fb_va = core::ptr::addr_of!(FRAMEBUFFER) as usize;
+        let fb_pa = fb_va - LINEAR_BASE;
         let fb_len = (FB_WIDTH as usize) * (FB_HEIGHT as usize) * FB_BPP;
         let p = cmd_va as *mut u8;
         write_volatile(p.add(0) as *mut u32, CMD_RESOURCE_ATTACH_BACKING);

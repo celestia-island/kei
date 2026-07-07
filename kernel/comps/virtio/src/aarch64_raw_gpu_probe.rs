@@ -182,15 +182,46 @@ fn init_gpu(mmio_base: usize) {
     let test_read = mmio_r(mmio_base, REG_STATUS);
     ostd::early_println!("[virtio-gpu] test write/read 0x070: {:#x}", test_read);
 
-    // Notify — write to 0x050. The compiler was DCE-ing this specific write
-    // when it was in a loop. We must use a dedicated volatile helper that
-    // reads back from the same address to prove the write happened.
-    ostd::early_println!("[virtio-gpu] writing QueueNotify at 0x050...");
-    let notify_phys = mmio_base + 0x050;
-    let _dummy = mmio_r(mmio_base, 0x060); // flush prior writes
-    mmio_w(mmio_base, 0x050, 0);
-    let _dummy2 = mmio_r(mmio_base, 0x060); // force write completion
-    ostd::early_println!("[virtio-gpu] QueueNotify written, polling used ring...");
+    // Notify — call ostd's PL011 send_byte function to write to the
+    // notification address. The PL011 driver's write_volatile is PROVEN
+    // to reach QEMU devices. We borrow its exact write path.
+    let notify_addr = mmio_base + 0x050;
+    ostd::early_println!("[virtio-gpu] notify via ostd::arch::serial at {:#x}...", notify_addr);
+    // ostd's pl011_send_byte writes to UARTDR offset 0 of UART_VADDR.
+    // We can't call it directly for a different address, but we CAN
+    // use the same raw volatile pattern with a DSB+DSB fence.
+    // The key insight: ostd::early_println! writes to UART via volatile
+    // and it works. So volatile writes to 0xFFFF8000_09000000 DO reach QEMU.
+    // Our notify_addr = 0xFFFF8000_0A003E50 is in the SAME L1 block.
+    // The only difference is the specific address.
+    //
+    // NEW HYPOTHESIS: maybe QEMU virtio-mmio handles the notification
+    // SILENTLY (no trace event) and we just need to wait longer,
+    // or the used ring poll is wrong.
+    //
+    // Let me try: write to 0x050 via write_volatile, then immediately
+    // check InterruptStatus (offset 0x60) in a tight loop.
+    unsafe {
+        let p = notify_addr as *mut u32;
+        write_volatile(p, 0);
+    }
+    // Tight poll for IRQ status change
+    let mut got_irq = false;
+    for i in 0..1_000_000u64 {
+        let irq = mmio_r(mmio_base, 0x060);
+        if irq != 0 {
+            ostd::early_println!("[virtio-gpu] IRQ! status={:#x} at iter {}", irq, i);
+            got_irq = true;
+            break;
+        }
+        let ui = unsafe { read_volatile((base_pa + used_off + 2) as *const u16) };
+        if ui > 0 {
+            ostd::early_println!("[virtio-gpu] used ring updated! idx={} at iter {}", ui, i);
+            got_irq = true;
+            break;
+        }
+    }
+    ostd::early_println!("[virtio-gpu] poll done, got_response={}", got_irq as u8);
 
     // Debug: read back descriptor[0] to verify writes are visible
     unsafe {

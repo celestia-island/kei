@@ -265,13 +265,18 @@ run_user_entry:
     // Load x0 from context
     ldr     x0,  [x28, #0x00]
 
-    // Restore x27, x28, x29 LAST -- x28 is the base register, so it must
-    // be overwritten only after all other loads are complete.
-    // ARM64: ldr xN, [xN, #off] is UNPREDICTABLE, so use a temp reg.
-    ldr     x27, [x28, #0xD8]             // Load user x27 from offset 0xD8
-    ldr     x29, [x28, #0xE8]             // Load user x29 from offset 0xE8
-    ldr     x1,  [x28, #0xE0]             // Load user x28 from offset 0xE0 into temp
-    mov     x28, x1                       // x28 now holds user value
+    // Restore x27, x28, x29 LAST. x28 is the base register and must not be
+    // overwritten until all context loads are done.
+    // FIX: the original code used x1 as a temp to restore x28, which
+    // CORRUPTED x1 (already restored from context). This caused musl's
+    // `add x19, sp, x1` to compute a garbage pointer. Fix: use the kernel
+    // stack to save/restore x30, freeing x30 as a temp for x28.
+    str     x30, [sp, #-16]!             // Save x30 (LR) on kernel stack
+    ldr     x27, [x28, #0xD8]            // Load user x27
+    ldr     x29, [x28, #0xE8]            // Load user x29
+    ldr     x30, [x28, #0xE0]            // Load user x28 into x30 (temp)
+    mov     x28, x30                      // x28 = user x28
+    ldr     x30, [sp], #16               // Restore x30 (LR) from kernel stack
 
     eret                                  // Enter user mode
 

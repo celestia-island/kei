@@ -179,15 +179,17 @@ impl GpuQueue {
         let next = (head + 1) % self.qsize;
 
         // desc[head]: cmd (device-readable, chains to desc[next])
+        // desc.addr must be the PHYSICAL address (the device DMAs from it).
+        // cmd_va/resp_va are linear-mapping VAs, so subtract LINEAR_BASE.
         let d0 = self.desc_base + head * 16;
-        write_volatile(d0 as *mut u64, cmd_va as u64);
+        write_volatile(d0 as *mut u64, (cmd_va - LINEAR_BASE) as u64);
         write_volatile((d0 + 8) as *mut u32, cmd_len as u32);
         write_volatile((d0 + 12) as *mut u16, VIRTIO_DESC_F_NEXT);
         write_volatile((d0 + 14) as *mut u16, next as u16);
 
         // desc[next]: response (device-writable)
         let d1 = self.desc_base + next * 16;
-        write_volatile(d1 as *mut u64, resp_va as u64);
+        write_volatile(d1 as *mut u64, (resp_va - LINEAR_BASE) as u64);
         write_volatile((d1 + 8) as *mut u32, resp_len as u32);
         write_volatile((d1 + 12) as *mut u16, VIRTIO_DESC_F_WRITE);
         write_volatile((d1 + 14) as *mut u16, 0);

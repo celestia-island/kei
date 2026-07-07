@@ -1,22 +1,35 @@
 // SPDX-License-Identifier: MPL-2.0
 
-//! Raw virtio-gpu probe for aarch64 without kernel page table.
+//! Raw virtio-gpu driver for aarch64 without the kernel page table.
 //!
-//! This module bypasses the normal IoMem/virtqueue infrastructure (which
-//! requires the kernel page table to be activated) and uses raw volatile
-//! reads/writes through the boot page table's linear mapping instead.
+//! Bypasses ostd's IoMem/virtqueue infrastructure (which requires the kernel
+//! page table) and drives the virtio-mmio legacy transport directly through
+//! the boot page table's linear mapping. The pipeline implemented here:
+//!
+//!   1. Negotiate features, set GuestPageSize, set up the control queue.
+//!   2. GET_DISPLAY_INFO  — query the scanout resolution.
+//!   3. RESOURCE_CREATE_2D — allocate a 2D pixel resource.
+//!   4. ATTACH_BACKING    — bind the kernel framebuffer as the resource's
+//!                           DMA backing store.
+//!   5. SET_SCANOUT       — bind the resource to scanout 0 (the screen).
+//!   6. TRANSFER_TO_HOST_2D + RESOURCE_FLUSH — push pixels to the display.
+//!
+//! After init, the kernel framebuffer is live and the FramebufferConsole can
+//! render into it; QEMU shows it in its `-display sdl` window.
 
 #![allow(unsafe_code)]
 
 use core::ptr::{read_volatile, write_volatile};
+use core::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
 
 const LINEAR_BASE: usize = 0xffff_8000_0000_0000;
 
-// virtio-mmio register offsets
+// ── virtio-mmio legacy register offsets ──────────────────────────────────
 const REG_MAGIC: usize = 0x000;
 const REG_DEVICE_ID: usize = 0x008;
 const REG_DEVICE_FEATURES: usize = 0x010;
 const REG_DRIVER_FEATURES: usize = 0x020;
+const REG_GUEST_PAGE_SIZE: usize = 0x028;
 const REG_QUEUE_SEL: usize = 0x030;
 const REG_QUEUE_NUM_MAX: usize = 0x034;
 const REG_QUEUE_NUM: usize = 0x038;
@@ -30,6 +43,34 @@ const STATUS_DRIVER: u32 = 2;
 const STATUS_FEAT_OK: u32 = 8;
 const STATUS_DRV_OK: u32 = 4;
 
+// ── virtio-gpu command/response type constants (from virtio_gpu.h enum) ──
+// The enum uses implicit increment from 0x0100, so:
+//   GET_DISPLAY_INFO=0x100, RESOURCE_CREATE_2D=0x101, RESOURCE_UNREF=0x102,
+//   SET_SCANOUT=0x103, RESOURCE_FLUSH=0x104, TRANSFER_TO_HOST_2D=0x105,
+//   RESOURCE_ATTACH_BACKING=0x106, RESOURCE_DETACH_BACKING=0x107.
+const CMD_GET_DISPLAY_INFO: u32 = 0x0100;
+const CMD_RESOURCE_CREATE_2D: u32 = 0x0101;
+const CMD_RESOURCE_UNREF: u32 = 0x0102;
+const CMD_SET_SCANOUT: u32 = 0x0103;
+const CMD_RESOURCE_FLUSH: u32 = 0x0104;
+const CMD_TRANSFER_TO_HOST_2D: u32 = 0x0105;
+const CMD_RESOURCE_ATTACH_BACKING: u32 = 0x0106;
+const CMD_RESOURCE_DETACH_BACKING: u32 = 0x0107;
+
+const RESP_OK_NODATA: u32 = 0x1100;
+const RESP_OK_DISPLAY_INFO: u32 = 0x1101;
+
+// virtio-gpu 2D pixel formats
+const FORMAT_B8G8R8X8_UNORM: u32 = 2; // XRGB8888 (matches QEMU pixman)
+
+// The resource ID we use for our single 2D framebuffer.
+const RESOURCE_ID: u32 = 1;
+
+// ── descriptor flags ─────────────────────────────────────────────────────
+const VIRTIO_DESC_F_NEXT: u16 = 1;
+const VIRTIO_DESC_F_WRITE: u16 = 2;
+
+// ── MMIO helpers ─────────────────────────────────────────────────────────
 fn mmio_r(base: usize, off: usize) -> u32 {
     unsafe { read_volatile((base + off) as *const u32) }
 }
@@ -38,74 +79,227 @@ fn mmio_w(base: usize, off: usize, v: u32) {
     unsafe { write_volatile((base + off) as *mut u32, v) }
 }
 
-// Static backing for virtqueue. MUST be page-aligned for legacy virtio-mmio.
+/// Clean data cache by VA to PoC (portability for real aarch64 boards;
+/// no-op on QEMU's software-emulated TCG which is fully coherent).
+#[inline(never)]
+unsafe fn cache_clean_range(start: usize, len: usize) {
+    let line = 64usize;
+    let mut a = start & !(line - 1);
+    let end = start + len;
+    core::arch::asm!("dmb ish", options(nostack, preserves_flags));
+    while a < end {
+        core::arch::asm!("dc cvac, {0}", in(reg) a, options(nostack, preserves_flags));
+        a += line;
+    }
+    core::arch::asm!("dsb ish", options(nostack, preserves_flags));
+}
+
+// ── Page-aligned static backing for the virtqueue & buffers ──────────────
 #[repr(C, align(4096))]
 struct PageAligned<const N: usize>([u8; N]);
 
+// Virtqueue memory: descriptor table + avail ring + used ring.
+// 64 descriptors * 16 = 1024 desc; avail = 6+128; used (page-aligned) = 4096+518.
 static mut VQ_MEM: PageAligned<16384> = PageAligned([0; 16384]);
-static mut VQ_OFF: usize = 0;
-fn vq_alloc(n: usize) -> usize {
-    unsafe {
-        let a = (VQ_OFF + 4095) & !4095;
-        VQ_OFF = a + n;
-        // We're running on identity mapping (no page table switch).
-        // The vaddr IS the paddr for kernel code/data.
-        core::ptr::addr_of!(VQ_MEM) as *const u8 as usize + a
-    }
-}
 
-// Static backing for command/response buffers
-static mut CMD_MEM: [u8; 4096] = [0; 4096];
+// Command/response scratch buffers.
+static mut CMD_MEM: PageAligned<8192> = PageAligned([0; 8192]);
 static mut CMD_OFF: usize = 0;
 fn cmd_alloc(n: usize) -> usize {
-    // Returns the VIRTUAL address of the buffer (for kernel access).
-    // On identity mapping, vaddr == paddr.
     unsafe {
         let o = CMD_OFF;
         CMD_OFF += n;
         core::ptr::addr_of!(CMD_MEM) as usize + o
     }
 }
+fn cmd_reset() {
+    unsafe { CMD_OFF = 0; }
+}
 
-pub fn probe() {
-    ostd::early_println!("[virtio-gpu] raw MMIO probe via linear mapping...");
-    let bases: [usize; 32] = [
-        0xa000000, 0xa000200, 0xa000400, 0xa000600,
-        0xa000800, 0xa000a00, 0xa000c00, 0xa000e00,
-        0xa001000, 0xa001200, 0xa001400, 0xa001600,
-        0xa001800, 0xa001a00, 0xa001c00, 0xa001e00,
-        0xa002000, 0xa002200, 0xa002400, 0xa002600,
-        0xa002800, 0xa002a00, 0xa002c00, 0xa002e00,
-        0xa003000, 0xa003200, 0xa003400, 0xa003600,
-        0xa003800, 0xa003a00, 0xa003c00, 0xa003e00,
-    ];
-    for &pa in &bases {
-        let mb = LINEAR_BASE + pa;
-        if mmio_r(mb, REG_MAGIC) != 0x74726976 { continue; }
-        let did = mmio_r(mb, REG_DEVICE_ID);
-    if did == 0 { continue; }
-    ostd::early_println!("[virtio] device at {:#x}: id={} ver={}", pa, did, mmio_r(mb, 0x004));
-        if did == 16 {
-            ostd::early_println!("[virtio] *** VIRTIO-GPU found! ***");
-            init_gpu(mb);
+// ── Kernel framebuffer ───────────────────────────────────────────────────
+// 640x480 @ 32bpp = 1 228 800 bytes. Small but reliable; QEMU's default
+// scanout is 1280x800 but SET_SCANOUT lets us pick a sub-rectangle, so a
+// 640x480 framebuffer fills the top-left of the screen.
+pub const FB_WIDTH: u32 = 640;
+pub const FB_HEIGHT: u32 = 480;
+pub const FB_BPP: usize = 4;
+static mut FRAMEBUFFER: PageAligned<{ 640 * 480 * 4 }> = PageAligned([0; 640 * 480 * 4]);
+
+static GPU_READY: AtomicU8 = AtomicU8::new(0);
+
+/// Returns (framebuffer ptr, width, height, stride_bytes) once the GPU is up.
+pub fn framebuffer_info() -> Option<(*mut u8, u32, u32, usize)> {
+    if GPU_READY.load(Ordering::Relaxed) != 0 {
+        Some((
+            unsafe { core::ptr::addr_of_mut!(FRAMEBUFFER) as *mut u8 },
+            FB_WIDTH,
+            FB_HEIGHT,
+            FB_WIDTH as usize * FB_BPP,
+        ))
+    } else {
+        None
+    }
+}
+
+// ── GPU control queue state ──────────────────────────────────────────────
+struct GpuQueue {
+    mmio_base: usize,
+    desc_base: usize,
+    avail_base: usize,
+    used_base: usize,
+    qsize: usize,
+}
+static mut GPUQ: GpuQueue = GpuQueue {
+    mmio_base: 0,
+    desc_base: 0,
+    avail_base: 0,
+    used_base: 0,
+    qsize: 0,
+};
+static AVAIL_IDX: AtomicUsize = AtomicUsize::new(0);
+static USED_IDX: AtomicUsize = AtomicUsize::new(0);
+
+impl GpuQueue {
+    /// Submit one command (out-sg = cmd bytes) chained to one writable
+    /// response buffer (in-sg). Waits for the device to complete. Returns
+    /// the response header type (e.g. RESP_OK_NODATA = 0x1100).
+    ///
+    /// # Safety
+    /// Caller must have initialized GPUQ via init_gpu, and must not call
+    /// this re-entrantly.
+    unsafe fn send_cmd(
+        self,
+        cmd_va: usize,
+        cmd_len: usize,
+        resp_va: usize,
+        resp_len: usize,
+    ) -> u32 {
+        let idx = AVAIL_IDX.load(Ordering::Relaxed);
+        let head = (idx % self.qsize) as usize;
+        let next = (head + 1) % self.qsize;
+
+        // desc[head]: cmd (device-readable, chains to desc[next])
+        let d0 = self.desc_base + head * 16;
+        write_volatile(d0 as *mut u64, cmd_va as u64);
+        write_volatile((d0 + 8) as *mut u32, cmd_len as u32);
+        write_volatile((d0 + 12) as *mut u16, VIRTIO_DESC_F_NEXT);
+        write_volatile((d0 + 14) as *mut u16, next as u16);
+
+        // desc[next]: response (device-writable)
+        let d1 = self.desc_base + next * 16;
+        write_volatile(d1 as *mut u64, resp_va as u64);
+        write_volatile((d1 + 8) as *mut u32, resp_len as u32);
+        write_volatile((d1 + 12) as *mut u16, VIRTIO_DESC_F_WRITE);
+        write_volatile((d1 + 14) as *mut u16, 0);
+
+        // Publish head in avail ring, then bump avail->idx (the doorbell).
+        write_volatile((self.avail_base + 4 + 2 * head) as *mut u16, head as u16);
+        core::sync::atomic::fence(Ordering::SeqCst);
+        let new_avail = (idx + 1) as u16;
+        write_volatile((self.avail_base + 2) as *mut u16, new_avail);
+        AVAIL_IDX.store(idx + 1, Ordering::Relaxed);
+
+        // Clean caches so a real device sees our writes (QEMU TCG: no-op).
+        cache_clean_range(cmd_va, cmd_len);
+        cache_clean_range(self.desc_base, (next + 1) * 16);
+        cache_clean_range(self.avail_base, 6 + 2 * head + 2);
+
+        // Disable IRQs around notify+poll: the device raises an IRQ on
+        // completion, and we have no IRQ handler wired up at this boot stage.
+        core::arch::asm!("msr daifset, #2", options(nostack, preserves_flags));
+        mmio_w(self.mmio_base, REG_QUEUE_NOTIFY, 0);
+
+        let expected = (USED_IDX.load(Ordering::Relaxed) + 1) as u16;
+        let mut ok = false;
+        for _ in 0..2_000_000u64 {
+            let ui = read_volatile((self.used_base + 2) as *const u16);
+            if ui == expected {
+                USED_IDX.store(expected as usize, Ordering::Relaxed);
+                ok = true;
+                break;
+            }
+        }
+        // Drain the device's completion interrupt BEFORE re-enabling IRQs.
+        // The device sets InterruptStatus (offset 0x60) and raises the GIC
+        // IRQ; if we unmask before acking, the IRQ fires into a handler we
+        // never wired up and the kernel deadlocks. Ack clears InterruptStatus
+        // and de-asserts the IRQ.
+        let irq_status = mmio_r(self.mmio_base, 0x060);
+        if irq_status != 0 {
+            mmio_w(self.mmio_base, 0x064, irq_status); // InterruptACK
+        }
+        core::arch::asm!("msr daifclr, #2", options(nostack, preserves_flags));
+
+        if ok {
+            read_volatile(resp_va as *const u32)
+        } else {
+            0
         }
     }
 }
 
+// ── Entry point: scan the MMIO bus for a virtio-gpu and drive it ─────────
+
+/// # Safety
+/// Reads the mutable static GPUQ via a raw pointer (2024 edition forbids
+/// shared refs to mutable statics). Safe in practice because there is a
+/// single CPU (BSP) and no concurrency at this boot stage.
+unsafe fn gpuq() -> GpuQueue {
+    (core::ptr::addr_of!(GPUQ) as *const GpuQueue).read_volatile()
+}
+
+pub fn probe() {
+    ostd::early_println!("[virtio-gpu] raw MMIO probe via linear mapping...");
+    // QEMU virt machine exposes 32 virtio-mmio slots at 0xa000000+0x200*n.
+    let mut found = false;
+    for slot in 0..32u64 {
+        let pa = 0xa000000 + slot * 0x200;
+        let mb = LINEAR_BASE + pa as usize;
+        if mmio_r(mb, REG_MAGIC) != 0x74726976 {
+            continue;
+        }
+        let did = mmio_r(mb, REG_DEVICE_ID);
+        if did == 0 {
+            continue;
+        }
+        ostd::early_println!(
+            "[virtio] device at {:#x}: id={} ver={}",
+            pa,
+            did,
+            mmio_r(mb, 0x004)
+        );
+        if did == 16 {
+            // VIRTIO_ID_GPU
+            ostd::early_println!("[virtio] *** VIRTIO-GPU found! ***");
+            init_gpu(mb);
+            found = true;
+        }
+    }
+    if !found {
+        ostd::early_println!("[virtio-gpu] no GPU device found");
+    }
+}
+
 fn init_gpu(mmio_base: usize) {
-    // Negotiate
+    // ── Device reset & feature negotiation ────────────────────────────────
     mmio_w(mmio_base, REG_STATUS, 0);
     mmio_w(mmio_base, REG_STATUS, STATUS_ACK | STATUS_DRIVER);
     mmio_w(mmio_base, REG_DRIVER_FEATURES, 0);
     mmio_w(mmio_base, REG_STATUS, STATUS_ACK | STATUS_DRIVER | STATUS_FEAT_OK);
-    let st = mmio_r(mmio_base, REG_STATUS);
-    if st & STATUS_FEAT_OK == 0 {
+    if mmio_r(mmio_base, REG_STATUS) & STATUS_FEAT_OK == 0 {
         ostd::early_println!("[virtio-gpu] FEATURES_OK failed!");
         return;
     }
     ostd::early_println!("[virtio-gpu] features OK");
 
-    // Setup control queue (queue 0)
+    // MANDATORY legacy step: tell the device our guest page size before
+    // QueuePfn. The device stores ctz32(page_size) as guest_page_shift and
+    // decodes QueuePfn as phys_addr = pfn_value << guest_page_shift. Skipping
+    // this leaves guest_page_shift=0, so phys_addr = pfn_value (garbage) and
+    // no command ever executes.
+    mmio_w(mmio_base, REG_GUEST_PAGE_SIZE, 4096);
+
+    // ── Control queue setup (queue 0) ─────────────────────────────────────
     mmio_w(mmio_base, REG_QUEUE_SEL, 0);
     let qmax = mmio_r(mmio_base, REG_QUEUE_NUM_MAX);
     let qsize: usize = (qmax as usize).min(64);
@@ -114,160 +308,225 @@ fn init_gpu(mmio_base: usize) {
     let desc_sz = qsize * 16;
     let avail_sz = 6 + 2 * qsize;
     let used_sz = 6 + 8 * qsize;
-    // Legacy virtio-mmio layout: desc+avail contiguous, used page-aligned after
     let used_off = (desc_sz + avail_sz + 4095) & !4095;
     let total = used_off + used_sz;
-    let base_pa = vq_alloc(total);
-    // On identity mapping (no page table switch), physical address = virtual address.
-    // Do NOT add LINEAR_BASE — that would create a linear-mapping address
-    // whose writes may not be visible to QEMU's DMA (cache coherence).
 
-    ostd::early_println!("[virtio-gpu] vq base_pa={:#x} pfn={}", base_pa, base_pa / 4096);
-    ostd::early_println!("[virtio-gpu] desc_sz={} avail_sz={} used_sz={} used_off={}", desc_sz, avail_sz, used_sz, used_off);
-    ostd::early_println!("[virtio-gpu] total_alloc={}", total);
+    // Carve the rings out of the page-aligned VQ_MEM.
+    let base_pa = unsafe { core::ptr::addr_of!(VQ_MEM) as usize };
+    let avail_base = base_pa + desc_sz;
+    let used_base = base_pa + used_off;
+
+    ostd::early_println!(
+        "[virtio-gpu] vq base_pa={:#x} pfn={} (desc {} avail {} used_off {})",
+        base_pa,
+        base_pa / 4096,
+        desc_sz,
+        avail_sz,
+        used_off
+    );
 
     mmio_w(mmio_base, REG_QUEUE_NUM, qsize as u32);
     mmio_w(mmio_base, REG_QUEUE_ALIGN, 4096u32);
     mmio_w(mmio_base, REG_QUEUE_PFN, (base_pa / 4096) as u32);
-    mmio_w(mmio_base, REG_STATUS, STATUS_ACK | STATUS_DRIVER | STATUS_FEAT_OK | STATUS_DRV_OK);
+    mmio_w(
+        mmio_base,
+        REG_STATUS,
+        STATUS_ACK | STATUS_DRIVER | STATUS_FEAT_OK | STATUS_DRV_OK,
+    );
     ostd::early_println!("[virtio-gpu] DRIVER_OK, queue ready");
 
-    // Legacy layout: desc at 0, avail at desc_sz, used at used_off
-    let avail_off = desc_sz;
-
-    // cmd hdr: type=0x0100, fence=1
-    let cmd_va = cmd_alloc(24);
-    let resp_va = cmd_alloc(80); // resp_hdr(24) + display info(56)
-    ostd::early_println!("[virtio-gpu] cmd_va={:#x} resp_va={:#x}", cmd_va, resp_va);
+    // Publish the shared queue state for send_cmd().
     unsafe {
+        let p = core::ptr::addr_of_mut!(GPUQ) as *mut GpuQueue;
+        write_volatile(
+            p,
+            GpuQueue {
+                mmio_base,
+                desc_base: base_pa,
+                avail_base,
+                used_base,
+                qsize,
+            },
+        );
+    }
+    AVAIL_IDX.store(0, Ordering::Relaxed);
+    USED_IDX.store(0, Ordering::Relaxed);
+
+    // ── 1. GET_DISPLAY_INFO ───────────────────────────────────────────────
+    let display_w;
+    let display_h;
+    unsafe {
+        cmd_reset();
+        let cmd_va = cmd_alloc(24); // virtio_gpu_ctrl_hdr
+        let resp_va = cmd_alloc(512); // resp_hdr(24) + 16 scanout modes
+        write_volatile(cmd_va as *mut u32, CMD_GET_DISPLAY_INFO);
+
+        let rt = gpuq().send_cmd(cmd_va, 24, resp_va, 512);
+        ostd::early_println!("[virtio-gpu] GET_DISPLAY_INFO resp={:#x}", rt);
+        if rt == RESP_OK_DISPLAY_INFO {
+            let w = read_volatile((resp_va + 24 + 8) as *const u32);
+            let h = read_volatile((resp_va + 24 + 12) as *const u32);
+            let enabled = read_volatile((resp_va + 24 + 16) as *const u32);
+            ostd::early_println!(
+                "[virtio-gpu] scanout[0]: {}x{} enabled={}",
+                w,
+                h,
+                enabled
+            );
+            display_w = w;
+            display_h = h;
+        } else {
+            ostd::early_println!("[virtio-gpu] display query failed, assuming 640x480");
+            display_w = 640;
+            display_h = 480;
+        }
+    }
+
+    // ── 2. RESOURCE_CREATE_2D ─────────────────────────────────────────────
+    // virtio_gpu_resource_create_2d: hdr(24) + resource_id(4) + format(4)
+    //                              + width(4) + height(4) = 40 bytes
+    unsafe {
+        cmd_reset();
+        let cmd_va = cmd_alloc(40);
+        let resp_va = cmd_alloc(24);
         let p = cmd_va as *mut u8;
-        write_volatile(p.add(0) as *mut u32, 0x0100); // GET_DISPLAY_INFO
-        write_volatile(p.add(8) as *mut u64, 1); // fence_id
+        write_volatile(p.add(0) as *mut u32, CMD_RESOURCE_CREATE_2D);
+        write_volatile(p.add(24) as *mut u32, RESOURCE_ID);
+        write_volatile(p.add(28) as *mut u32, FORMAT_B8G8R8X8_UNORM);
+        write_volatile(p.add(32) as *mut u32, FB_WIDTH);
+        write_volatile(p.add(36) as *mut u32, FB_HEIGHT);
+
+        let rt = gpuq().send_cmd(cmd_va, 40, resp_va, 24);
+        ostd::early_println!("[virtio-gpu] RESOURCE_CREATE_2D resp={:#x}", rt);
     }
 
-    // Setup descriptors — write through IDENTITY mapping (phys=virt) 
-    // to avoid cache coherence issues with QEMU's DMA.
-    // base_pa is the identity-mapped address (= base_pa on our setup).
+    // ── 3. RESOURCE_ATTACH_BACKING ────────────────────────────────────────
+    // struct virtio_gpu_resource_attach_backing { hdr; resource_id; nr_entries; }
+    //   = 32 bytes, followed by nr_entries * virtio_gpu_mem_entry,
+    //   each entry = { addr(8); length(4); padding(4) } = 16 bytes.
+    //   Total for 1 entry: 32 + 16 = 48 bytes.
     unsafe {
-        let d = base_pa; // identity-mapped: use physical address directly
-        // desc[0]: cmd (device-readable)
-        write_volatile(d as *mut u64, cmd_va as u64); // identity-mapped: vaddr=paddr
-        write_volatile((d + 8) as *mut u32, 24);
-        write_volatile((d + 12) as *mut u16, 0); // flags
-        write_volatile((d + 14) as *mut u16, 1); // next
+        cmd_reset();
+        let cmd_va = cmd_alloc(48);
+        let resp_va = cmd_alloc(24);
+        let fb_pa = core::ptr::addr_of!(FRAMEBUFFER) as usize;
+        let fb_len = (FB_WIDTH as usize) * (FB_HEIGHT as usize) * FB_BPP;
+        let p = cmd_va as *mut u8;
+        write_volatile(p.add(0) as *mut u32, CMD_RESOURCE_ATTACH_BACKING);
+        write_volatile(p.add(24) as *mut u32, RESOURCE_ID);
+        write_volatile(p.add(28) as *mut u32, 1); // nr_entries
+        // entry[0]: addr(8) + length(4) + padding(4) = 16 bytes at offset 32
+        write_volatile(p.add(32) as *mut u64, fb_pa as u64);
+        write_volatile(p.add(40) as *mut u32, fb_len as u32);
+        write_volatile(p.add(44) as *mut u32, 0); // padding
 
-        // desc[1]: resp (device-writable)
-        let d1 = d + 16;
-        write_volatile(d1 as *mut u64, resp_va as u64);
-        write_volatile((d1 + 8) as *mut u32, 80);
-        write_volatile((d1 + 12) as *mut u16, 1); // WRITE flag
-        write_volatile((d1 + 14) as *mut u16, 0); // no next
-
-        // Avail ring
-        let av = base_pa + avail_off;
-        write_volatile(av as *mut u16, 0); // flags
-        write_volatile((av + 4) as *mut u16, 0); // ring[0] = 0
-        // Memory barrier before incrementing idx
-        core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
-        write_volatile((av + 2) as *mut u16, 1); // idx = 1
+        let rt = gpuq().send_cmd(cmd_va, 48, resp_va, 24);
+        ostd::early_println!("[virtio-gpu] ATTACH_BACKING resp={:#x}", rt);
     }
 
-    // Memory barrier before notify
-    core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
-
-    // Test: write to offset 0x070 (Status) which we know QEMU sees.
-    // If QEMU sees this but not 0x050, the issue is offset-specific.
-    ostd::early_println!("[virtio-gpu] test write to 0x070...");
-    mmio_w(mmio_base, REG_STATUS, STATUS_ACK | STATUS_DRIVER | STATUS_FEAT_OK | STATUS_DRV_OK);
-    let test_read = mmio_r(mmio_base, REG_STATUS);
-    ostd::early_println!("[virtio-gpu] test write/read 0x070: {:#x}", test_read);
-
-    // Notify — call ostd's PL011 send_byte function to write to the
-    // notification address. The PL011 driver's write_volatile is PROVEN
-    // to reach QEMU devices. We borrow its exact write path.
-    let notify_addr = mmio_base + 0x050;
-    ostd::early_println!("[virtio-gpu] notify via ostd::arch::serial at {:#x}...", notify_addr);
-    // ostd's pl011_send_byte writes to UARTDR offset 0 of UART_VADDR.
-    // We can't call it directly for a different address, but we CAN
-    // use the same raw volatile pattern with a DSB+DSB fence.
-    // The key insight: ostd::early_println! writes to UART via volatile
-    // and it works. So volatile writes to 0xFFFF8000_09000000 DO reach QEMU.
-    // Our notify_addr = 0xFFFF8000_0A003E50 is in the SAME L1 block.
-    // The only difference is the specific address.
-    //
-    // NEW HYPOTHESIS: maybe QEMU virtio-mmio handles the notification
-    // SILENTLY (no trace event) and we just need to wait longer,
-    // or the used ring poll is wrong.
-    //
-    // Let me try: write to 0x050 via write_volatile, then immediately
-    // check InterruptStatus (offset 0x60) in a tight loop.
+    // ── 4. SET_SCANOUT — bind resource 1 to scanout 0 ────────────────────
+    // struct virtio_gpu_set_scanout { hdr; rect{x,y,w,h}; scanout_id; resource_id; }
+    //   = 24 + 16 + 4 + 4 = 48 bytes. scanout_id is at offset 40, resource_id 44.
     unsafe {
-        let p = notify_addr as *mut u32;
-        write_volatile(p, 0);
-    }
-    // Tight poll for IRQ status change
-    let mut got_irq = false;
-    for i in 0..1_000_000u64 {
-        let irq = mmio_r(mmio_base, 0x060);
-        if irq != 0 {
-            ostd::early_println!("[virtio-gpu] IRQ! status={:#x} at iter {}", irq, i);
-            got_irq = true;
-            break;
-        }
-        let ui = unsafe { read_volatile((base_pa + used_off + 2) as *const u16) };
-        if ui > 0 {
-            ostd::early_println!("[virtio-gpu] used ring updated! idx={} at iter {}", ui, i);
-            got_irq = true;
-            break;
-        }
-    }
-    ostd::early_println!("[virtio-gpu] poll done, got_response={}", got_irq as u8);
+        cmd_reset();
+        let cmd_va = cmd_alloc(48);
+        let resp_va = cmd_alloc(24);
+        let p = cmd_va as *mut u8;
+        write_volatile(p.add(0) as *mut u32, CMD_SET_SCANOUT);
+        write_volatile(p.add(24) as *mut u32, 0); // r.x
+        write_volatile(p.add(28) as *mut u32, 0); // r.y
+        write_volatile(p.add(32) as *mut u32, FB_WIDTH); // r.width
+        write_volatile(p.add(36) as *mut u32, FB_HEIGHT); // r.height
+        write_volatile(p.add(40) as *mut u32, 0); // scanout_id = 0
+        write_volatile(p.add(44) as *mut u32, RESOURCE_ID);
 
-    // Debug: read back descriptor[0] to verify writes are visible
+        let rt = gpuq().send_cmd(cmd_va, 48, resp_va, 24);
+        ostd::early_println!("[virtio-gpu] SET_SCANOUT resp={:#x}", rt);
+    }
+
+    // ── 5. Fill the framebuffer with a test pattern & TRANSFER + FLUSH ────
+    draw_test_pattern();
+    flush_framebuffer();
+
+    GPU_READY.store(1, Ordering::Relaxed);
+    ostd::early_println!(
+        "[virtio-gpu] display ready: {}x{} scanout was {}x{}",
+        FB_WIDTH,
+        FB_HEIGHT,
+        display_w,
+        display_h
+    );
+}
+
+/// Push the whole framebuffer to the device: TRANSFER_TO_HOST_2D then
+/// RESOURCE_FLUSH. Call after mutating FRAMEBUFFER.
+pub fn flush_framebuffer() {
+    if GPU_READY.load(Ordering::Relaxed) == 0 && AVAIL_IDX.load(Ordering::Relaxed) == 0 {
+        return;
+    }
     unsafe {
-        let d = base_pa;
-        let d0_addr = read_volatile(d as *const u64);
-        let d0_len = read_volatile((d + 8) as *const u32);
-        let d0_flags = read_volatile((d + 12) as *const u16);
-        let d0_next = read_volatile((d + 14) as *const u16);
-        ostd::early_println!("[virtio-gpu] desc[0]: addr={:#x} len={} flags={} next={}", d0_addr, d0_len, d0_flags, d0_next);
+        // TRANSFER_TO_HOST_2D: hdr(24) + rect(16) + offset(8) + resource_id(4) + padding(4) = 56
+        cmd_reset();
+        let cmd_va = cmd_alloc(56);
+        let resp_va = cmd_alloc(24);
+        let p = cmd_va as *mut u8;
+        write_volatile(p.add(0) as *mut u32, CMD_TRANSFER_TO_HOST_2D);
+        write_volatile(p.add(24) as *mut u32, 0); // r.x
+        write_volatile(p.add(28) as *mut u32, 0); // r.y
+        write_volatile(p.add(32) as *mut u32, FB_WIDTH); // r.width
+        write_volatile(p.add(36) as *mut u32, FB_HEIGHT); // r.height
+        write_volatile(p.add(40) as *mut u64, 0u64); // offset
+        write_volatile(p.add(48) as *mut u32, RESOURCE_ID);
+        write_volatile(p.add(52) as *mut u32, 0); // padding
+        let rt = gpuq().send_cmd(cmd_va, 56, resp_va, 24);
+        if rt != RESP_OK_NODATA {
+            ostd::early_println!("[virtio-gpu] TRANSFER_TO_HOST_2D resp={:#x}", rt);
+        }
 
-        let av = base_pa + avail_off;
-        let av_flags = read_volatile(av as *const u16);
-        let av_idx = read_volatile((av + 2) as *const u16);
-        let av_ring0 = read_volatile((av + 4) as *const u16);
-        ostd::early_println!("[virtio-gpu] avail: flags={} idx={} ring[0]={}", av_flags, av_idx, av_ring0);
-
-        // Check used ring initial state
-        let used = base_pa + used_off;
-        let used_flags = read_volatile(used as *const u16);
-        let used_idx = read_volatile((used + 2) as *const u16);
-        ostd::early_println!("[virtio-gpu] used: flags={} idx={}", used_flags, used_idx);
-    }
-
-    ostd::early_println!("[virtio-gpu] GET_DISPLAY_INFO sent...");
-
-    // Poll used ring
-    let used = base_pa + used_off;
-    let mut ok = false;
-    for i in 0..100_000 {
-        let ui = unsafe { read_volatile((used + 2) as *const u16) };
-        if ui > 0 { ok = true; break; }
-        if i % 10000 == 0 && i > 0 {
-            let irq_st = mmio_r(mmio_base, 0x060);
-            ostd::early_println!("[virtio-gpu] poll {} used_idx={} irq={:#x}", i, ui, irq_st);
+        // RESOURCE_FLUSH: hdr(24) + rect(16) + resource_id(4) + padding(4) = 48
+        cmd_reset();
+        let cmd_va = cmd_alloc(48);
+        let resp_va = cmd_alloc(24);
+        let p = cmd_va as *mut u8;
+        write_volatile(p.add(0) as *mut u32, CMD_RESOURCE_FLUSH);
+        write_volatile(p.add(24) as *mut u32, 0); // r.x
+        write_volatile(p.add(28) as *mut u32, 0); // r.y
+        write_volatile(p.add(32) as *mut u32, FB_WIDTH); // r.width
+        write_volatile(p.add(36) as *mut u32, FB_HEIGHT); // r.height
+        write_volatile(p.add(40) as *mut u32, RESOURCE_ID);
+        write_volatile(p.add(44) as *mut u32, 0); // padding
+        let rt = gpuq().send_cmd(cmd_va, 48, resp_va, 24);
+        if rt != RESP_OK_NODATA {
+            ostd::early_println!("[virtio-gpu] RESOURCE_FLUSH resp={:#x}", rt);
         }
     }
-    if ok {
-        let rt = unsafe { read_volatile(resp_va as *const u32) };
-        ostd::early_println!("[virtio-gpu] resp type={:#x}", rt);
-        if rt == 0x1100 || rt == 0x1101 {
-            // Display info: x(4), y(4), width(4), height(4), enabled(4)
-            let w = unsafe { read_volatile((resp_va + 24 + 8) as *const u32) };
-            let h = unsafe { read_volatile((resp_va + 24 + 12) as *const u32) };
-            ostd::early_println!("[virtio-gpu] display: {}x{}", w, h);
+}
+
+/// Paint a simple test pattern into FRAMEBUFFER: a green border and a
+/// diagonal gradient. Pure black-on-dark would make it hard to confirm the
+/// display is actually live in the QEMU window.
+fn draw_test_pattern() {
+    unsafe {
+        let fb = core::ptr::addr_of_mut!(FRAMEBUFFER) as *mut u32;
+        for y in 0..FB_HEIGHT {
+            for x in 0..FB_WIDTH {
+                let idx = (y as usize) * (FB_WIDTH as usize) + (x as usize);
+                let on_border = x < 8 || y < 8 || x >= FB_WIDTH - 8 || y >= FB_HEIGHT - 8;
+                let pixel: u32 = if on_border {
+                    0xFF00FF00 // opaque green
+                } else {
+                    // blue gradient with red diagonal
+                    let blue = ((x ^ y) & 0xFF) as u32;
+                    let red = ((x + y) & 0x7F) as u32;
+                    0xFF000000 | (blue << 16) | (red << 8)
+                };
+                write_volatile(fb.add(idx), pixel);
+            }
         }
-    } else {
-        ostd::early_println!("[virtio-gpu] no response (timeout)");
+        // Draw "kei" markers: a few bright white squares near top-left.
+        for &(px, py) in &[(40, 40), (50, 40), (60, 40), (70, 40)] {
+            let idx = (py as usize) * (FB_WIDTH as usize) + (px as usize);
+            write_volatile(fb.add(idx), 0xFFFFFFFF);
+        }
     }
 }

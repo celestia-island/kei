@@ -160,6 +160,11 @@ fn init_on_each_cpu() {
     crate::sched::init_on_each_cpu();
     crate::process::init_on_each_cpu();
     crate::fs::init_on_each_cpu();
+    // time::init_on_each_cpu registers a timer callback (update_cpu_statistics)
+    // that calls CpuTimeStatsManager::singleton().unwrap(). Since time::init
+    // (which sets the singleton) is skipped on aarch64 (needs RTC/component
+    // init), the callback would panic immediately. Skip it on aarch64 too.
+    #[cfg(not(target_arch = "aarch64"))]
     crate::time::init_on_each_cpu();
 }
 

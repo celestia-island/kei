@@ -75,6 +75,25 @@ static OOPS_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 #[ostd::panic_handler]
 fn panic_handler(info: &core::panic::PanicInfo) -> ! {
+    // DIAGNOSTIC (aarch64): ostd::error!/log output isn't visible during early
+    // aarch64 boot (log backend may not be fully wired). Write the panic
+    // location/message directly to the PL011 UART data register at its linear
+    // address using early_println, which bypasses the log system.
+    #[cfg(target_arch = "aarch64")]
+    {
+        if let Some(location) = info.location() {
+            ostd::early_println!(
+                "[OOPS] {}:{}:{} {}",
+                location.file(),
+                location.line(),
+                location.column(),
+                info.message(),
+            );
+        } else {
+            ostd::early_println!("[OOPS] {}", info.message());
+        }
+    }
+
     let message = info.message();
 
     if let Some(thread) = Thread::current() {

@@ -110,3 +110,46 @@ qemu-system-aarch64 -cpu cortex-a72 -machine virt,gic-version=3,virtualization=o
   -device virtio-gpu-device -d int -D /tmp/int.log
 # Observe: Prefetch Abort, FAR=0x4026xxxx (identity VA), infinite loop at 0x200.
 ```
+
+## Attempted fix: relink at the linear VMA (blocked on a linker quirk)
+
+The "correct" fix per the plan above was attempted: relink all non-boot
+sections at `LINEAR_BASE + PA` (so symbol VAs are upper-half), keeping `.boot`
+at the identity PA with `AT()`. This compiled and the ELF program headers
+looked right (`.text` at VMA `0xffff_8000_xxxx`, PhysAddr `0x4004_5000`), but
+two problems blocked it:
+
+1. **`R_AARCH64_ADR_PREL_PG_HI21 out of range` link errors** for references to
+   `__kernel_start` / `__executable_start`. Root cause: `adrp` is PC-relative
+   with a ±4 GB range, and these global-boundary symbols originally sat at the
+   identity PA (`0x4000_0000`) while code sat at the linear VMA
+   (`0xffff_8000_xxxx`) — a ~140 TB gap. Fix: redefine `__kernel_start` and
+   `__executable_start` inside the `.text` VMA block so they resolve to linear
+   addresses too (done, this cleared the adrp errors).
+
+2. **Linker-script arithmetic quirk (the blocker).** The expression computing
+   the `.text` VMA came out wrong:
+   ```
+   LINEAR_BASE = 0xffff_8000_0000_0000  (verified correct via nm)
+   __boot_end_lma = ABSOLUTE(.) = 0x4004_5000  (verified correct)
+   __text_vma = LINEAR_BASE + __boot_end_lma
+   expected: 0xffff_8000_4004_5000
+   got:      0xffff_8000_0004_5000   <-- 0x4000_0000 dropped
+   ```
+   Tried `LINEAR_BASE + .`, `LINEAR_BASE + KERNEL_LMA + __boot_size`,
+   `(LINEAR_BASE + KERNEL_LMA) + __boot_size`, `ABSOLUTE()` wrappers — all
+   produced the same wrong value (`0x4000_0000` consistently dropped from the
+   addend). This appears to be rust-lld / GNU ld treating the location-counter
+   or section-relative addends in a way that loses the `0x4000_0000` high bits
+   during the `LINEAR_BASE +` addition. The resulting VMA (`0xffff_8000_0004_5000`)
+   does NOT match the linear mapping (`LINEAR_BASE + PA = 0xffff_8000_4004_5000`),
+   so jumping there after MMU-on fetches the wrong physical bytes → Undefined
+   Instruction → hang.
+
+**Next step for whoever picks this up:** the arithmetic quirk needs either
+(a) a different ld-script formulation (e.g. computing the VMA as a single
+literal `0xffff_8000_4000_0000` plus a small offset, avoiding the
+`LINEAR_BASE + large_PA` form), (b) post-link relocation/patching, or
+(c) linking with `-Ttext-segment` / `--image-base` flags instead of a custom
+`. =` expression. The diagnosis above is solid; only the ld-script mechanics
+remain.

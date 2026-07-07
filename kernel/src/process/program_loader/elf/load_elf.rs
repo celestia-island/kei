@@ -530,30 +530,40 @@ fn setup_tls(vmar: &Vmar, elf_headers: &ElfHeaders) -> Option<Vaddr> {
     use crate::vm::perms::VmPerms;
 
     // Determine the TLS block size from PT_TLS.
-    // We need enough space for both the TLS data (at negative offsets from TP)
-    // and the TCB (at small positive offsets from TP).
-    let tls_memsz = elf_headers.tls_phdr().map(|t| t.memsz).unwrap_or(0);
-    if tls_memsz == 0 && !cfg!(target_arch = "aarch64") {
+    let tls_phdr = elf_headers.tls_phdr()?;
+    let tls_memsz = tls_phdr.memsz;
+    if tls_memsz == 0 {
         return None;
     }
 
-    // On aarch64: TPIDR_EL0 points past the TLS data. The TCB is at TPIDR_EL0
-    // + small offsets (up to ~64 bytes). We need to ensure both the TLS data
-    // (below TP) and the TCB (above TP) are within allocated pages.
-    // Allocate 2 pages to be safe.
-    let alloc_pages = 2usize;
-    let alloc_size = alloc_pages * PAGE_SIZE;
+    // On aarch64, TPIDR_EL0 points to the END of the TLS block (the TLS data
+    // is at negative offsets from TP). The ELF's PT_TLS initial data (.tdata)
+    // is already mapped in the LOAD segment (at tls_phdr.vaddr). For the main
+    // thread we can point TPIDR_EL0 directly at the end of that data, since
+    // the LOAD segment containing .tdata/.tbss is writable and private.
+    //
+    // This avoids the bug where a freshly-allocated TLS block (all zeros) was
+    // used without copying the .tdata initial values, causing user-space reads
+    // of uninitialized TLS variables to return NULL/zero and crash.
+    #[cfg(target_arch = "aarch64")]
+    {
+        let tp = tls_phdr.vaddr + tls_memsz;
+        return Some(tp);
+    }
 
-    let tls_base = vmar
-        .new_map(alloc_size, VmPerms::READ | VmPerms::WRITE)
-        .ok()?
-        .handle_page_faults_around()
-        .build()
-        .ok()?;
-
-    // TPIDR_EL0 = tls_base + PAGE_SIZE.
-    // TLS data is at [tls_base + PAGE_SIZE - tls_memsz, tls_base + PAGE_SIZE).
-    // TCB is at [tls_base + PAGE_SIZE, tls_base + PAGE_SIZE + 64) — within the second page.
-    let tp = tls_base + PAGE_SIZE;
-    Some(tp)
+    // On other architectures, allocate a separate TLS block.
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        let _ = vmar; // suppress unused warning
+        let alloc_pages = 2usize;
+        let alloc_size = alloc_pages * PAGE_SIZE;
+        let tls_base = vmar
+            .new_map(alloc_size, VmPerms::READ | VmPerms::WRITE)
+            .ok()?
+            .handle_page_faults_around()
+            .build()
+            .ok()?;
+        let tp = tls_base + PAGE_SIZE;
+        Some(tp)
+    }
 }

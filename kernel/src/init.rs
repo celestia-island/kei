@@ -99,6 +99,15 @@ pub(super) fn main() {
 fn init() {
     ostd::early_println!("[init] arch::init");
     crate::arch::init();
+    // On aarch64 the cmdline component (which parses the kernel command line
+    // into INIT_PROC_ARGS) is bypassed along with the rest of the inventory-
+    // based component system. Initialize it manually so spawn_init_process
+    // can read the init process argv/envp.
+    #[cfg(target_arch = "aarch64")]
+    {
+        ostd::early_println!("[init] cmdline::init_no_component (aarch64)");
+        aster_cmdline::init_no_component();
+    }
     ostd::early_println!("[init] thread::init");
     crate::thread::init();
     ostd::early_println!("[init] random::init");
@@ -311,6 +320,12 @@ pub(super) fn on_first_process_startup(ctx: &Context) {
     {
         ostd::early_println!("[first_proc] component/device init skipped (aarch64)");
     }
+    // fs::init_in_first_process opens /dev/console as fd 0/1/2, which needs a
+    // registered console device driver. On aarch64 the console component isn't
+    // initialized, so opening /dev/console fails (ENODEV). Skip it; the init
+    // process will run without std fds (open_initial_console below also tries
+    // and silently skips if it can't find a console).
+    #[cfg(not(target_arch = "aarch64"))]
     crate::fs::init_in_first_process(ctx);
 
     // Open /dev/console as fd 0 (stdin), 1 (stdout), 2 (stderr) for the init

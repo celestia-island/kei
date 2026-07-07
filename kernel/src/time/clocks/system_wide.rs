@@ -333,20 +333,19 @@ pub fn init_for_ktest() {
 /// which is acceptable until RTC support is added.
 #[cfg(target_arch = "aarch64")]
 pub fn init_no_rtc() {
-    use ostd::cpu::all_cpus;
-    for cpu in all_cpus() {
-        CLOCK_REALTIME_MANAGER.get_on_cpu(cpu).call_once(|| {
-            let clock = RealTimeClock { _private: () };
-            TimerManager::new(Arc::new(clock))
-        });
-    }
+    // Set the per-clock singletons (CLOCK_REALTIME_INSTANCE,
+    // CLOCK_MONOTONIC_INSTANCE, CLOCK_BOOTTIME_INSTANCE) using the macro-
+    // generated initializer. These don't depend on the RTC; they create
+    // empty clock objects whose read_time() returns a default.
+    _init_system_wide_clocks();
+    // Set the cpu-local TimerManagers for each clock.
+    _init_system_wide_timer_managers();
+    // Set the coarse clocks (RealTimeCoarseClock, current_ref) to defaults.
     CLOCK_REALTIME_COARSE_INSTANCE.call_once(|| Arc::new(RealTimeCoarseClock { _private: () }));
     RealTimeCoarseClock::current_ref().call_once(|| SpinLock::new(Duration::from_secs(0)));
+    // Set the Jiffies timer manager.
     JIFFIES_TIMER_MANAGER.call_once(|| {
         let clock = JiffiesClock { _private: () };
         TimerManager::new(Arc::new(clock))
     });
-    // Also set the RealTimeClock singleton (CLOCK_REALTIME_INSTANCE) that
-    // init_system_wide_clocks would have set, since some code reads it.
-    CLOCK_REALTIME_INSTANCE.call_once(|| Arc::new(RealTimeClock { _private: () }));
 }

@@ -65,6 +65,7 @@ pub mod types;
 mod unimplemented;
 
 pub use dispatch::INIT_PROC_ARGS;
+pub use dispatch::init_no_component;
 #[doc(hidden)]
 pub use dispatch::KernelParam;
 #[doc(hidden)]

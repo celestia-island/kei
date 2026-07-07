@@ -139,16 +139,5 @@ fn panic_handler(info: &core::panic::PanicInfo) -> ! {
         ostd::error!("Backtrace is disabled.");
     }
 
-    // DIAGNOSTIC (aarch64): hang instead of abort so the framebuffer console
-    // output remains visible and a screendump can be captured. Restore the
-    // panic::abort() call once initramfs/userspace is wired up.
-    #[cfg(target_arch = "aarch64")]
-    {
-        ostd::early_println!("[oops] hanging (not aborting) for diagnosis");
-        loop {
-            core::hint::spin_loop();
-        }
-    }
-    #[cfg(not(target_arch = "aarch64"))]
     panic::abort();
 }

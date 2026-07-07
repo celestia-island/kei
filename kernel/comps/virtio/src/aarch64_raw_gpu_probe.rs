@@ -33,6 +33,7 @@ const STATUS_DRV_OK: u32 = 4;
 fn mmio_r(base: usize, off: usize) -> u32 {
     unsafe { read_volatile((base + off) as *const u32) }
 }
+#[inline(never)]
 fn mmio_w(base: usize, off: usize, v: u32) {
     unsafe { write_volatile((base + off) as *mut u32, v) }
 }
@@ -82,8 +83,8 @@ pub fn probe() {
         let mb = LINEAR_BASE + pa;
         if mmio_r(mb, REG_MAGIC) != 0x74726976 { continue; }
         let did = mmio_r(mb, REG_DEVICE_ID);
-        if did == 0 { continue; }
-        ostd::early_println!("[virtio] device at {:#x}: id={}", pa, did);
+    if did == 0 { continue; }
+    ostd::early_println!("[virtio] device at {:#x}: id={} ver={}", pa, did, mmio_r(mb, 0x004));
         if did == 16 {
             ostd::early_println!("[virtio] *** VIRTIO-GPU found! ***");
             init_gpu(mb);
@@ -174,9 +175,22 @@ fn init_gpu(mmio_base: usize) {
     // Memory barrier before notify
     core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
 
-    // Notify
-    core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
-    mmio_w(mmio_base, REG_QUEUE_NOTIFY, 0);
+    // Test: write to offset 0x070 (Status) which we know QEMU sees.
+    // If QEMU sees this but not 0x050, the issue is offset-specific.
+    ostd::early_println!("[virtio-gpu] test write to 0x070...");
+    mmio_w(mmio_base, REG_STATUS, STATUS_ACK | STATUS_DRIVER | STATUS_FEAT_OK | STATUS_DRV_OK);
+    let test_read = mmio_r(mmio_base, REG_STATUS);
+    ostd::early_println!("[virtio-gpu] test write/read 0x070: {:#x}", test_read);
+
+    // Notify — write to 0x050. The compiler was DCE-ing this specific write
+    // when it was in a loop. We must use a dedicated volatile helper that
+    // reads back from the same address to prove the write happened.
+    ostd::early_println!("[virtio-gpu] writing QueueNotify at 0x050...");
+    let notify_phys = mmio_base + 0x050;
+    let _dummy = mmio_r(mmio_base, 0x060); // flush prior writes
+    mmio_w(mmio_base, 0x050, 0);
+    let _dummy2 = mmio_r(mmio_base, 0x060); // force write completion
+    ostd::early_println!("[virtio-gpu] QueueNotify written, polling used ring...");
 
     // Debug: read back descriptor[0] to verify writes are visible
     unsafe {
@@ -205,9 +219,13 @@ fn init_gpu(mmio_base: usize) {
     // Poll used ring
     let used = base_pa + used_off;
     let mut ok = false;
-    for _ in 0..1_000_000 {
+    for i in 0..100_000 {
         let ui = unsafe { read_volatile((used + 2) as *const u16) };
         if ui > 0 { ok = true; break; }
+        if i % 10000 == 0 && i > 0 {
+            let irq_st = mmio_r(mmio_base, 0x060);
+            ostd::early_println!("[virtio-gpu] poll {} used_idx={} irq={:#x}", i, ui, irq_st);
+        }
     }
     if ok {
         let rt = unsafe { read_volatile(resp_va as *const u32) };

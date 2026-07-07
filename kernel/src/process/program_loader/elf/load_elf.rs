@@ -414,7 +414,16 @@ fn map_segment_vmo(
         (start, end - start)
     };
 
-    let perms = loadable_phdr.vm_perms();
+    let mut perms = loadable_phdr.vm_perms();
+    // DIAGNOSTIC (aarch64): static busybox processes its own .rela.plt at
+    // startup (lazy IFUNC resolution), writing into the RX LOAD segment where
+    // .rela.plt lives (0x4001d8+). Until the kernel applies ELF relocations
+    // at load time (like Linux's binfmt_elf), grant WRITE on all segments so
+    // the user-space relocation processing doesn't fault.
+    #[cfg(target_arch = "aarch64")]
+    {
+        perms |= VmPerms::WRITE;
+    }
     let offset = map_at.align_down(PAGE_SIZE);
 
     if segment_size != 0 {

@@ -210,8 +210,18 @@ el1_setup:
     ldr     x4, =0xffff800000000000
     add     sp, x3, x4
 
-    // Jump to virtual address code
-    // bsp_boot_virt is at virtual address, load directly
+    // Set VBAR_EL1 to trap_vectors BEFORE entering Rust code. VBAR defaults
+    // to 0; with the kernel linked at the linear VMA, trap_vectors' address
+    // (loaded by =trap_vectors) is already a linear-mapping VA, present in
+    // both the boot page table and the cursor-built kernel page table. This
+    // ensures any fault is handled instead of spinning at VBAR+0x200.
+    ldr     x5, =trap_vectors
+    msr     vbar_el1, x5
+    isb
+
+    // Jump to virtual address code. With the kernel linked at the linear
+    // VMA, bsp_boot_virt's address is already a linear-mapping VA, so this
+    // branch runs at the linear mapping from the start.
     ldr     x1, =bsp_boot_virt
     br      x1
 

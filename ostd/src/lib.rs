@@ -106,23 +106,15 @@ unsafe fn init() {
     crate::early_println!("[ostd] init: kspace::init_kernel_page_table");
     mm::kspace::init_kernel_page_table(meta_pages);
 
-    // On aarch64, skip the page table switch for now — the boot page table
-    // already has identity + linear mapping covering all needed addresses.
-    // The ostd cursor-built page table has a structural mismatch with
-    // TCR_EL1's TTBR0/TTBR1 split that needs a deeper fix.
-    #[cfg(not(target_arch = "aarch64"))]
-    {
-        crate::early_println!("[ostd] init: kspace::activate_kernel_page_table");
-        unsafe { mm::kspace::activate_kernel_page_table() };
-    }
-    #[cfg(target_arch = "aarch64")]
-    {
-        crate::early_println!("[ostd] init: kspace::activate_kernel_page_table (SKIPPED on aarch64)");
-        // Reinitialize serial with linear mapping (the identity mapping for
-        // UART is still present in boot page table, so this is redundant but
-        // matches what activate would have done).
-        crate::arch::serial::reinit_with_linear_mapping();
-    }
+    // Activate the cursor-built kernel page table on all architectures.
+    // The kernel is linked at the linear-mapping VMA (aarch64.ld KERNEL_VMA),
+    // so all symbol references are upper-half addresses present in
+    // KERNEL_PAGE_TABLE — activation is a plain TTBR write + TLB flush with
+    // no PC-migration trampoline. VBAR_EL1 is set to trap_vectors (linear VA)
+    // in bsp_boot.S before Rust entry, so any fault during activation is
+    // handled by our trap handler.
+    crate::early_println!("[ostd] init: kspace::activate_kernel_page_table");
+    unsafe { mm::kspace::activate_kernel_page_table() };
 
     // Serial port is reinitialized inside activate_kernel_page_table
     // for aarch64 (the identity mapping is gone after the switch).

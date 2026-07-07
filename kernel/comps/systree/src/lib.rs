@@ -59,6 +59,15 @@ fn init() -> Result<(), ComponentInitError> {
     Ok(())
 }
 
+/// Initializes the SysTree singleton without the component system.
+///
+/// On aarch64 the inventory-based component system is bypassed, so the
+/// `#[init_component] init()` above never runs. Call this manually to set
+/// the singleton so that `primary_tree()` doesn't panic.
+pub fn init_no_component() {
+    SINGLETON.call_once(|| Arc::new(SysTree::new()));
+}
+
 #[cfg(ktest)]
 pub fn init_for_ktest() {
     SINGLETON.call_once(|| Arc::new(SysTree::new()));

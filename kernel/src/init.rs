@@ -120,16 +120,10 @@ fn init() {
     #[cfg(target_arch = "aarch64")]
     ostd::early_println!("[init] driver::init (SKIPPED on aarch64)");
     ostd::early_println!("[init] time::init");
-    // time::init → system_time::init → aster_time::read_start_time() depends
-    // on aster_time::START_TIME, which is only initialized by the time
-    // component's #[init_component] (RTC driver + TSC calibration). The
-    // component system is bypassed on aarch64 and there is no RTC hardware,
-    // so START_TIME stays uninitialized and read_start_time().unwrap() panics.
-    // Keep time skipped on aarch64 until RTC/component init is wired up.
-    #[cfg(not(target_arch = "aarch64"))]
+    // On aarch64 time::init uses a no-RTC fallback (clocks::system_wide::
+    // init_no_rtc) that sets clock singletons to defaults, since the aster_time
+    // component (RTC + TSC) is bypassed. cpu_time_stats::init is always called.
     crate::time::init();
-    #[cfg(target_arch = "aarch64")]
-    ostd::early_println!("[init] time::init (SKIPPED on aarch64 — needs RTC)");
     ostd::early_println!("[init] net::init");
     #[cfg(not(target_arch = "aarch64"))]
     crate::net::init();
@@ -140,17 +134,10 @@ fn init() {
     ostd::early_println!("[init] process::init");
     crate::process::init();
     ostd::early_println!("[init] fs::init");
-    // fs::init → vfs::init → fs_apis::init → registry::init calls
-    // sysfs::systree_singleton().root().add_child(...).unwrap(), which depends
-    // on the sysfs/aster-systree singleton being initialized. That singleton
-    // is set up by fs_impls::init (also part of fs::init), but the order
-    // within vfs::init calls fs_apis::init first. On aarch64 the lazy creation
-    // of the systree fails (needs deeper investigation). Skip fs::init here;
-    // rootfs is mounted later in first_kthread via fs::init_in_first_kthread.
-    #[cfg(not(target_arch = "aarch64"))]
+    ostd::early_println!("[init] fs::init");
+    // On aarch64 fs::init manually initializes the systree singleton (set by
+    // the bypassed component system) before calling vfs::init, which reads it.
     crate::fs::init();
-    #[cfg(target_arch = "aarch64")]
-    ostd::early_println!("[init] fs::init (SKIPPED on aarch64 — systree init)");
     ostd::early_println!("[init] security::init");
     crate::security::init();
     ostd::early_println!("[init] done");
@@ -160,11 +147,6 @@ fn init_on_each_cpu() {
     crate::sched::init_on_each_cpu();
     crate::process::init_on_each_cpu();
     crate::fs::init_on_each_cpu();
-    // time::init_on_each_cpu registers a timer callback (update_cpu_statistics)
-    // that calls CpuTimeStatsManager::singleton().unwrap(). Since time::init
-    // (which sets the singleton) is skipped on aarch64 (needs RTC/component
-    // init), the callback would panic immediately. Skip it on aarch64 too.
-    #[cfg(not(target_arch = "aarch64"))]
     crate::time::init_on_each_cpu();
 }
 
@@ -197,6 +179,12 @@ fn ap_init() {
 // the latency to switching from the idle task to a useful, runnable one.
 
 fn bsp_idle_loop() {
+    // Use early_println instead of ostd::info!: the log system routes output
+    // through the console component (all_devices), which isn't initialized on
+    // aarch64, so info!/println! would panic here.
+    #[cfg(target_arch = "aarch64")]
+    ostd::early_println!("[bsp_idle] Idle thread for CPU #0 started");
+    #[cfg(not(target_arch = "aarch64"))]
     ostd::info!("Idle thread for CPU #0 started");
 
     // Spawn the first non-idle kernel thread on BSP.
@@ -243,12 +231,15 @@ fn ap_idle_loop() {
 
 // The main function of the first (non-idle) kernel thread
 fn first_kthread() {
-    println!("Spawn the first kernel thread");
+    ostd::early_println!("[first_kthread] Spawn the first kernel thread");
 
     let init_mnt_ns = MountNamespace::get_init_singleton();
     let fs_resolver = init_mnt_ns.new_path_resolver();
     init_in_first_kthread(&fs_resolver);
 
+    // print_banner uses println! which routes through the log/console system;
+    // on aarch64 the console component isn't initialized yet, so skip it.
+    #[cfg(not(target_arch = "aarch64"))]
     print_banner();
 
     INIT_PROCESS.call_once(|| {

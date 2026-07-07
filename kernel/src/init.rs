@@ -81,10 +81,25 @@ pub(super) fn main() {
         let _ = aster_framebuffer::init_component_fn();
         ostd::early_println!("[init] framebuffer init done");
 
-        // Loop forever to keep the kernel running.
+        // Now that the virtio-gpu display is live, initialize the on-screen
+        // framebuffer console and render the boot log so it is visible in the
+        // QEMU window (not just on the serial port).
+        crate::fb_console::init();
+        crate::fb_console::println("== kei kernel boot complete ==");
+        crate::fb_console::println("virtio-gpu 2D display online");
+        crate::fb_console::println("aarch64 (cortex-a72) @ QEMU virt");
+
+        // Loop forever to keep the kernel running. Periodically re-flush so
+        // the display stays live if the host compositor damages it.
         ostd::early_println!("[init] entering idle loop...");
+        let mut tick: u64 = 0;
         loop {
             core::hint::spin_loop();
+            tick = tick.wrapping_add(1);
+            // Every ~few million iterations, redraw to keep the display fresh.
+            if tick % 8_000_000 == 0 {
+                crate::fb_console::print_str("");
+            }
         }
     }
 

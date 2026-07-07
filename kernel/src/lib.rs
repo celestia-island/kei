@@ -64,6 +64,15 @@ mod util;
 #[cfg(target_arch = "x86_64")]
 mod vbe_dispi;
 mod vga_text;
+#[cfg(target_arch = "aarch64")]
+mod fb_console;
+/// Re-export of the raw virtio-gpu framebuffer accessors so the
+/// FramebufferConsole can read/flush the display without going through the
+/// component system (which isn't wired up on aarch64 yet).
+#[cfg(target_arch = "aarch64")]
+pub mod fb_gpu {
+    pub use aster_virtio::aarch64_raw_gpu_probe::{flush_framebuffer, framebuffer_info};
+}
 // TODO: Add vDSO support for other architectures.
 #[cfg(any(target_arch = "x86_64", target_arch = "riscv64"))]
 mod vdso;

@@ -7,7 +7,7 @@
 extern crate alloc;
 
 #[cfg(target_arch = "aarch64")]
-pub(crate) mod aarch64_raw_gpu_probe;
+pub mod aarch64_raw_gpu_probe;
 
 #[macro_use]
 extern crate ostd_pod;

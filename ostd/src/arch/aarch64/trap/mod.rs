@@ -278,9 +278,15 @@ fn handle_user_page_fault(f: &mut TrapFrame, exception: &CpuException) {
         _ => 0,
     };
     crate::early_println!(
-        "[trap] unhandled user pf: elr={:#x} far={:#x}",
+        "[trap] unhandled user pf: elr={:#x} far={:#x} x0={:#x} x1={:#x} x8={:#x} x9={:#x} x29={:#x} x30={:#x}",
         f.elr_el1,
-        far
+        far,
+        f.general.x0,
+        f.general.x1,
+        f.general.x8,
+        f.general.x9,
+        f.general.x29,
+        f.general.x30,
     );
 
     // For user-mode faults that can't be handled inline: return from run_user

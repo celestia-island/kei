@@ -94,6 +94,14 @@ pub fn load_elf_to_vmar(
     // process's address space and compute the thread pointer (TPIDR_EL0 on aarch64).
     let tls_pointer = setup_tls(vmar, &elf_headers);
 
+    // On aarch64, apply ELF relocations at load time (like Linux binfmt_elf)
+    // so the static binary doesn't need to process them itself (which requires
+    // a fully-initialized TLS that the kernel hasn't set up yet).
+    #[cfg(target_arch = "aarch64")]
+    {
+        apply_relocations(vmar, &elf_file)?;
+    }
+
     Ok(ElfLoadInfo {
         entry_point,
         user_stack_top,
@@ -625,4 +633,82 @@ fn setup_tls(vmar: &Vmar, elf_headers: &ElfHeaders) -> Option<Vaddr> {
         let tp = tls_base + PAGE_SIZE;
         Some(tp)
     }
+}
+
+/// Applies ELF relocations at load time (aarch64 only).
+///
+/// Static binaries (like busybox) may contain RELA relocations (R_AARCH64_GLOB_DAT,
+/// R_AARCH64_RELATIVE) that must be applied to the GOT before user-space runs.
+/// Without this, the binary tries to process its own relocations during early
+/// init, which fails because the TLS/TCB isn't fully set up yet.
+#[cfg(target_arch = "aarch64")]
+fn apply_relocations(vmar: &Vmar, elf_file: &Path) -> Result<()> {
+    const SHT_RELA: u32 = 4;
+    const R_AARCH64_RELATIVE: u32 = 1027;
+    const R_AARCH64_GLOB_DAT: u32 = 1032;
+    const R_AARCH64_ABS64: u32 = 257;
+
+    let inode = elf_file.inode();
+
+    // Read the ELF header to get section header info.
+    let mut ehdr_buf = vec![0u8; 64];
+    let read = inode.read_bytes_at(0, &mut ehdr_buf)?;
+    if read < 64 {
+        return Ok(());
+    }
+
+    let e_shoff = u64::from_le_bytes(ehdr_buf[40..48].try_into().unwrap()) as usize;
+    let e_shentsize = u16::from_le_bytes(ehdr_buf[58..60].try_into().unwrap()) as usize;
+    let e_shnum = u16::from_le_bytes(ehdr_buf[60..62].try_into().unwrap()) as usize;
+    if e_shoff == 0 || e_shnum == 0 || e_shentsize == 0 {
+        return Ok(());
+    }
+
+    // Read the section header table.
+    let shdr_total = e_shnum * e_shentsize;
+    let mut shdr_buf = vec![0u8; shdr_total];
+    inode.read_bytes_at(e_shoff, &mut shdr_buf)?;
+
+    let mut reloc_count = 0usize;
+    for i in 0..e_shnum {
+        let off = i * e_shentsize;
+        let sh_type = u32::from_le_bytes(shdr_buf[off + 4..off + 8].try_into().unwrap());
+        if sh_type != SHT_RELA {
+            continue;
+        }
+        let sh_offset = u64::from_le_bytes(shdr_buf[off + 24..off + 32].try_into().unwrap()) as usize;
+        let sh_size = u64::from_le_bytes(shdr_buf[off + 32..off + 40].try_into().unwrap()) as usize;
+
+        let n_entries = sh_size / 24;
+        let mut rela_buf = vec![0u8; sh_size];
+        inode.read_bytes_at(sh_offset, &mut rela_buf)?;
+
+        for j in 0..n_entries {
+            let eo = j * 24;
+            let r_offset = u64::from_le_bytes(rela_buf[eo..eo + 8].try_into().unwrap()) as usize;
+            let r_info = u64::from_le_bytes(rela_buf[eo + 8..eo + 16].try_into().unwrap());
+            let r_addend = u64::from_le_bytes(rela_buf[eo + 16..eo + 24].try_into().unwrap());
+            let r_type = (r_info & 0xFFFFFFFF) as u32;
+
+            // For static non-PIE binaries, symbol resolves to addend.
+            let value: u64 = match r_type {
+                R_AARCH64_RELATIVE | R_AARCH64_GLOB_DAT | R_AARCH64_ABS64 => r_addend,
+                _ => continue,
+            };
+
+            let val_bytes = value.to_le_bytes();
+            let mut reader = ostd::mm::VmReader::from(&val_bytes[..]).to_fallible();
+            match vmar.write_alien(r_offset, &mut reader) {
+                Ok(_) => reloc_count += 1,
+                Err((e, _)) => {
+                    ostd::early_println!("[reloc] failed at {:#x}: {:?}", r_offset, e);
+                }
+            }
+        }
+    }
+
+    if reloc_count > 0 {
+        ostd::early_println!("[reloc] applied {} relocations", reloc_count);
+    }
+    Ok(())
 }

@@ -545,18 +545,68 @@ fn setup_tls(vmar: &Vmar, elf_headers: &ElfHeaders) -> Option<Vaddr> {
         return None;
     }
 
-    // On aarch64, TPIDR_EL0 points to the END of the TLS block (the TLS data
-    // is at negative offsets from TP). The ELF's PT_TLS initial data (.tdata)
-    // is already mapped in the LOAD segment (at tls_phdr.vaddr). For the main
-    // thread we can point TPIDR_EL0 directly at the end of that data, since
-    // the LOAD segment containing .tdata/.tbss is writable and private.
+    // On aarch64, set up a complete TLS block with a proper struct pthread
+    // (TCB), matching musl's TLS_ABOVE_TP layout. musl reads TPIDR_EL0 early
+    // in __libc_start_main (before its own TLS init), so the kernel must
+    // provide a valid TCB with self/dtv pointers.
     //
-    // This avoids the bug where a freshly-allocated TLS block (all zeros) was
-    // used without copying the .tdata initial values, causing user-space reads
-    // of uninitialized TLS variables to return NULL/zero and crash.
+    // Layout: [TLS data] [gap=16] [struct pthread] [TPIDR_EL0 →]
+    // struct pthread: self(0x0), dtv(0x8)
     #[cfg(target_arch = "aarch64")]
     {
-        let tp = tls_phdr.vaddr + tls_memsz;
+        use crate::vm::perms::VmPerms;
+
+        let tls_filesz = tls_phdr.filesz;
+        let tls_align = tls_phdr.align.max(16);
+        let pthread_size = 0x200usize;
+        let gap = 16usize;
+        let dtv_size = 24usize;
+
+        let tls_data_aligned = (tls_memsz + tls_align - 1) & !(tls_align - 1);
+        let total = (tls_data_aligned + gap + pthread_size + dtv_size + 4095) & !4095;
+
+        let tls_base = vmar
+            .new_map(total, VmPerms::READ | VmPerms::WRITE)
+            .ok()?
+            .handle_page_faults_around()
+            .build()
+            .ok()?;
+
+        let td_addr = tls_base + tls_data_aligned + gap;
+        let dtv_addr = td_addr + pthread_size;
+        let tp = td_addr + pthread_size;
+
+        // Write struct pthread and dtv via write_alien (no VmSpace activation needed).
+        let self_bytes = (td_addr as u64).to_le_bytes();
+        let mut r = ostd::mm::VmReader::from(&self_bytes[..]).to_fallible();
+        let _ = vmar.write_alien(td_addr, &mut r);
+
+        let dtv_ptr = (dtv_addr as u64).to_le_bytes();
+        let mut r = ostd::mm::VmReader::from(&dtv_ptr[..]).to_fallible();
+        let _ = vmar.write_alien(td_addr + 8, &mut r);
+
+        let one_bytes = 1u64.to_le_bytes();
+        let mut r = ostd::mm::VmReader::from(&one_bytes[..]).to_fallible();
+        let _ = vmar.write_alien(dtv_addr, &mut r);
+
+        let base_bytes = (tls_base as u64).to_le_bytes();
+        let mut r = ostd::mm::VmReader::from(&base_bytes[..]).to_fallible();
+        let _ = vmar.write_alien(dtv_addr + 8, &mut r);
+
+        // musl reads TP+0x18 early (before its own TLS init). In ABOVE_TP mode
+        // TP+0x10..0x1F is the gap/dtv region. Write a valid self-referencing
+        // pointer at TP+0x18 so the early read doesn't get NULL.
+        // TP+0x18 = dtv_addr + 0x18 (since dtv_addr == tp).
+        let tp_self_ptr = (td_addr as u64).to_le_bytes();
+        let mut r = ostd::mm::VmReader::from(&tp_self_ptr[..]).to_fallible();
+        let _ = vmar.write_alien(tp + 0x18, &mut r);
+        // Also write at TP+0x10 and TP+0x20 for safety.
+        let _ = vmar.write_alien(tp + 0x10, &mut ostd::mm::VmReader::from(&tp_self_ptr[..]).to_fallible());
+
+        ostd::early_println!(
+            "[tls] TCB: base={:#x} td={:#x} tp={:#x} dtv={:#x}",
+            tls_base, td_addr, tp, dtv_addr
+        );
         return Some(tp);
     }
 

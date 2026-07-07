@@ -10,7 +10,7 @@ pub mod device;
 pub(crate) mod io;
 pub(crate) mod iommu;
 pub mod irq;
-pub(crate) mod mm;
+pub mod mm;
 mod power;
 pub mod serial;
 pub(crate) mod task;

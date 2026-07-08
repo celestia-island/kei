@@ -308,6 +308,23 @@ fn open_initial_console(ctx: &Context) {
         vfs::path::FsPath,
     };
 
+    // On aarch64, use SerialConsole for all fds so piped/serial input works.
+    // VT framebuffer still renders independently via FramebufferConsole.
+    #[cfg(target_arch = "aarch64")]
+    {
+        let console: Arc<dyn FileLike> =
+            Arc::new(crate::serial_console::SerialConsole::new(AccessMode::O_RDWR));
+        let file_table = ctx.thread_local.borrow_file_table();
+        let mut ft = file_table.unwrap().write();
+        let _ = ft.insert(console.clone(), FdFlags::empty()); // fd 0 = stdin
+        let _ = ft.insert(console.clone(), FdFlags::empty()); // fd 1 = stdout
+        let _ = ft.insert(console.clone(), FdFlags::empty()); // fd 2 = stderr
+        ostd::early_println!("[init] serial console bound to fd 0/1/2");
+        return;
+    }
+
+    #[cfg(not(target_arch = "aarch64"))]
+    {
     // Try /dev/console first (or /dev/tty0). On aarch64, if the TTY/VT
     // subsystem initialized successfully, /dev/console will be the VT
     // framebuffer terminal — giving us keyboard input + ANSI display.
@@ -335,23 +352,7 @@ fn open_initial_console(ctx: &Context) {
             }
         }
     } else {
-        // Fallback: direct PL011 serial console (aarch64 no VT available)
-        #[cfg(target_arch = "aarch64")]
-        {
-            ostd::early_println!("[init] no /dev/console found, using serial fallback");
-            let console: Arc<dyn FileLike> =
-                Arc::new(crate::serial_console::SerialConsole::new(AccessMode::O_RDWR));
-            let file_table = ctx.thread_local.borrow_file_table();
-            let mut ft = file_table.unwrap().write();
-            let _ = ft.insert(console.clone(), FdFlags::empty()); // fd 0
-            let _ = ft.insert(console.clone(), FdFlags::empty()); // fd 1
-            let _ = ft.insert(console.clone(), FdFlags::empty()); // fd 2
-            return;
-        }
-        #[cfg(not(target_arch = "aarch64"))]
-        {
-            return;
-        }
+        return;
     };
 
     let file_table = ctx.thread_local.borrow_file_table();
@@ -359,6 +360,7 @@ fn open_initial_console(ctx: &Context) {
     let _ = ft.insert(file.clone(), FdFlags::empty()); // fd 0 = stdin
     let _ = ft.insert(file.clone(), FdFlags::empty()); // fd 1 = stdout
     let _ = ft.insert(file.clone(), FdFlags::empty()); // fd 2 = stderr
+    } // end #[cfg(not(target_arch = "aarch64"))]
 }
 
 static INIT_PATH: Once<String> = Once::new();

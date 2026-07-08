@@ -106,8 +106,13 @@ pub(super) fn do_poll(
     };
 
     loop {
+        #[cfg(target_arch = "aarch64")]
+        ostd::early_println!("[poll] waiting...");
         match poller.wait() {
-            Ok(()) => (),
+            Ok(()) => {
+                #[cfg(target_arch = "aarch64")]
+                ostd::early_println!("[poll] woken up!");
+            }
             // We should return zero if the timeout expires
             // before any file descriptors are ready.
             Err(err) if err.error() == Errno::ETIME => return Ok(0),
@@ -115,6 +120,8 @@ pub(super) fn do_poll(
         };
 
         let num_events = poll_files.count_events();
+        #[cfg(target_arch = "aarch64")]
+        ostd::early_println!("[poll] count_events={}", num_events);
         if num_events > 0 {
             return Ok(num_events);
         }

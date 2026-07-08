@@ -219,8 +219,13 @@ impl NetworkDevice {
         }
 
         let tx_pool = TX_BUFFER_POOL.get().unwrap();
+        // For virtio-mmio legacy, only write 10 bytes of VirtioNetHdr (without
+        // num_buffers). Writing all 12 bytes corrupts the outgoing packet.
+        let full_bytes = <VirtioNetHdr as zerocopy::IntoBytes>::as_bytes(&self.header);
+        let mut header_bytes = [0u8; 10];
+        header_bytes.copy_from_slice(&full_bytes[..10]);
         let tx_buffer =
-            TxBuffer::new(&self.header, packet, tx_pool).map_err(|_| NetError::NoMemory)?;
+            TxBuffer::new(&header_bytes, packet, tx_pool).map_err(|_| NetError::NoMemory)?;
 
         let token = self.send_queue.add_input_bufs(&[&tx_buffer]).unwrap();
 

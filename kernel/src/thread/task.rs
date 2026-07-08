@@ -70,6 +70,13 @@ pub fn create_new_user_task(
         }
 
         while !current_thread.is_exited() {
+            // Ensure IRQs are enabled before entering user mode. Exception
+            // handlers (page fault → signal delivery) may have left IRQs
+            // disabled, which would cause might_sleep() to panic on the next
+            // execute() call.
+            if !ostd::arch::irq::is_local_enabled() {
+                ostd::arch::irq::enable_local();
+            }
             // Execute the user code
             let return_reason = user_mode.execute(has_kernel_event_fn);
 

@@ -1,6 +1,62 @@
 # aarch64 User-Space Init Page Fault — Diagnosis
 
-## Status: Root-caused to musl init stack corruption; exact trigger pending
+## Status: ROOT CAUSE FOUND — kei mmap returns EPERM for MAP_FIXED+addr=0
+
+**Breakthrough**: a minimal musl static test program that does
+`write(1, "MUSLTEST mmap done", 18)` then `exit(0)` runs **successfully**
+on kei (verified: the string appears on serial, init exits with code 0).
+This proves the kernel's user-space infrastructure is fully working:
+ELF load, eret to EL0, syscall dispatch (write/exit), process lifecycle,
+page tables, VM space — all correct.
+
+The busybox crash is **specifically in the mmap syscall** path.
+
+## The mmap bug
+
+busybox's first mmap call is:
+```
+mmap(NULL=0, 4096, PROT_NONE=0, MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED=0x32, -1, 0)
+```
+kei's `do_sys_mmap` sees `MAP_FIXED` (flag bit 0x10 set) and calls
+`check_addr(addr=0, len=4096)`, which hits `addr < VMAR_LOWEST_ADDR` and
+returns **EPERM** (`kernel/src/syscall/mmap.rs:163`).
+
+Linux returns **EACCES** (not EPERM) for `addr < mmap_min_addr`, and musl's
+malloc only falls back on specific errnos. The wrong errno (EPERM vs
+EACCES), combined with musl treating the failing mmap result as a pointer,
+causes the subsequent `str w2,[x1]` page fault at the corrupted address.
+
+## Why MAP_FIXED+addr=0?
+
+musl's `__expand_heap` (malloc) normally uses `MAP_PRIVATE|MAP_ANONYMOUS`
+(0x22, no MAP_FIXED). The 0x32 flags reaching the kernel suggest either:
+- musl's `__mmap` wrapper adds MAP_FIXED in some path, or
+- the caller is not `__expand_heap` but another musl init function.
+
+Either way, kei should not return EPERM here — it should match Linux's
+EACCES, and ideally also allow addr=0 mappings when the process has
+`CAP_SYS_RAWIO` or mmap_min_addr is 0.
+
+## The fix
+
+In `kernel/src/syscall/mmap.rs`, `check_addr` should return `EACCES`
+(not `EPERM`) for `addr < VMAR_LOWEST_ADDR`, matching Linux's
+`mmap_min_addr` semantics. Separately, consider whether `VMAR_LOWEST_ADDR`
+should be 0 (allowing low mappings) to match a permissive Linux config.
+
+## Earlier (now-superseded) musl stack-corruption theory
+
+The previous "x21 = 0x7840407878404078 stack corruption" diagnosis
+applied to the **glibc** busybox (the original initramfs). After
+switching to a **musl** busybox (built with musl-cross), the fault
+moved to the much simpler mmap path above, which is directly fixable.
+The glibc stack-corruption issue may have been a downstream symptom of
+the same mmap bug (glibc's malloc also uses mmap).
+
+The rest of this file documents the earlier glibc investigation for
+reference.
+
+---
 
 After the kernel page table activation (`dfd7324`) and the ELF loader /
 TLS / run_user fixes (`c7ca569`–`b0d09a1`), the kernel successfully loads

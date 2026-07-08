@@ -29,13 +29,19 @@ fn spawn_background_poll_thread(iface: Arc<Iface>) {
         debug!("spawn background poll thread for {:?}", iface.name());
 
         // On aarch64, virtio-mmio IRQ delivery is unreliable (the device may
-        // not fire interrupts on packet arrival). Use a busy-poll approach:
-        // poll the iface at a fixed 2ms interval regardless of IRQ scheduling.
+        // not fire interrupts on packet arrival/departure). Use a busy-poll
+        // approach: poll the iface at a fixed 2ms interval AND raise TX/RX
+        // softirqs to process the send/recv virtqueues, bypassing IRQ delivery.
         #[cfg(target_arch = "aarch64")]
         {
             let sched_poll = iface.sched_poll();
             let wait_queue = sched_poll.polling_wait_queue();
             loop {
+                // Raise both TX and RX softirqs to process the virtqueues
+                // (free TX buffers, check can_send, invoke callbacks that
+                // trigger iface.poll to actually transmit queued packets).
+                aster_network::raise_send_softirq();
+                aster_network::raise_receive_softirq();
                 iface.poll();
                 // Wait 2ms (the timer IRQ will wake us), yielding CPU to dropbear.
                 let _ = wait_queue.wait_until_or_timeout(

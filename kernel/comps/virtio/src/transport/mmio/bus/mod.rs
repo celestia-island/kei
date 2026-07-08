@@ -59,11 +59,8 @@ where
     };
     ostd::early_println!("[virtio-mmio] IoMem acquired OK, checking magic...");
 
-    // Skip magic check on aarch64 for debugging — it may fault
-    // due to IoMem read_once implementation.
-    #[cfg(target_arch = "aarch64")]
-    let magic_ok = true;
-    #[cfg(not(target_arch = "aarch64"))]
+    // The kernel page table is now activated (commit dfd7324), so IoMem reads
+    // work correctly on aarch64. No more debug skips.
     let magic_ok = mmio_check_magic(&io_mem);
 
     if !magic_ok {
@@ -72,12 +69,6 @@ where
     }
     ostd::early_println!("[virtio-mmio] magic OK, reading device ID...");
 
-    // Skip device ID read on aarch64 for debugging
-    #[cfg(target_arch = "aarch64")]
-    {
-        ostd::early_println!("[virtio-mmio] skipping device ID read (aarch64 debug)");
-    }
-    #[cfg(not(target_arch = "aarch64"))]
     match mmio_read_device_id(&io_mem) {
         Err(_) | Ok(0) => {
             ostd::early_println!("[virtio-mmio] no device at {:#x}", start_addr);

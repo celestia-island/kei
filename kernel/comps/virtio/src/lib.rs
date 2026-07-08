@@ -108,6 +108,7 @@ fn virtio_component_init_inner() -> Result<(), ComponentInitError> {
         }
 
         let device_type = transport.device_type();
+        ostd::early_println!("[virtio] dev #{}: type={:?}", dev_idx, device_type);
         let res = match transport.device_type() {
             VirtioDeviceType::Block => BlockDevice::init(transport),
             VirtioDeviceType::Console => ConsoleDevice::init(transport),
@@ -122,6 +123,7 @@ fn virtio_component_init_inner() -> Result<(), ComponentInitError> {
                 Ok(())
             }
         };
+        ostd::early_println!("[virtio] dev #{} init result: {:?}", dev_idx, res.as_ref().err());
         if res.is_err() {
             error!(
                 "Device initialization error: {:?}, device type: {:?}",

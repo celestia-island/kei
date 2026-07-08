@@ -33,15 +33,21 @@ pub fn iter_all_ifaces() -> Iter<'static, Arc<Iface>> {
 const VIRTIO_DEVICE_NAME: &str = aster_virtio::device::network::DEVICE_NAME;
 
 pub fn init() {
+    ostd::early_println!("[net] iface::init called");
     IFACES.call_once(|| {
+        ostd::early_println!("[net] initializing interfaces");
         let mut ifaces = Vec::with_capacity(2);
 
         // Initialize loopback before virtio
         // to ensure the loopback interface index is ahead of virtio.
         ifaces.push(new_loopback());
+        ostd::early_println!("[net] loopback iface created");
 
         if let Some(iface_virtio) = new_virtio() {
             ifaces.push(iface_virtio);
+            ostd::early_println!("[net] virtio iface created");
+        } else {
+            ostd::early_println!("[net] WARNING: no virtio net device found");
         }
 
         ifaces

@@ -142,6 +142,8 @@ impl NetworkDevice {
             .register_queue_callback(QUEUE_RECV, Box::new(handle_recv_event), true)?;
 
         device.transport.finish_init();
+        let final_status = device.transport.read_device_status();
+        ostd::early_println!("[netdev] DRIVER_OK set, final status={:?}", final_status);
 
         aster_network::register_device(
             super::DEVICE_NAME.to_string(),
@@ -181,8 +183,11 @@ impl NetworkDevice {
         let (token, len) = self
             .recv_queue
             .pop_used_with_min_bytes(size_of::<VirtioNetHdr>())
-            .map_err(|_| NetError::NotReady)?;
-        debug!("receive packet: token = {}, len = {}", token, len);
+            .map_err(|_| {
+                ostd::early_println!("[netdev] recv: no packet, can_pop={}", self.recv_queue.can_pop());
+                NetError::NotReady
+            })?;
+        ostd::early_println!("[netdev] recv: GOT PACKET token={} len={}", token, len);
 
         let mut rx_buffer = self.rx_buffers.remove(token as usize).unwrap();
         rx_buffer.set_payload_len(len as usize - size_of::<VirtioNetHdr>());

@@ -120,10 +120,10 @@ fn cmd_reset() {
 // 640x480 @ 32bpp = 1 228 800 bytes. Small but reliable; QEMU's default
 // scanout is 1280x800 but SET_SCANOUT lets us pick a sub-rectangle, so a
 // 640x480 framebuffer fills the top-left of the screen.
-pub const FB_WIDTH: u32 = 640;
-pub const FB_HEIGHT: u32 = 480;
+pub const FB_WIDTH: u32 = 1280;
+pub const FB_HEIGHT: u32 = 800;
 pub const FB_BPP: usize = 4;
-static mut FRAMEBUFFER: PageAligned<{ 640 * 480 * 4 }> = PageAligned([0; 640 * 480 * 4]);
+static mut FRAMEBUFFER: PageAligned<{ 1280 * 800 * 4 }> = PageAligned([0; 1280 * 800 * 4]);
 
 static GPU_READY: AtomicU8 = AtomicU8::new(0);
 

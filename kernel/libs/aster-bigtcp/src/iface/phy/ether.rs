@@ -119,22 +119,36 @@ impl<D, E: Ext> EtherIface<D, E> {
         iface_cx: &mut Context,
     ) -> Result<IpPacket<'pkt>, Option<ArpRepr>> {
         // Parse the Ethernet header. Ignore the packet if the header is ill-formed.
-        let frame = EthernetFrame::new_checked(data).map_err(|_| None)?;
-        let repr = EthernetRepr::parse(&frame).map_err(|_| None)?;
+        let frame = EthernetFrame::new_checked(data).map_err(|_| {
+            ostd::early_println!("[ether] EthernetFrame::new_checked FAILED, len={}", data.len());
+            None
+        })?;
+        let repr = EthernetRepr::parse(&frame).map_err(|_| {
+            ostd::early_println!("[ether] EthernetRepr::parse FAILED");
+            None
+        })?;
 
-        // Ignore the Ethernet frame if it is not sent to us.
-        // On aarch64, accept all unicast packets as a workaround since the MAC
-        // read from device config may not match what QEMU's slirp uses.
+        ostd::early_println!(
+            "[ether] pkt: ethertype={:?}, dst_mac={:?}, our_mac={:?}, len={}",
+            repr.ethertype, repr.dst_addr, self.ether_addr, data.len()
+        );
+
+        // On aarch64, accept all unicast packets.
         if !repr.dst_addr.is_broadcast() && repr.dst_addr != self.ether_addr {
             #[cfg(not(target_arch = "aarch64"))]
             return Err(None);
-            // On aarch64, fall through and accept the packet.
         }
 
-        // Ignore the Ethernet frame if the protocol is not supported.
         match repr.ethertype {
             EthernetProtocol::Ipv4 => {
-                let pkt = Ipv4Packet::new_checked(frame.payload()).map_err(|_| None)?;
+                let pkt = Ipv4Packet::new_checked(frame.payload()).map_err(|_| {
+                    ostd::early_println!("[ether] Ipv4Packet::new_checked FAILED");
+                    None
+                })?;
+                ostd::early_println!(
+                    "[ether] IPv4: src={:?} dst={:?} proto={:?}",
+                    pkt.src_addr(), pkt.dst_addr(), pkt.next_header()
+                );
                 Ok(IpPacket::Ipv4(pkt))
             }
             EthernetProtocol::Ipv6 => {

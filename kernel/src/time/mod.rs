@@ -43,6 +43,7 @@ pub(super) fn init() {
     }
     #[cfg(target_arch = "aarch64")]
     {
+        system_time::init_no_rtc();
         clocks::init_no_rtc();
         ostd::early_println!("[time] init_no_rtc done (clocks set to defaults)");
     }

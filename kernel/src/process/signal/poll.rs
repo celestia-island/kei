@@ -172,6 +172,8 @@ impl Pollee {
     /// This method should be called whenever new events arrive. The events can be spurious. This
     /// way, the caller can avoid expensive calculations and simply add all possible ones.
     pub fn notify(&self, events: IoEvents) {
+        #[cfg(target_arch = "aarch64")]
+        ostd::early_println!("[pollee] notify events={:?}", events);
         self.invalidate();
 
         self.inner.subject.notify_observers(&events);

@@ -125,17 +125,18 @@ impl<E: Events, F: EventsFilter<E>> SyncSubject<E, F> {
     /// It will remove the observers which have been freed.
     pub fn notify_observers(&self, events: &E) {
         // Fast path.
-        //
-        // Note: This must use `Release`, which pairs with `Acquire` in `register_observer`, to
-        // ensure that even if this fast path is used, a concurrently registered observer will see
-        // the event we want to notify.
-        if self.num_observers.fetch_add(0, Ordering::Release) == 0 {
+        let num_obs = self.num_observers.fetch_add(0, Ordering::Release);
+        #[cfg(target_arch = "aarch64")]
+        ostd::early_println!("[subject] notify_observers: num_observers={}", num_obs);
+        if num_obs == 0 {
             return;
         }
 
         // Slow path: broadcast the new events to all observers.
         let mut num_freed = 0;
         let mut observers = self.observers.lock();
+        #[cfg(target_arch = "aarch64")]
+        let total_obs = observers.len();
         observers.retain(|observer, filter| {
             if let Some(observer) = observer.upgrade() {
                 if filter.filter(events) {

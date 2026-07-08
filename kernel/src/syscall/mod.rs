@@ -383,12 +383,26 @@ pub fn handle_syscall(ctx: &Context, user_ctx: &mut UserContext) {
 
     match syscall_return {
         Ok(return_value) => {
-            if let SyscallReturn::Return(return_value) = return_value {
-                user_ctx.set_syscall_ret(return_value as usize);
+            if let SyscallReturn::Return(rv) = return_value {
+                #[cfg(target_arch = "aarch64")]
+                {
+                    let num = syscall_frame.syscall_number;
+                    if matches!(num, 202|242|204|205|208|209|25|29|57|63|64|23|24) {
+                        ostd::early_println!("[syscall] #{} -> ok {}", num, rv);
+                    }
+                }
+                user_ctx.set_syscall_ret(rv as usize);
             }
         }
         Err(err) => {
             debug!("syscall return error: {:?}", err);
+            #[cfg(target_arch = "aarch64")]
+            {
+                let num = syscall_frame.syscall_number;
+                if matches!(num, 202|242|204|205|208|209|25|29|57|63|64|23|24) {
+                    ostd::early_println!("[syscall] #{} -> ERR {:?}", num, err.error());
+                }
+            }
             let errno = err.error() as i32;
             user_ctx.set_syscall_ret((-errno) as usize)
         }

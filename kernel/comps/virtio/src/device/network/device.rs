@@ -212,11 +212,11 @@ impl NetworkDevice {
 
         self.poll_stat.sent_packet += 1;
 
-        if self.send_queue.available_desc() == 0 {
-            // If the send queue is full,
-            // we will notify the send queue as soon as possible.
-            self.notify_send_queue();
-        }
+        // Always notify the device immediately after queuing a TX packet.
+        // We bypass should_notify() because on aarch64 with unreliable IRQs,
+        // the device (QEMU's virtio-net) needs an explicit kick for every
+        // outgoing packet, not just when the queue is full.
+        self.send_queue.notify();
 
         debug!("send packet, token = {}, len = {}", token, packet.len());
 

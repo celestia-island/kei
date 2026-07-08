@@ -56,7 +56,16 @@ fn do_sys_mmap(
     // crashes musl's mallocng meta allocator), treat MAP_FIXED+addr=0 as a
     // non-fixed mapping and let the kernel choose a valid address. This matches
     // the intent (allocate a fresh anonymous page) without the unsafe low addr.
-    let addr = if option.flags().is_fixed() && addr != 0 {
+    // We must also clear the MAP_FIXED bits so the dispatch below doesn't try
+    // to map at addr=0 (which would later break fork's cursor.jump).
+    let mut option = option;
+    let addr = if option.flags().is_fixed() && addr == 0 {
+        option = MMapOptions {
+            typ: option.typ,
+            flags: option.flags & !(MMapFlags::MAP_FIXED | MMapFlags::MAP_FIXED_NOREPLACE),
+        };
+        adjust_addr_hint(addr, len)
+    } else if option.flags().is_fixed() {
         check_addr(addr, len)?;
         addr
     } else {

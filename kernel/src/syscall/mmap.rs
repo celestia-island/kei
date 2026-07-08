@@ -51,7 +51,12 @@ fn do_sys_mmap(
     );
 
     let len = check_len(len)?;
-    let addr = if option.flags().is_fixed() {
+    // Workaround: some musl malloc paths issue mmap with MAP_FIXED + addr=0,
+    // which Linux rejects with EACCES (mmap_min_addr). Rather than fail (which
+    // crashes musl's mallocng meta allocator), treat MAP_FIXED+addr=0 as a
+    // non-fixed mapping and let the kernel choose a valid address. This matches
+    // the intent (allocate a fresh anonymous page) without the unsafe low addr.
+    let addr = if option.flags().is_fixed() && addr != 0 {
         check_addr(addr, len)?;
         addr
     } else {
@@ -162,7 +167,10 @@ fn check_addr(addr: Vaddr, len: usize) -> Result<()> {
     }
 
     if addr < VMAR_LOWEST_ADDR {
-        return_errno_with_message!(Errno::EPERM, "the mapping address is too low");
+        // Linux returns EACCES (not EPERM) for addresses below mmap_min_addr.
+        // musl/glibc malloc rely on this specific errno to fall back; returning
+        // EPERM causes them to treat the result as a valid pointer and crash.
+        return_errno_with_message!(Errno::EACCES, "the mapping address is too low");
     }
 
     if addr > VMAR_CAP_ADDR - len {

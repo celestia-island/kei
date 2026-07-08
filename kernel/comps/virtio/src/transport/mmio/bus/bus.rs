@@ -40,14 +40,10 @@ pub struct MmioBus {
 impl MmioBus {
     /// Registers a MMIO driver to the MMIO bus.
     pub fn register_driver(&mut self, driver: Arc<dyn MmioDriver>) {
-        // On aarch64, MMIO reads fault in boot page table. Skip probe loop.
-        #[cfg(target_arch = "aarch64")]
-        {
-            ostd::early_println!("[virtio-mmio] register_driver: skipping probe loop (aarch64)");
-            self.drivers.push(driver);
-            return;
-        }
-        #[cfg(not(target_arch = "aarch64"))]
+        // NOTE: Previously aarch64 skipped the probe loop because MMIO reads
+        // faulted under the boot page table. Now that the kernel page table is
+        // activated (commit dfd7324) and IoMem works, we probe normally so that
+        // virtio-net, virtio-keyboard, etc. are discovered and registered.
         {
         debug!("Register driver: {:#x?}", driver);
         let length = self.common_devices.len();
@@ -74,15 +70,9 @@ impl MmioBus {
     }
 
     pub(super) fn register_mmio_device(&mut self, mut mmio_device: MmioCommonDevice) {
-        // On aarch64, MMIO reads fault due to boot page table attributes.
-        // Skip device ID read and driver probing — just store the common device.
-        #[cfg(target_arch = "aarch64")]
-        {
-            ostd::early_println!("[virtio-mmio] register: storing common device (aarch64 skip probe)");
-            self.common_devices.push_back(mmio_device);
-            return;
-        }
-        #[cfg(not(target_arch = "aarch64"))]
+        // NOTE: Previously aarch64 skipped device ID read and probing due to
+        // boot page table MMIO faults. Now that the kernel page table is active,
+        // we register normally so drivers can probe the device.
         {
         let device_id = mmio_device.read_device_id().unwrap();
         for driver in self.drivers.iter() {

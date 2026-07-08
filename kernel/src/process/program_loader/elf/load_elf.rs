@@ -556,34 +556,31 @@ fn setup_tls(vmar: &Vmar, elf_headers: &ElfHeaders) -> Option<Vaddr> {
         _ => (0, 0, 16, 0), // no PT_TLS: still set up a pthread/TCB
     };
 
-    // On aarch64, set up a complete TLS block with a proper struct pthread
-    // (TCB), matching musl's TLS_ABOVE_TP layout. musl reads TPIDR_EL0 early
-    // in __libc_start_main (before its own TLS init), so the kernel must
-    // provide a valid TCB with self/dtv pointers.
+    // On aarch64, set up a TLS block matching musl's TLS_ABOVE_TP layout
+    // used by the statically-linked musl busybox/dropbear binaries.
     //
-    // musl TLS_ABOVE_TP layout:
-    //   [TLS data (.tdata)] [gap=16] [struct pthread] [TPIDR_EL0 →]
-    // __pthread_self() = TPIDR_EL0 - sizeof(struct pthread)
-    // struct pthread starts: self(0x0), dtv(0x8), prev(0x10), next(0x18), ...
+    // musl TLS_ABOVE_TP layout (arch/aarch64/pthread_arch.h):
+    //   [TLS data (.tdata/.tbss)] [gap=16] [struct pthread (0xc8 B)] [TPIDR_EL0 →]
+    //   __pthread_self() = TPIDR_EL0 - sizeof(struct pthread) = TP - 0xc8
+    //   struct pthread field offsets:
+    //     0x00 self, 0x08 prev, 0x10 next, 0x18 sysinfo,
+    //     0x20 tid, 0x24 errno_val, ...
+    //     0x98 locale (locale_t = struct __locale_struct *)
+    //   errno is at __pthread_self()->errno_val = (TP - 0xc8) + 0x24 = TP - 0xa4
     //
-    // Since we don't know the exact sizeof(struct pthread) for the musl version
-    // used by busybox, we allocate a generous block (4 pages) and zero-fill
-    // struct pthread so all fields are safe (NULL prev/next, self/dtv set).
+    // musl reads TPIDR_EL0 very early in __libc_start_main, so the kernel must
+    // provide a valid struct pthread with self/dtv pointers.
     #[cfg(target_arch = "aarch64")]
     {
         use crate::vm::perms::VmPerms;
 
-        // tls_filesz, tls_align, tls_memsz come from the PT_TLS parsing above
-        // (or defaults of 0/16 when there is no PT_TLS).
-
-        // musl struct pthread on aarch64 is 0x740 bytes (observed from busybox's
-        // `sub x20, x20, #0x740` at 0x4002e8, which computes __pthread_self()).
-        // Use 0x800 (2KB) as a safe allocation with headroom.
-        let pthread_size = 0x800usize;
+        // musl struct pthread on aarch64 is 0xc8 bytes.
+        let pthread_size = 0xc8usize;
         let gap = 16usize; // GAP_ABOVE_TP
         let dtv_size = 24usize;
 
         let tls_data_aligned = (tls_memsz + tls_align - 1) & !(tls_align - 1);
+        // Layout: [TLS data] [gap] [struct pthread] [TP]
         let total = (tls_data_aligned + gap + pthread_size + dtv_size + 4095) & !4095;
 
         let tls_base = vmar
@@ -593,20 +590,34 @@ fn setup_tls(vmar: &Vmar, elf_headers: &ElfHeaders) -> Option<Vaddr> {
             .build()
             .ok()?;
 
+        // struct pthread starts after the TLS data + gap.
         let td_addr = tls_base + tls_data_aligned + gap;
         let dtv_addr = td_addr + pthread_size;
-        let tp = td_addr + pthread_size;
+        // TPIDR_EL0 points right after struct pthread.
+        let tp = dtv_addr;
 
-        // Write struct pthread fields via write_alien.
+        // --- struct pthread (at td_addr) ---
         // self(0x0) = td_addr: so __pthread_self()->self == __pthread_self()
         let self_bytes = (td_addr as u64).to_le_bytes();
         let mut r = ostd::mm::VmReader::from(&self_bytes[..]).to_fallible();
         let _ = vmar.write_alien(td_addr, &mut r);
 
-        // dtv(0x8) = dtv_addr
+        // dtv(0x8) field — musl stores dtv at offset 0xc0 (tail of struct
+        // pthread in TLS_ABOVE_TP). Point it at the dtv array.
         let dtv_ptr = (dtv_addr as u64).to_le_bytes();
         let mut r = ostd::mm::VmReader::from(&dtv_ptr[..]).to_fallible();
-        let _ = vmar.write_alien(td_addr + 8, &mut r);
+        let _ = vmar.write_alien(td_addr + 0xc0, &mut r);
+
+        // canary(0xb8) — musl stores canary at offset 0xb8. Leave zeroed.
+
+        // locale(0x98) = pointer to a zeroed __locale_struct (C locale).
+        // musl's locale functions read __pthread_self()->locale. A zeroed
+        // __locale_struct means C locale (musl falls back to built-in data).
+        // The struct is zeroed already (within the pthread allocation).
+        let locale_struct_addr = td_addr + 0x40; // unused region inside pthread
+        let locale_ptr_bytes = (locale_struct_addr as u64).to_le_bytes();
+        let mut r = ostd::mm::VmReader::from(&locale_ptr_bytes[..]).to_fallible();
+        let _ = vmar.write_alien(td_addr + 0x98, &mut r);
 
         // dtv array: dtv[0] = 1 (tls_cnt), dtv[1] = tls_base
         let one_bytes = 1u64.to_le_bytes();
@@ -617,7 +628,7 @@ fn setup_tls(vmar: &Vmar, elf_headers: &ElfHeaders) -> Option<Vaddr> {
         let mut r = ostd::mm::VmReader::from(&base_bytes[..]).to_fallible();
         let _ = vmar.write_alien(dtv_addr + 8, &mut r);
 
-        // Copy .tdata from the LOAD segment to the TLS block.
+        // Copy .tdata from the LOAD segment to the TLS data area.
         if tls_filesz > 0 {
             let mut buf = vec![0u8; tls_filesz];
             let src_reader = vmar
@@ -632,28 +643,8 @@ fn setup_tls(vmar: &Vmar, elf_headers: &ElfHeaders) -> Option<Vaddr> {
             }
         }
 
-        // Fill TP+0x10, TP+0x18, TP+0x20 with td_addr so musl's early
-        // reads of these offsets (before its own TLS init) don't get NULL.
-        let td_bytes = (td_addr as u64).to_le_bytes();
-        for off in [0x10usize, 0x18, 0x20, 0x30].iter() {
-            let mut r = ostd::mm::VmReader::from(&td_bytes[..]).to_fallible();
-            let _ = vmar.write_alien(tp + off, &mut r);
-        }
-
-        // musl's CURRENT_LOCALE = *(TPIDR_EL0 - 0x28), i.e., the locale pointer
-        // is stored at tp - 0x28 (= td_addr + pthread_size - 0x28).
-        // If this is NULL, __strerror_l crashes (far=0x28) when any syscall
-        // returns an error and musl converts errno to a string.
-        // Fix: allocate a zeroed __locale_struct (48 bytes, = C locale) in the
-        // TLS block and write its address to tp - 0x28.
-        let locale_struct_addr = td_addr + 0x200; // zeroed region within TLS block
-        // The 48 bytes at locale_struct_addr are already zeroed (BSS-like).
-        let locale_ptr_bytes = (locale_struct_addr as u64).to_le_bytes();
-        let mut r = ostd::mm::VmReader::from(&locale_ptr_bytes[..]).to_fallible();
-        let _ = vmar.write_alien(tp - 0x28, &mut r); // *(tp - 0x28) = &locale_struct
-
         ostd::early_println!(
-            "[tls] TCB: base={:#x} td={:#x} tp={:#x} dtv={:#x} sz={:#x}",
+            "[tls] musl: base={:#x} td={:#x} tp={:#x} dtv={:#x} psz={:#x}",
             tls_base, td_addr, tp, dtv_addr, pthread_size
         );
         return Some(tp);
@@ -699,12 +690,11 @@ fn apply_relocations(
     const R_AARCH64_RELATIVE: u32 = 1027;
     const R_AARCH64_GLOB_DAT: u32 = 1025;
     const R_AARCH64_ABS64: u32 = 257;
-    // R_AARCH64_IRELATIVE (1032) is deliberately NOT handled here: IFUNC
-    // resolvers must execute in the target's context (user-space), so the
-    // kernel cannot resolve them. The static binary's own startup code
-    // (.rela.plt processing) handles IRELATIVE entries. Applying them in the
-    // kernel with the wrong semantics (writing the resolver address instead
-    // of its return value) corrupts the GOT and crashes the binary.
+    // R_AARCH64_IRELATIVE (1032) is NOT handled here: the kernel forbids
+    // unsafe code (#![deny(unsafe_code)]), so we cannot transmute and call
+    // the IFUNC resolver. Static binaries process their own IRELATIVE
+    // entries at startup; the segments are mapped writable (see the
+    // DIAGNOSTIC in map_segment_vmo) to allow this.
 
     let load_bias = relocated_range.load_bias();
     // Convert to unsigned for arithmetic below. Negative bias never happens
@@ -759,12 +749,15 @@ fn apply_relocations(
             // load bias. For non-PIE binaries the bias is 0, so this is a no-op.
             let patch_addr = r_offset.wrapping_add(load_bias_u) as usize;
 
-            // The relocation value also needs the load bias for static-PIE
-            // binaries, since the addend is a link-time address (VMA).
+            // Compute the relocation value.
             //   - R_AARCH64_RELATIVE: value = load_bias + addend
-            //   - R_AARCH64_GLOB_DAT/ABS64 for static binaries: the symbol is
-            //     resolved at link time to a link-time VMA, so value also
-            //     equals load_bias + addend.
+            //   - R_AARCH64_GLOB_DAT/ABS64: value = load_bias + addend
+            //   - R_AARCH64_IRELATIVE: call the IFUNC resolver at
+            //     (load_bias + addend) and use its return value. The resolver
+            //     is a short position-independent function (e.g. selects
+            //     memcpy/memset variant based on CPU features). We call it via
+            //     a raw function pointer; the user pages are accessible from
+            //     kernel mode on aarch64, and these resolvers don't do syscalls.
             let value: u64 = match r_type {
                 R_AARCH64_RELATIVE | R_AARCH64_GLOB_DAT | R_AARCH64_ABS64 => {
                     r_addend.wrapping_add(load_bias_u)

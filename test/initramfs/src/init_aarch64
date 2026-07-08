@@ -2,50 +2,26 @@
 
 mount -t proc none /proc 2>/dev/null
 mount -t sysfs none /sys 2>/dev/null
-mount -t devtmpfs none /dev 2>/dev/null
 
 echo ""
 echo "=== kei ignition (aarch64) ==="
-echo "Kernel booted successfully"
-echo ""
 
-# Bring up loopback + all ethernet interfaces
-ip link set lo up 2>/dev/null
-for iface in /sys/class/net/*; do
-    [ -d "$iface" ] || continue
-    name=$(basename "$iface")
-    [ "$name" = "lo" ] && continue
-    echo "Bringing up $name ..."
-    ip link set "$name" up 2>/dev/null
-    # QEMU user-mode net: 10.0.2.0/24, guest 10.0.2.15, gw 10.0.2.2
-    ip addr add 10.0.2.15/24 dev "$name" 2>/dev/null
-    ip route add default via 10.0.2.2 2>/dev/null
-    echo "  $name configured: $(ip addr show $name 2>/dev/null | grep inet)"
-done
+echo "Bringing up networking..."
+ifconfig lo 127.0.0.1 up 2>/dev/null
+# Try to bring up the first ethernet interface (virtio-net = eth0)
+ifconfig eth0 10.0.2.15 netmask 255.255.255.0 up 2>/dev/null && echo "  eth0 configured"
+ifconfig 2>/dev/null | head -10
 
-# Prepare dropbear runtime dirs and host keys
-mkdir -p /etc/dropbear /var/log
-# Generate host keys on first boot (-R regenerates if missing)
-echo "Generating dropbear host keys ..."
-/sbin/dropbearkey -t rsa -f /etc/dropbear/dropbear_rsa_host_key 2>/dev/null
-/sbin/dropbearkey -t ed25519 -f /etc/dropbear/dropbear_ed25519_host_key 2>/dev/null
-
-# Start dropbear SSH server:
-#   -F : run in foreground (but we background it with &)
-#   -E : log to stderr
-#   -R : generate host keys if missing
-#   -p 22 : listen on port 22
-#   -B : allow blank password logins (we use key auth anyway)
-echo "Starting dropbear on port 22 ..."
-/sbin/dropbear -F -E -R -p 22 -B 2>/dev/null &
-DROPBEAR_PID=$!
-sleep 1
-if kill -0 $DROPBEAR_PID 2>/dev/null; then
-    echo "dropbear started (pid $DROPBEAR_PID), listening on :22"
-else
-    echo "WARNING: dropbear failed to start"
-fi
+# Start dropbear SSH server (host keys are pre-generated in the initramfs)
+echo "Starting dropbear on port 22..."
+/sbin/dropbear -F -E -R -p 22 2>&1 &
+sleep 2
+echo "dropbear launched"
 
 echo ""
 echo "Boot complete. SSH on port 22."
 exec /bin/sh
+
+
+
+

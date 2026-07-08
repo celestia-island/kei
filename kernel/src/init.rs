@@ -264,6 +264,9 @@ fn init_in_first_kthread(path_resolver: &PathResolver) {
     {
         ostd::early_println!("[kthread] explicit component init for net stack");
         let _ = aster_softirq::init_component_fn();
+        let _ = aster_console::init_component_fn();
+        let _ = aster_framebuffer::init_component_fn();
+        let _ = aster_input::init_component_fn();
         let _ = aster_network::init_component_fn();
         // virtio component init probes devices (needs FDT, which is available)
         let _ = aster_virtio::virtio_component_init_pub();

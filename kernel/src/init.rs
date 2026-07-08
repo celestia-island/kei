@@ -229,32 +229,20 @@ fn init_in_first_kthread(path_resolver: &PathResolver) {
     }
     #[cfg(target_arch = "aarch64")]
     {
-        // Skip component init — manually call virtio and framebuffer init.
-        // This runs in first_kthread (task context), which is required because
-        // virtio's allocate_major() uses ostd Mutex (WaitQueue-backed) and that
-        // only works inside a task context, not the boot context.
-        ostd::early_println!("[kthread] manual component init (aarch64 bypass)...");
-        ostd::early_println!("[kthread] calling virtio_component_init...");
-        let _ = aster_virtio::virtio_component_init_pub();
-        ostd::early_println!("[kthread] virtio init done");
-        ostd::early_println!("[kthread] calling framebuffer::init_component_fn...");
-        let _ = aster_framebuffer::init_component_fn();
-        ostd::early_println!("[kthread] framebuffer init done");
+        // Component::init_all(Bootstrap) already ran in init() and initialized
+        // virtio, framebuffer, console, input, etc. We just need to run the
+        // Kthread stage here (which does the same as component::init_all(Kthread)
+        // on other architectures).
+        ostd::early_println!("[kthread] running component::init_all(Kthread)...");
+        if let Err(e) = component::init_all(InitStage::Kthread, component::parse_metadata!()) {
+            ostd::early_println!("[WARN] component::init_all(Kthread) failed: {:?}", e);
+        } else {
+            ostd::early_println!("[kthread] component::init_all(Kthread) OK");
+        }
 
-        // Initialize the input subsystem so virtio-keyboard devices can
-        // register and connect to VT keyboard handlers.
-        ostd::early_println!("[kthread] calling console::init_component_fn...");
-        let _ = aster_console::init_component_fn();
-        ostd::early_println!("[kthread] console init done");
-        ostd::early_println!("[kthread] calling input::init_component_fn...");
-        let _ = aster_input::init_component_fn();
-        ostd::early_println!("[kthread] input init done");
-
-        // Now that the display is live, bring up the framebuffer console.
+        // fb_console is still our early display (VT FramebufferConsole is set
+        // up later in tty_init_in_first_process).
         crate::fb_console::init();
-        crate::fb_console::println("== kei kernel boot complete ==");
-        crate::fb_console::println("virtio-gpu 2D display online");
-        crate::fb_console::println("aarch64 (cortex-a72) @ QEMU virt");
     }
     // Work queue should be initialized before interrupt is enabled,
     // in case any irq handler uses work queue as bottom half

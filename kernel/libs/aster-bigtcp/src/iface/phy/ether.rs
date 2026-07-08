@@ -123,8 +123,12 @@ impl<D, E: Ext> EtherIface<D, E> {
         let repr = EthernetRepr::parse(&frame).map_err(|_| None)?;
 
         // Ignore the Ethernet frame if it is not sent to us.
+        // On aarch64, accept all unicast packets as a workaround since the MAC
+        // read from device config may not match what QEMU's slirp uses.
         if !repr.dst_addr.is_broadcast() && repr.dst_addr != self.ether_addr {
+            #[cfg(not(target_arch = "aarch64"))]
             return Err(None);
+            // On aarch64, fall through and accept the packet.
         }
 
         // Ignore the Ethernet frame if the protocol is not supported.

@@ -98,6 +98,10 @@ fn init() {
     ostd::early_println!("[init] driver::init");
     #[cfg(not(target_arch = "aarch64"))]
     crate::driver::init();
+    // Register memory character devices (/dev/null, /dev/zero, /dev/urandom)
+    // early so they're available before any user-space process starts.
+    #[cfg(target_arch = "aarch64")]
+    crate::device::mem::init_in_first_kthread();
     ostd::early_println!("[init] time::init");
     crate::time::init();
     // On aarch64, net::init() is deferred to init_in_first_kthread() so that
@@ -296,10 +300,6 @@ pub(super) fn on_first_process_startup(ctx: &Context) {
     }
     #[cfg(target_arch = "aarch64")]
     {
-        // Initialize the memory character devices (/dev/null, /dev/zero,
-        // /dev/urandom) which dropbear needs during SSH sessions.
-        crate::device::mem::init_in_first_kthread();
-
         // Initialize the console and framebuffer components explicitly (the
         // inventory-based component system doesn't reliably register them on
         // aarch64). These are needed before opening /dev/console and before

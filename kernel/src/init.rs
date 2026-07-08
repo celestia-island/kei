@@ -36,27 +36,13 @@ pub(super) fn main() {
 
     // Initialize the global states for all CPUs.
     ostd::early_println!("OSTD initialized. Preparing components.");
-    // Skip component init on aarch64 for now — inventory::iter panics.
-    // Instead, manually initialize the framebuffer component.
-    #[cfg(target_arch = "aarch64")]
-    {
-        ostd::early_println!("[init] skipping component::init_all on aarch64");
-        // Manually init framebuffer
-        ostd::early_println!("[init] manual framebuffer::init...");
-        // The framebuffer component init is just: framebuffer::init()
-        // which reads boot_info().framebuffer_arg (None on aarch64).
-        // So it's a no-op. We need virtio-gpu to publish first.
-    }
-    #[cfg(not(target_arch = "aarch64"))]
-    {
-        ostd::early_println!("[init] about to call parse_metadata...");
-        let metadata = component::parse_metadata!();
-        ostd::early_println!("[init] parse_metadata returned {} items", metadata.len());
-        ostd::early_println!("[init] calling component::init_all(Bootstrap)...");
-        match component::init_all(InitStage::Bootstrap, metadata) {
-            Ok(()) => ostd::early_println!("[init] component::init_all(Bootstrap) OK"),
-            Err(e) => ostd::early_println!("[WARN] component::init_all(Bootstrap) failed: {:?}", e),
-        }
+    // Now that the kernel page table is activated (linear VMA linking),
+    // try the full component system on aarch64 too. If it fails, we have
+    // manual fallbacks in init_in_first_kthread.
+    ostd::early_println!("[init] calling component::init_all(Bootstrap)...");
+    match component::init_all(InitStage::Bootstrap, component::parse_metadata!()) {
+        Ok(()) => ostd::early_println!("[init] component::init_all(Bootstrap) OK"),
+        Err(e) => ostd::early_println!("[WARN] component::init_all(Bootstrap) failed: {:?}", e),
     }
     ostd::early_println!("Components Bootstrap done.");
     init();
@@ -99,13 +85,10 @@ pub(super) fn main() {
 fn init() {
     ostd::early_println!("[init] arch::init");
     crate::arch::init();
-    // On aarch64 the cmdline component (which parses the kernel command line
-    // into INIT_PROC_ARGS) is bypassed along with the rest of the inventory-
-    // based component system. Initialize it manually so spawn_init_process
-    // can read the init process argv/envp.
+    ostd::early_println!("[init] cmdline::init");
     #[cfg(target_arch = "aarch64")]
     {
-        ostd::early_println!("[init] cmdline::init_no_component (aarch64)");
+        // cmdline component init may not have run if Bootstrap failed
         aster_cmdline::init_no_component();
     }
     ostd::early_println!("[init] thread::init");
@@ -113,39 +96,17 @@ fn init() {
     ostd::early_println!("[init] random::init");
     crate::util::random::init();
     ostd::early_println!("[init] driver::init");
-    // driver::init uses inventory (broken on aarch64), skip for now.
     #[cfg(not(target_arch = "aarch64"))]
     crate::driver::init();
-    #[cfg(target_arch = "aarch64")]
-    ostd::early_println!("[init] driver::init (SKIPPED on aarch64)");
-    // driver::init and net::init use the inventory-based component system,
-    // which panics on aarch64 (boot page table doesn't activate the cursor-
-    // built kernel page table, so component init functions that touch MMIO
-    // fault). They are bypassed on aarch64: devices are initialized manually
-    // in `init_in_first_kthread` (virtio + framebuffer) instead.
-    ostd::early_println!("[init] driver::init");
-    #[cfg(not(target_arch = "aarch64"))]
-    crate::driver::init();
-    #[cfg(target_arch = "aarch64")]
-    ostd::early_println!("[init] driver::init (SKIPPED on aarch64)");
     ostd::early_println!("[init] time::init");
-    // On aarch64 time::init uses a no-RTC fallback (clocks::system_wide::
-    // init_no_rtc) that sets clock singletons to defaults, since the aster_time
-    // component (RTC + TSC) is bypassed. cpu_time_stats::init is always called.
     crate::time::init();
     ostd::early_println!("[init] net::init");
-    #[cfg(not(target_arch = "aarch64"))]
     crate::net::init();
-    #[cfg(target_arch = "aarch64")]
-    ostd::early_println!("[init] net::init (SKIPPED on aarch64)");
     ostd::early_println!("[init] sched::init");
     crate::sched::init();
     ostd::early_println!("[init] process::init");
     crate::process::init();
     ostd::early_println!("[init] fs::init");
-    ostd::early_println!("[init] fs::init");
-    // On aarch64 fs::init manually initializes the systree singleton (set by
-    // the bypassed component system) before calling vfs::init, which reads it.
     crate::fs::init();
     ostd::early_println!("[init] security::init");
     crate::security::init();
@@ -298,12 +259,8 @@ fn init_in_first_kthread(path_resolver: &PathResolver) {
     // Work queue should be initialized before interrupt is enabled,
     // in case any irq handler uses work queue as bottom half
     crate::thread::work_queue::init_in_first_kthread();
-    // device::init_in_first_kthread walks the device registry via the
-    // inventory-based component system, which panics on aarch64. Devices are
-    // initialized manually above (virtio + framebuffer) on aarch64.
     #[cfg(not(target_arch = "aarch64"))]
     crate::device::init_in_first_kthread();
-    #[cfg(not(target_arch = "aarch64"))]
     crate::net::init_in_first_kthread();
     crate::fs::init_in_first_kthread(path_resolver);
     #[cfg(any(target_arch = "x86_64", target_arch = "riscv64"))]

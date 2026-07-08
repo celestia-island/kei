@@ -81,6 +81,18 @@ pub use guard::{DisabledLocalIrqGuard, disable_local};
 pub use level::InterruptLevel;
 pub use top_half::{IrqCallbackFunction, IrqLine};
 
+/// Re-enables local IRQs. This is a public wrapper around the arch-specific
+/// `enable_local` for use by the kernel when it needs to ensure IRQs are
+/// enabled before entering user mode.
+pub fn enable_local() {
+    crate::arch::irq::enable_local();
+}
+
+/// Returns true if local IRQs are currently enabled.
+pub fn is_local_enabled() -> bool {
+    crate::arch::irq::is_local_enabled()
+}
+
 use crate::{
     arch::{irq::HwIrqLine, trap::TrapFrame},
     cpu::PrivilegeLevel,

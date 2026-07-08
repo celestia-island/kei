@@ -74,8 +74,11 @@ pub fn create_new_user_task(
             // handlers (page fault → signal delivery) may have left IRQs
             // disabled, which would cause might_sleep() to panic on the next
             // execute() call.
-            if !ostd::arch::irq::is_local_enabled() {
-                ostd::arch::irq::enable_local();
+            #[cfg(target_arch = "aarch64")]
+            {
+                if !ostd::irq::is_local_enabled() {
+                    ostd::irq::enable_local();
+                }
             }
             // Execute the user code
             let return_reason = user_mode.execute(has_kernel_event_fn);

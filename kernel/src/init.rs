@@ -346,6 +346,21 @@ fn open_initial_console(ctx: &Context) {
         vfs::path::FsPath,
     };
 
+    // On aarch64, use the direct PL011 serial console for fd 0/1/2 since the
+    // tty device subsystem isn't wired up (component system bypassed).
+    #[cfg(target_arch = "aarch64")]
+    {
+        let console: Arc<dyn FileLike> =
+            Arc::new(crate::serial_console::SerialConsole::new(AccessMode::O_RDWR));
+        let file_table = ctx.thread_local.borrow_file_table();
+        let mut ft = file_table.unwrap().write();
+        let _ = ft.insert(console.clone(), FdFlags::empty()); // fd 0 = stdin
+        let _ = ft.insert(console.clone(), FdFlags::empty()); // fd 1 = stdout
+        let _ = ft.insert(console.clone(), FdFlags::empty()); // fd 2 = stderr
+        ostd::early_println!("[init] serial console bound to fd 0/1/2");
+        return;
+    }
+
     // Try /dev/ttyS0 first (created by serial init in RamFs), then /dev/console.
     let console_paths = ["/dev/ttyS0", "/dev/console"];
     let fs_info = ctx.thread_local.borrow_fs();
@@ -359,7 +374,7 @@ fn open_initial_console(ctx: &Context) {
     });
     drop(resolver_guard);
 
-    let Some((found_path, path)) = path else {
+    let Some((_found_path, path)) = path else {
         return;
     };
 

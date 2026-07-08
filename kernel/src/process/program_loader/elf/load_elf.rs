@@ -546,12 +546,15 @@ fn map_vdso_to_vmar(vmar: &Vmar) -> Option<Vaddr> {
 fn setup_tls(vmar: &Vmar, elf_headers: &ElfHeaders) -> Option<Vaddr> {
     use crate::vm::perms::VmPerms;
 
-    // Determine the TLS block size from PT_TLS.
-    let tls_phdr = elf_headers.tls_phdr()?;
-    let tls_memsz = tls_phdr.memsz;
-    if tls_memsz == 0 {
-        return None;
-    }
+    // Determine the TLS block size from PT_TLS. Even if there is no PT_TLS
+    // (or it's empty), we still allocate a TLS block with a struct pthread
+    // (TCB) and set TPIDR_EL0 — musl reads TPIDR_EL0 very early (in
+    // __libc_start_main) for __pthread_self(), and TPIDR_EL0=0 causes
+    // immediate faults.
+    let (tls_memsz, tls_filesz, tls_align, tls_phdr_vaddr) = match elf_headers.tls_phdr() {
+        Some(phdr) if phdr.memsz > 0 => (phdr.memsz, phdr.filesz, phdr.align.max(16), phdr.vaddr),
+        _ => (0, 0, 16, 0), // no PT_TLS: still set up a pthread/TCB
+    };
 
     // On aarch64, set up a complete TLS block with a proper struct pthread
     // (TCB), matching musl's TLS_ABOVE_TP layout. musl reads TPIDR_EL0 early
@@ -570,8 +573,8 @@ fn setup_tls(vmar: &Vmar, elf_headers: &ElfHeaders) -> Option<Vaddr> {
     {
         use crate::vm::perms::VmPerms;
 
-        let tls_filesz = tls_phdr.filesz;
-        let tls_align = tls_phdr.align.max(16);
+        // tls_filesz, tls_align, tls_memsz come from the PT_TLS parsing above
+        // (or defaults of 0/16 when there is no PT_TLS).
 
         // musl struct pthread on aarch64 is 0x740 bytes (observed from busybox's
         // `sub x20, x20, #0x740` at 0x4002e8, which computes __pthread_self()).
@@ -619,7 +622,7 @@ fn setup_tls(vmar: &Vmar, elf_headers: &ElfHeaders) -> Option<Vaddr> {
             let mut buf = vec![0u8; tls_filesz];
             let src_reader = vmar
                 .read_alien(
-                    tls_phdr.vaddr,
+                    tls_phdr_vaddr,
                     &mut ostd::mm::VmWriter::from(buf.as_mut_slice()).to_fallible(),
                 )
                 .ok();

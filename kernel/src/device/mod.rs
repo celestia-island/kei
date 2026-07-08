@@ -2,7 +2,7 @@
 
 mod evdev;
 mod fb;
-mod mem;
+pub(crate) mod mem;
 pub mod misc;
 mod pty;
 mod registry;

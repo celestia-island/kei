@@ -469,6 +469,33 @@ fn init_gpu(mmio_base: usize) {
         display_w,
         display_h
     );
+
+    // Publish this framebuffer so the VT/console subsystem can use it.
+    use alloc::sync::Arc;
+    let fb_base = core::ptr::addr_of!(FRAMEBUFFER) as *const _ as usize;
+    let fb_size = FB_WIDTH as usize * FB_HEIGHT as usize * FB_BPP;
+    let backing = aster_framebuffer::framebuffer::BlitBackend::new(fb_base, fb_size, raw_flush_callback);
+    let fb = aster_framebuffer::framebuffer::FrameBuffer::new_blit(
+        backing,
+        FB_WIDTH as usize,
+        FB_HEIGHT as usize,
+        FB_WIDTH as usize * FB_BPP,
+        aster_framebuffer::pixel::PixelFormat::BgrReserved,
+    );
+    aster_framebuffer::framebuffer::publish(Arc::new(fb));
+    ostd::early_println!("[virtio-gpu] framebuffer published for VT console");
+}
+
+/// Flush callback for the published FrameBuffer. Called by VT FramebufferConsole
+/// after rendering. Ignores the dirty rect and flushes the entire framebuffer.
+fn raw_flush_callback(
+    _backend: &aster_framebuffer::framebuffer::BlitBackend,
+    _x: usize,
+    _y: usize,
+    _width: usize,
+    _height: usize,
+) {
+    flush_framebuffer();
 }
 
 /// Push the whole framebuffer to the device: TRANSFER_TO_HOST_2D then

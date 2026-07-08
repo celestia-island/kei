@@ -181,7 +181,10 @@ impl VtConsole {
     pub(in crate::device::tty::vt) fn send(&self, buf: &[u8]) {
         let mut backend = self.backend.lock();
         match &mut *backend {
-            VtConsoleBackend::Framebuffer(c) => c.send(buf),
+            VtConsoleBackend::Framebuffer(c) => {
+                c.send(buf);
+                c.flush();
+            }
             VtConsoleBackend::None => {}
         }
     }
@@ -289,7 +292,11 @@ impl VtConsole {
         {
             let mut console = FramebufferConsole::new(fb);
             console.set_mode(mode);
+            console.activate();
+            ostd::early_println!("[vt] FramebufferConsole allocated and activated");
             *backend = VtConsoleBackend::Framebuffer(console);
+        } else {
+            ostd::early_println!("[vt] allocate: fb={:?}, backend={}", framebuffer::get().is_some(), matches!(*backend, VtConsoleBackend::Framebuffer(_)));
         }
         self.is_allocated.store(true, Ordering::Relaxed);
     }

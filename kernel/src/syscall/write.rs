@@ -53,7 +53,18 @@ pub fn sys_write(
         if user_buf_len != 0 {
             let user_space = ctx.user_space();
             let mut reader = user_space.reader(user_buf_ptr, user_buf_len)?;
-            file.write(&mut reader)
+            #[cfg(target_arch = "aarch64")]
+            let result = file.write(&mut reader);
+            #[cfg(target_arch = "aarch64")]
+            {
+                match &result {
+                    Ok(n) => ostd::early_println!("[syscall] write(fd={}, len={}) OK={}", raw_fd, user_buf_len, n),
+                    Err(e) => ostd::early_println!("[syscall] write(fd={}, len={}) FAILED: {:?}", raw_fd, user_buf_len, e.error()),
+                }
+            }
+            #[cfg(not(target_arch = "aarch64"))]
+            let result = file.write(&mut reader);
+            result
         } else {
             file.write_bytes(&[])
         }

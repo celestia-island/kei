@@ -21,11 +21,12 @@
 .text
 
 /* Constants for TrapFrame layout */
-.set PT_REGS_SIZE, 0x110
+.set PT_REGS_SIZE, 0x120
 .set S_LR, 0xF0
 .set S_SP, 0xF8
 .set S_SPSR, 0x100
 .set S_ELR, 0x108
+.set S_TPIDR, 0x110    // TPIDR_EL0 (user TLS pointer, saved only for EL0)
 
 /*
  * kernel_entry - Save registers to TrapFrame on exception entry.
@@ -62,6 +63,12 @@
     .if \el == 0
         mrs     x21, sp_el0              // Read user stack pointer from SP_EL0
         str     x21, [sp, #S_SP]         // Store to GeneralRegs.sp field (0xF8)
+        // Save TPIDR_EL0 (user TLS pointer) so it survives context switches
+        // during kernel-side trap handling. Without this, a fork()'d child
+        // that gets scheduled while the parent is in a syscall loses its
+        // TPIDR_EL0 value.
+        mrs     x21, tpidr_el0
+        str     x21, [sp, #S_TPIDR]
     .else
         add     x21, sp, #PT_REGS_SIZE   // Pre-exception kernel stack pointer
         str     x21, [sp, #S_SP]         // Store to GeneralRegs.sp field (0xF8)
@@ -92,6 +99,9 @@
     .if \el == 0
         ldr     x23, [sp, #S_SP]          // Load GeneralRegs.sp (0xF8)
         msr     sp_el0, x23               // Restore user stack pointer to SP_EL0
+        // Restore TPIDR_EL0 (user TLS pointer)
+        ldr     x23, [sp, #S_TPIDR]
+        msr     tpidr_el0, x23
     .endif
 
     // Restore general registers x0-x29 (pairs)

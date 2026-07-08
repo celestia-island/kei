@@ -730,7 +730,6 @@ fn clone_tls_pointer(child_context: &mut UserContext, clone_flags: CloneFlags, t
         {
             let parent_tls = ostd::arch::read_tpidr_el0();
             child_context.set_tls_pointer(parent_tls);
-            ostd::early_println!("[clone] fork TLS: parent={:#x} child_ctx.tls={:#x}", parent_tls, child_context.tls_pointer());
         }
         // On x86_64 the fs_base is inherited via clone_tls_regs.
     }

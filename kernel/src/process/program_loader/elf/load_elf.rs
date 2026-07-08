@@ -635,10 +635,22 @@ fn setup_tls(vmar: &Vmar, elf_headers: &ElfHeaders) -> Option<Vaddr> {
         // Fill TP+0x10, TP+0x18, TP+0x20 with td_addr so musl's early
         // reads of these offsets (before its own TLS init) don't get NULL.
         let td_bytes = (td_addr as u64).to_le_bytes();
-        for off in [0x10usize, 0x18, 0x20, 0x28, 0x30].iter() {
+        for off in [0x10usize, 0x18, 0x20, 0x30].iter() {
             let mut r = ostd::mm::VmReader::from(&td_bytes[..]).to_fallible();
             let _ = vmar.write_alien(tp + off, &mut r);
         }
+
+        // musl's CURRENT_LOCALE = *(TPIDR_EL0 - 0x28), i.e., the locale pointer
+        // is stored at tp - 0x28 (= td_addr + pthread_size - 0x28).
+        // If this is NULL, __strerror_l crashes (far=0x28) when any syscall
+        // returns an error and musl converts errno to a string.
+        // Fix: allocate a zeroed __locale_struct (48 bytes, = C locale) in the
+        // TLS block and write its address to tp - 0x28.
+        let locale_struct_addr = td_addr + 0x200; // zeroed region within TLS block
+        // The 48 bytes at locale_struct_addr are already zeroed (BSS-like).
+        let locale_ptr_bytes = (locale_struct_addr as u64).to_le_bytes();
+        let mut r = ostd::mm::VmReader::from(&locale_ptr_bytes[..]).to_fallible();
+        let _ = vmar.write_alien(tp - 0x28, &mut r); // *(tp - 0x28) = &locale_struct
 
         ostd::early_println!(
             "[tls] TCB: base={:#x} td={:#x} tp={:#x} dtv={:#x} sz={:#x}",

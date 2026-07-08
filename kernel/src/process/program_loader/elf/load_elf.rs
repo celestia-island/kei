@@ -99,7 +99,7 @@ pub fn load_elf_to_vmar(
     // a fully-initialized TLS that the kernel hasn't set up yet).
     #[cfg(target_arch = "aarch64")]
     {
-        apply_relocations(vmar, &elf_file)?;
+        apply_relocations(vmar, &elf_file, &elf_mapped_info.full_range)?;
     }
 
     Ok(ElfLoadInfo {
@@ -678,16 +678,39 @@ fn setup_tls(vmar: &Vmar, elf_headers: &ElfHeaders) -> Option<Vaddr> {
 
 /// Applies ELF relocations at load time (aarch64 only).
 ///
-/// Static binaries (like busybox) may contain RELA relocations (R_AARCH64_GLOB_DAT,
-/// R_AARCH64_RELATIVE) that must be applied to the GOT before user-space runs.
+/// Static binaries (like busybox) and static-PIE binaries (like dropbear) may
+/// contain RELA relocations (R_AARCH64_RELATIVE, R_AARCH64_GLOB_DAT,
+/// R_AARCH64_ABS64) that must be applied to the GOT before user-space runs.
 /// Without this, the binary tries to process its own relocations during early
 /// init, which fails because the TLS/TCB isn't fully set up yet.
+///
+/// For PIE (ET_DYN) binaries the ELF `r_offset` and the symbol addends are
+/// relative to the link-time base (which starts at 0), so both the patch
+/// address and the value must be adjusted by the load bias — exactly as
+/// Linux's `binfmt_elf` does when it calls the architecture's relocation
+/// helper after mapping the segments.
 #[cfg(target_arch = "aarch64")]
-fn apply_relocations(vmar: &Vmar, elf_file: &Path) -> Result<()> {
+fn apply_relocations(
+    vmar: &Vmar,
+    elf_file: &Path,
+    relocated_range: &RelocatedRange,
+) -> Result<()> {
     const SHT_RELA: u32 = 4;
     const R_AARCH64_RELATIVE: u32 = 1027;
-    const R_AARCH64_GLOB_DAT: u32 = 1032;
+    const R_AARCH64_GLOB_DAT: u32 = 1025;
     const R_AARCH64_ABS64: u32 = 257;
+    // R_AARCH64_IRELATIVE (1032) is deliberately NOT handled here: IFUNC
+    // resolvers must execute in the target's context (user-space), so the
+    // kernel cannot resolve them. The static binary's own startup code
+    // (.rela.plt processing) handles IRELATIVE entries. Applying them in the
+    // kernel with the wrong semantics (writing the resolver address instead
+    // of its return value) corrupts the GOT and crashes the binary.
+
+    let load_bias = relocated_range.load_bias();
+    // Convert to unsigned for arithmetic below. Negative bias never happens
+    // in practice (segments are always mapped at or above their link addr),
+    // but use wrapping to avoid panics.
+    let load_bias_u = load_bias as u64;
 
     let inode = elf_file.inode();
 
@@ -711,6 +734,7 @@ fn apply_relocations(vmar: &Vmar, elf_file: &Path) -> Result<()> {
     inode.read_bytes_at(e_shoff, &mut shdr_buf)?;
 
     let mut reloc_count = 0usize;
+    let mut skip_count = 0usize;
     for i in 0..e_shnum {
         let off = i * e_shentsize;
         let sh_type = u32::from_le_bytes(shdr_buf[off + 4..off + 8].try_into().unwrap());
@@ -726,30 +750,56 @@ fn apply_relocations(vmar: &Vmar, elf_file: &Path) -> Result<()> {
 
         for j in 0..n_entries {
             let eo = j * 24;
-            let r_offset = u64::from_le_bytes(rela_buf[eo..eo + 8].try_into().unwrap()) as usize;
+            let r_offset = u64::from_le_bytes(rela_buf[eo..eo + 8].try_into().unwrap());
             let r_info = u64::from_le_bytes(rela_buf[eo + 8..eo + 16].try_into().unwrap());
             let r_addend = u64::from_le_bytes(rela_buf[eo + 16..eo + 24].try_into().unwrap());
             let r_type = (r_info & 0xFFFFFFFF) as u32;
 
-            // For static non-PIE binaries, symbol resolves to addend.
+            // The actual patch address is the link-time offset adjusted by the
+            // load bias. For non-PIE binaries the bias is 0, so this is a no-op.
+            let patch_addr = r_offset.wrapping_add(load_bias_u) as usize;
+
+            // The relocation value also needs the load bias for static-PIE
+            // binaries, since the addend is a link-time address (VMA).
+            //   - R_AARCH64_RELATIVE: value = load_bias + addend
+            //   - R_AARCH64_GLOB_DAT/ABS64 for static binaries: the symbol is
+            //     resolved at link time to a link-time VMA, so value also
+            //     equals load_bias + addend.
             let value: u64 = match r_type {
-                R_AARCH64_RELATIVE | R_AARCH64_GLOB_DAT | R_AARCH64_ABS64 => r_addend,
+                R_AARCH64_RELATIVE | R_AARCH64_GLOB_DAT | R_AARCH64_ABS64 => {
+                    r_addend.wrapping_add(load_bias_u)
+                }
                 _ => continue,
             };
 
             let val_bytes = value.to_le_bytes();
             let mut reader = ostd::mm::VmReader::from(&val_bytes[..]).to_fallible();
-            match vmar.write_alien(r_offset, &mut reader) {
+            match vmar.write_alien(patch_addr, &mut reader) {
                 Ok(_) => reloc_count += 1,
                 Err((e, _)) => {
-                    ostd::early_println!("[reloc] failed at {:#x}: {:?}", r_offset, e);
+                    skip_count += 1;
+                    // Only print the first few failures to avoid flooding the log.
+                    if skip_count <= 8 {
+                        ostd::early_println!(
+                            "[reloc] failed at {:#x} (orig {:#x}, bias {:#x}): {:?}",
+                            patch_addr,
+                            r_offset,
+                            load_bias_u,
+                            e
+                        );
+                    }
                 }
             }
         }
     }
 
-    if reloc_count > 0 {
-        ostd::early_println!("[reloc] applied {} relocations", reloc_count);
+    if reloc_count > 0 || skip_count > 0 {
+        ostd::early_println!(
+            "[reloc] applied {} relocations (skipped {}), load_bias={:#x}",
+            reloc_count,
+            skip_count,
+            load_bias_u
+        );
     }
     Ok(())
 }

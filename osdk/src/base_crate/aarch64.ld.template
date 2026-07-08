@@ -107,7 +107,9 @@ SECTIONS
 
     .bss                    : AT(ADDR(.bss) - KERNEL_VMA_OFFSET) {
         __bss = .;
+        __bss_start = .;
         *(.bss .bss.*)
+        *(COMMON)
         __bss_end = .;
     }
 

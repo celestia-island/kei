@@ -100,8 +100,15 @@ fn init() {
     crate::driver::init();
     ostd::early_println!("[init] time::init");
     crate::time::init();
-    ostd::early_println!("[init] net::init");
-    crate::net::init();
+    // On aarch64, net::init() is deferred to init_in_first_kthread() so that
+    // all device components (virtio, network, vsock, softirq) are initialized
+    // by the component system's Kthread stage before the network stack probes
+    // the virtio-net/vsock devices.
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        ostd::early_println!("[init] net::init");
+        crate::net::init();
+    }
     ostd::early_println!("[init] sched::init");
     crate::sched::init();
     ostd::early_println!("[init] process::init");
@@ -249,6 +256,20 @@ fn init_in_first_kthread(path_resolver: &PathResolver) {
     crate::thread::work_queue::init_in_first_kthread();
     #[cfg(not(target_arch = "aarch64"))]
     crate::device::init_in_first_kthread();
+    // On aarch64, net::init() is deferred to here (after the component system's
+    // Kthread stage). However, inventory-based component registration is
+    // unreliable on aarch64, so we also explicitly initialize the softirq,
+    // network, and virtio components that net::init() depends on.
+    #[cfg(target_arch = "aarch64")]
+    {
+        ostd::early_println!("[kthread] explicit component init for net stack");
+        let _ = aster_softirq::init_component_fn();
+        let _ = aster_network::init_component_fn();
+        // virtio component init probes devices (needs FDT, which is available)
+        let _ = aster_virtio::virtio_component_init_pub();
+        ostd::early_println!("[kthread] net::init (deferred)");
+        crate::net::init();
+    }
     crate::net::init_in_first_kthread();
     crate::fs::init_in_first_kthread(path_resolver);
     #[cfg(any(target_arch = "x86_64", target_arch = "riscv64"))]
@@ -272,6 +293,15 @@ pub(super) fn on_first_process_startup(ctx: &Context) {
     }
     #[cfg(target_arch = "aarch64")]
     {
+        // Initialize the console and framebuffer components explicitly (the
+        // inventory-based component system doesn't reliably register them on
+        // aarch64). These are needed before opening /dev/console and before
+        // the VT subsystem connects to the framebuffer.
+        ostd::early_println!("[first_proc] console/framebuffer component init");
+        let _ = aster_console::init_component_fn();
+        let _ = aster_framebuffer::init_component_fn();
+        let _ = aster_input::init_component_fn();
+
         // Initialize the TTY subsystem (VT consoles, serial tty, /dev nodes).
         // The VT subsystem will allocate VT1, connect to the framebuffer
         // (already published), and register the keyboard handler (connecting

@@ -280,6 +280,15 @@ fn init_in_first_kthread(path_resolver: &PathResolver) {
         let _ = aster_framebuffer::init_component_fn();
         ostd::early_println!("[kthread] framebuffer init done");
 
+        // Initialize the input subsystem so virtio-keyboard devices can
+        // register and connect to VT keyboard handlers.
+        ostd::early_println!("[kthread] calling console::init_component_fn...");
+        let _ = aster_console::init_component_fn();
+        ostd::early_println!("[kthread] console init done");
+        ostd::early_println!("[kthread] calling input::init_component_fn...");
+        let _ = aster_input::init_component_fn();
+        ostd::early_println!("[kthread] input init done");
+
         // Now that the display is live, bring up the framebuffer console.
         crate::fb_console::init();
         crate::fb_console::println("== kei kernel boot complete ==");
@@ -318,7 +327,15 @@ pub(super) fn on_first_process_startup(ctx: &Context) {
     }
     #[cfg(target_arch = "aarch64")]
     {
-        ostd::early_println!("[first_proc] component/device init skipped (aarch64)");
+        // Initialize the TTY subsystem (VT consoles, serial tty, /dev nodes).
+        // The VT subsystem will allocate VT1, connect to the framebuffer
+        // (already published), and register the keyboard handler (connecting
+        // to any virtio-keyboard devices already registered).
+        ostd::early_println!("[first_proc] initializing tty subsystem (aarch64)...");
+        match crate::device::tty_init_in_first_process() {
+            Ok(()) => ostd::early_println!("[first_proc] tty init done"),
+            Err(e) => ostd::early_println!("[first_proc] tty init failed: {:?}", e),
+        }
     }
     // fs::init_in_first_process opens /dev/console as fd 0/1/2, which needs a
     // registered console device driver. On aarch64 the console component isn't
@@ -346,23 +363,10 @@ fn open_initial_console(ctx: &Context) {
         vfs::path::FsPath,
     };
 
-    // On aarch64, use the direct PL011 serial console for fd 0/1/2 since the
-    // tty device subsystem isn't wired up (component system bypassed).
-    #[cfg(target_arch = "aarch64")]
-    {
-        let console: Arc<dyn FileLike> =
-            Arc::new(crate::serial_console::SerialConsole::new(AccessMode::O_RDWR));
-        let file_table = ctx.thread_local.borrow_file_table();
-        let mut ft = file_table.unwrap().write();
-        let _ = ft.insert(console.clone(), FdFlags::empty()); // fd 0 = stdin
-        let _ = ft.insert(console.clone(), FdFlags::empty()); // fd 1 = stdout
-        let _ = ft.insert(console.clone(), FdFlags::empty()); // fd 2 = stderr
-        ostd::early_println!("[init] serial console bound to fd 0/1/2");
-        return;
-    }
-
-    // Try /dev/ttyS0 first (created by serial init in RamFs), then /dev/console.
-    let console_paths = ["/dev/ttyS0", "/dev/console"];
+    // Try /dev/console first (or /dev/tty0). On aarch64, if the TTY/VT
+    // subsystem initialized successfully, /dev/console will be the VT
+    // framebuffer terminal — giving us keyboard input + ANSI display.
+    let console_paths = ["/dev/console", "/dev/tty0", "/dev/ttyS0"];
     let fs_info = ctx.thread_local.borrow_fs();
     let resolver = fs_info.resolver();
     let resolver_guard = resolver.read();
@@ -374,15 +378,36 @@ fn open_initial_console(ctx: &Context) {
     });
     drop(resolver_guard);
 
-    let Some((_found_path, path)) = path else {
-        return;
-    };
-
-    let file: Arc<dyn FileLike> =
+    let file: Arc<dyn FileLike> = if let Some((found, path)) = path {
         match InodeHandle::new(path, AccessMode::O_RDWR, StatusFlags::empty()) {
-            Ok(f) => Arc::new(f),
-            Err(_) => return,
-        };
+            Ok(f) => {
+                ostd::early_println!("[init] console opened: {}", found);
+                Arc::new(f)
+            }
+            Err(e) => {
+                ostd::early_println!("[init] console open failed: {:?}, falling back", e);
+                return;
+            }
+        }
+    } else {
+        // Fallback: direct PL011 serial console (aarch64 no VT available)
+        #[cfg(target_arch = "aarch64")]
+        {
+            ostd::early_println!("[init] no /dev/console found, using serial fallback");
+            let console: Arc<dyn FileLike> =
+                Arc::new(crate::serial_console::SerialConsole::new(AccessMode::O_RDWR));
+            let file_table = ctx.thread_local.borrow_file_table();
+            let mut ft = file_table.unwrap().write();
+            let _ = ft.insert(console.clone(), FdFlags::empty()); // fd 0
+            let _ = ft.insert(console.clone(), FdFlags::empty()); // fd 1
+            let _ = ft.insert(console.clone(), FdFlags::empty()); // fd 2
+            return;
+        }
+        #[cfg(not(target_arch = "aarch64"))]
+        {
+            return;
+        }
+    };
 
     let file_table = ctx.thread_local.borrow_file_table();
     let mut ft = file_table.unwrap().write();

@@ -190,3 +190,10 @@ pub fn init_in_first_process(ctx: &Context) -> Result<()> {
 
     Ok(())
 }
+
+/// Initializes only the TTY subsystem (VT consoles + serial + device nodes).
+/// Used on aarch64 where the full device::init_in_first_process can't run
+/// (some submodules depend on the component system).
+pub fn tty_init_in_first_process() -> Result<()> {
+    tty::init_in_first_process()
+}

@@ -129,6 +129,5 @@ kcmd_args = [
     "HOME=/root",
     "USER=root",
     "PATH=/bin:/sbin",
-    "init=/init",
 ]
-init_args = ["sh", "-l"]
+init_args = ["/init"]

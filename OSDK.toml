@@ -111,13 +111,24 @@ qemu.args = """\
     -serial chardev:mux \
     -monitor chardev:mux \
     -chardev stdio,id=mux,mux=on,signal=off,logfile=target/qemu.log \
-    -drive if=none,format=raw,id=x0,file=./test/initramfs/build/ext2.img \
-    -drive if=none,format=raw,id=x1,file=./test/initramfs/build/exfat.img \
-    -device virtio-blk-device,drive=x0 \
-    -device virtio-blk-device,drive=x1 \
     -device virtio-gpu-device \
     -device virtio-keyboard-device \
     -device virtio-serial-device \
-    -device virtconsole,chardev:mux \
+    -device virtconsole,chardev=mux \
+    -netdev user,id=net0,hostfwd=tcp::2222-:22 \
+    -device virtio-net-device,netdev=net0 \
     ${QEMU_DISPLAY:--display sdl} \
 """
+
+# aarch64 uses its own initramfs (with dropbear SSH server) and init args.
+[scheme."aarch64".run.boot]
+initramfs = "test/initramfs/build/initramfs_aarch64.cpio.gz"
+kcmd_args = [
+    "SHELL=/bin/sh",
+    "LOGNAME=root",
+    "HOME=/root",
+    "USER=root",
+    "PATH=/bin:/sbin",
+    "init=/init",
+]
+init_args = ["sh", "-l"]

@@ -8,7 +8,7 @@ mod sched;
 
 pub use broadcast::is_broadcast_endpoint;
 pub use init::{init, iter_all_ifaces, loopback_iface, virtio_iface};
-pub(super) use poll::init_in_first_kthread;
+pub(super) use poll::{init_in_first_kthread, poll_ifaces};
 
 pub type Iface = dyn aster_bigtcp::iface::Iface<ext::BigtcpExt>;
 pub type BoundTcpPort = aster_bigtcp::iface::BoundTcpPort<ext::BigtcpExt>;

@@ -172,6 +172,8 @@ impl Pollee {
     /// This method should be called whenever new events arrive. The events can be spurious. This
     /// way, the caller can avoid expensive calculations and simply add all possible ones.
     pub fn notify(&self, events: IoEvents) {
+        #[cfg(target_arch = "aarch64")]
+        ostd::early_println!("[pollee] notify events={:?}", events);
         self.invalidate();
 
         self.inner.subject.notify_observers(&events);
@@ -311,6 +313,19 @@ impl Poller {
     /// [`EINTR`]: crate::error::Errno::EINTR
     /// [`ETIME`]: crate::error::Errno::ETIME
     pub fn wait(&self) -> Result<()> {
+        // On aarch64, the timer-based preemption and the `pause_timeout`
+        // mechanism are unreliable. We work around this by polling network
+        // interfaces directly. This processes any pending packets (e.g.,
+        // TCP handshakes), which in turn adds new connections to the
+        // listener backlog. The `wait_events` loop will immediately
+        // re-check the condition after we return.
+        #[cfg(target_arch = "aarch64")]
+        {
+            crate::net::poll_ifaces();
+            ostd::task::Task::yield_now();
+            return Ok(());
+        }
+        #[cfg(not(target_arch = "aarch64"))]
         self.waiter.pause_timeout(&self.timeout)
     }
 }

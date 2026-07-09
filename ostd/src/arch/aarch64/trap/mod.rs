@@ -278,9 +278,30 @@ fn handle_user_page_fault(f: &mut TrapFrame, exception: &CpuException) {
         _ => 0,
     };
     crate::early_println!(
-        "[trap] unhandled user pf: elr={:#x} far={:#x}",
+        "[trap] unhandled user pf: elr={:#x} far={:#x} x0={:#x} x1={:#x} x8={:#x} x20={:#x} x21={:#x} x29={:#x} x30={:#x}",
         f.elr_el1,
-        far
+        far,
+        f.general.x0,
+        f.general.x1,
+        f.general.x8,
+        f.general.x20,
+        f.general.x21,
+        f.general.x29,
+        f.general.x30,
+    );
+    // Diagnostic: dump TPIDR_EL0 and SP_EL0 to help diagnose TLS/stack-related
+    // user faults. x20 holds musl's thread pointer on aarch64; comparing it
+    // to TPIDR_EL0 reveals TLS layout mismatches.
+    let tpidr: usize;
+    let sp_el0: usize;
+    unsafe {
+        core::arch::asm!("mrs {0}, tpidr_el0", out(reg) tpidr);
+        core::arch::asm!("mrs {0}, sp_el0", out(reg) sp_el0);
+    }
+    crate::early_println!(
+        "[trap]   tpidr_el0={:#x} sp_el0={:#x}",
+        tpidr,
+        sp_el0,
     );
 
     // For user-mode faults that can't be handled inline: return from run_user

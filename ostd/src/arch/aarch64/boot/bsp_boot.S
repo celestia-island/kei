@@ -153,12 +153,18 @@ el1_setup:
     // TG0 = 0 (4KB granule for TTBR0: 0b00)
     // IRGN0 = 1, ORGN0 = 1 (normal cacheable)
     // SH0 = 3 (inner shareable)
-    // T1SZ = 16 (48-bit VA for TTBR1)
+    // T1SZ = 16 (48-bit VA for TTBR1, matching LINEAR_MAPPING_BASE_VADDR
+    //            0xffff800000000000 whose top 16 bits are all 1s)
     // TG1 = 2 (4KB granule for TTBR1: 0b10, ARM encodes TG1 differently from TG0)
     // IRGN1 = 1, ORGN1 = 1, SH1 = 3
-    // Value: T0SZ=16 | T1SZ=16<<16 | SH0=3<<12 | SH1=3<<28 | IRGN0=1<<8 | IRGN1=1<<24
-    //        | TG0=0 | TG1=2<<30 | IPS=5<<32 (40-bit PA)
-    ldr     x1, =0x00000000b5103510
+    // Value: T0SZ=16 | T1SZ=16<<6 | SH0=3<<12 | TG0=0 | TG1=2<<30
+    //        | IRGN0=1<<8 | ORGN0=1<<8 | IRGN1=1<<24 | ORGN1=1<<24 | SH1=3<<28
+    //        | IPS=5<<32 (40-bit PA)
+    // Note: the previous value 0xb5103510 had T1SZ=20 (bits[11:6]=010100)
+    // which requires top 20 bits all 1s for TTBR1. Our linear mapping base
+    // 0xffff800000000000 only has top 16 bits set, causing TTBR1 to reject
+    // the address after page table switch.
+    ldr     x1, =0x00000000b5103410
     msr     tcr_el1, x1
     isb
 
@@ -204,14 +210,39 @@ el1_setup:
     ldr     x4, =0xffff800000000000
     add     sp, x3, x4
 
-    // Jump to virtual address code
-    // bsp_boot_virt is at virtual address, load directly
+    // Set VBAR_EL1 to trap_vectors BEFORE entering Rust code. VBAR defaults
+    // to 0; with the kernel linked at the linear VMA, trap_vectors' address
+    // (loaded by =trap_vectors) is already a linear-mapping VA, present in
+    // both the boot page table and the cursor-built kernel page table. This
+    // ensures any fault is handled instead of spinning at VBAR+0x200.
+    ldr     x5, =trap_vectors
+    msr     vbar_el1, x5
+    isb
+
+    // Jump to virtual address code. With the kernel linked at the linear
+    // VMA, bsp_boot_virt's address is already a linear-mapping VA, so this
+    // branch runs at the linear mapping from the start.
     ldr     x1, =bsp_boot_virt
     br      x1
 
 .text
 
 bsp_boot_virt:
+    // Zero the BSS section. This is critical — many static variables
+    // (inventory linked lists, Once cells, etc.) rely on being zero-initialized.
+    // Without this, inventory::iter follows garbage pointers and faults.
+    // Save x0 (FDT physical address) first!
+    mov     x20, x0
+    ldr     x0, =__bss_start
+    ldr     x1, =__bss_end
+1:
+    cmp     x0, x1
+    b.ge    2f
+    str     xzr, [x0], #8
+    b       1b
+2:
+    mov     x0, x20    // Restore FDT physical address
+
     // Initialize tpidr_el1 to the CPU-local storage's base address.
     // __cpu_local_start is at virtual address
     .extern __cpu_local_start
@@ -261,10 +292,12 @@ boot_l1_pt_identity:
     // Kernel RAM region - MUST use normal memory for code execution
     // New KERNEL_LMA: 0x40080000 (still within this 1GB block)
     .quad 0x40000709
-    // Entry 2: PA 0x80000000 -> VA 0x80000000 (device)
-    .quad 0x80000701
-    // Entry 3: PA 0xC0000000 -> VA 0xC0000000 (device)
-    .quad 0xC0000701
+    // Entry 2: PA 0x80000000 -> VA 0x80000000 (normal)
+    // Must be normal memory — the linear mapping (L0 entry 256) reuses this
+    // L1 table, and frame metadata is allocated from this region.
+    .quad 0x80000709
+    // Entry 3: PA 0xC0000000 -> VA 0xC0000000 (normal)
+    .quad 0xC0000709
     // Remaining entries: invalid
     .zero 508 * 8
 

@@ -7,8 +7,8 @@ use ostd::arch::{
 };
 
 pub(super) fn probe_for_device() {
+    ostd::early_println!("[virtio-mmio] probing device tree for virtio,mmio nodes...");
     // Parse device tree for virtio,mmio nodes.
-    // Reference: <https://www.kernel.org/doc/Documentation/devicetree/bindings/virtio/mmio.txt>.
     let device_tree = DEVICE_TREE.get().unwrap();
     let mmio_nodes = device_tree.all_nodes().filter(|node| {
         node.compatible().is_some_and(|compatibles| {
@@ -18,11 +18,15 @@ pub(super) fn probe_for_device() {
         })
     });
 
+    let mut found = 0;
     mmio_nodes.for_each(|node| {
+        found += 1;
+        ostd::early_println!("[virtio-mmio] found virtio-mmio node #{}", found);
         // Parse MMIO region.
         let mmio_region = node.reg().unwrap().next().unwrap();
         let mmio_start = mmio_region.starting_address as usize;
         let mmio_end = mmio_start + mmio_region.size.unwrap();
+        ostd::early_println!("[virtio-mmio] node #{}: mmio {:#x}..{:#x}", found, mmio_start, mmio_end);
 
         // Parse interrupt from FDT.
         // GIC uses 3-cell format: <type number flags>.

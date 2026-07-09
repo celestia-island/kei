@@ -84,6 +84,17 @@ fn init() -> Result<(), ComponentInitError> {
     Ok(())
 }
 
+/// Initializes INIT_PROC_ARGS without the component system.
+///
+/// On aarch64 the inventory-based component system is bypassed, so the
+/// `#[init_component] init()` above never runs. Call this manually to parse
+/// the kernel command line and set INIT_PROC_ARGS, so spawn_init_process can
+/// read it.
+pub fn init_no_component() {
+    INIT_PROC_ARGS
+        .call_once(|| dispatch_params(ostd::boot::boot_info().kernel_cmdline.as_str()));
+}
+
 // Splits the command line string by spaces but preserve
 // ones that are protected by double quotes(`"`).
 fn split_arg(input: &str) -> impl Iterator<Item = &str> {

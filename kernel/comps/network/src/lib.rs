@@ -180,6 +180,17 @@ fn init() -> Result<(), ComponentInitError> {
     Ok(())
 }
 
+/// Manual init for aarch64 (component system bypassed).
+pub fn init_component_fn() -> Result<(), ComponentInitError> {
+    let component = Component::init()?;
+    COMPONENT.call_once(|| component);
+
+    SoftIrqLine::get(NETWORK_TX_SOFTIRQ_ID).enable(handle_tx_softirq);
+    SoftIrqLine::get(NETWORK_RX_SOFTIRQ_ID).enable(handle_rx_softirq);
+
+    Ok(())
+}
+
 type NetDeviceCallbackListRef = Arc<SpinLock<Vec<Arc<dyn NetDeviceCallback>>, BottomHalfDisabled>>;
 type NetworkDeviceRef = Arc<SpinLock<dyn AnyNetworkDevice, BottomHalfDisabled>>;
 

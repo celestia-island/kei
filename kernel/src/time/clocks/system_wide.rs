@@ -321,3 +321,31 @@ pub fn init_for_ktest() {
         TimerManager::new(Arc::new(clock))
     });
 }
+
+/// Initializes the system-wide clocks without an RTC.
+///
+/// On aarch64 the aster_time component (RTC + TSC clocksource) isn't wired up
+/// (the inventory-based component system is bypassed), so the normal
+/// `init()` path panics reading the uninitialized start time. This function
+/// sets all the clock singletons to default values (epoch / zero duration),
+/// mirroring `init_for_ktest`, so that later `singleton().unwrap()` calls in
+/// the process/VFS paths don't panic. The clocks will report a fixed time,
+/// which is acceptable until RTC support is added.
+#[cfg(target_arch = "aarch64")]
+pub fn init_no_rtc() {
+    // Set the per-clock singletons (CLOCK_REALTIME_INSTANCE,
+    // CLOCK_MONOTONIC_INSTANCE, CLOCK_BOOTTIME_INSTANCE) using the macro-
+    // generated initializer. These don't depend on the RTC; they create
+    // empty clock objects whose read_time() returns a default.
+    _init_system_wide_clocks();
+    // Set the cpu-local TimerManagers for each clock.
+    _init_system_wide_timer_managers();
+    // Set the coarse clocks (RealTimeCoarseClock, current_ref) to defaults.
+    CLOCK_REALTIME_COARSE_INSTANCE.call_once(|| Arc::new(RealTimeCoarseClock { _private: () }));
+    RealTimeCoarseClock::current_ref().call_once(|| SpinLock::new(Duration::from_secs(0)));
+    // Set the Jiffies timer manager.
+    JIFFIES_TIMER_MANAGER.call_once(|| {
+        let clock = JiffiesClock { _private: () };
+        TimerManager::new(Arc::new(clock))
+    });
+}

@@ -292,7 +292,7 @@ pub(crate) fn tlb_flush_all_including_global() {
     }
 }
 
-pub(crate) unsafe fn activate_page_table(root_paddr: Paddr, _root_pt_cache: CachePolicy) {
+pub unsafe fn activate_page_table(root_paddr: Paddr, _root_pt_cache: CachePolicy) {
     assert!(root_paddr.is_multiple_of(PagingConsts::BASE_PAGE_SIZE));
     // SAFETY: The caller ensures the root page table is properly initialized.
     // Write both TTBR0_EL1 (user VA, bit 47 = 0) and TTBR1_EL1 (kernel VA,
@@ -309,7 +309,7 @@ pub(crate) unsafe fn activate_page_table(root_paddr: Paddr, _root_pt_cache: Cach
     tlb_flush_all_including_global();
 }
 
-pub(crate) fn current_page_table_paddr() -> Paddr {
+pub fn current_page_table_paddr() -> Paddr {
     let ttbr1: usize;
     // SAFETY: Reading TTBR1_EL1 is always safe and returns the physical
     // address of the current kernel page table root.

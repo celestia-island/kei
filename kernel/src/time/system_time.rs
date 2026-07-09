@@ -22,6 +22,16 @@ pub(super) fn init() {
     START_TIME.call_once(|| start_time);
 }
 
+/// Initialize system time without RTC (for aarch64 where the aster_time
+/// component/RTC driver isn't wired up). Sets START_TIME to a default
+/// (Unix epoch + some fixed offset) so SystemTime::now() doesn't panic.
+pub fn init_no_rtc() {
+    let start_time = SystemTime::UNIX_EPOCH;
+    START_TIME_AS_DURATION
+        .call_once(|| Duration::ZERO);
+    START_TIME.call_once(|| start_time);
+}
+
 impl SystemTime {
     /// The unix epoch, which represents 1970-01-01 00:00:00
     pub const UNIX_EPOCH: SystemTime = SystemTime::unix_epoch();

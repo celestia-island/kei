@@ -21,11 +21,12 @@
 .text
 
 /* Constants for TrapFrame layout */
-.set PT_REGS_SIZE, 0x110
+.set PT_REGS_SIZE, 0x120
 .set S_LR, 0xF0
 .set S_SP, 0xF8
 .set S_SPSR, 0x100
 .set S_ELR, 0x108
+.set S_TPIDR, 0x110    // TPIDR_EL0 (user TLS pointer, saved only for EL0)
 
 /*
  * kernel_entry - Save registers to TrapFrame on exception entry.
@@ -62,6 +63,12 @@
     .if \el == 0
         mrs     x21, sp_el0              // Read user stack pointer from SP_EL0
         str     x21, [sp, #S_SP]         // Store to GeneralRegs.sp field (0xF8)
+        // Save TPIDR_EL0 (user TLS pointer) so it survives context switches
+        // during kernel-side trap handling. Without this, a fork()'d child
+        // that gets scheduled while the parent is in a syscall loses its
+        // TPIDR_EL0 value.
+        mrs     x21, tpidr_el0
+        str     x21, [sp, #S_TPIDR]
     .else
         add     x21, sp, #PT_REGS_SIZE   // Pre-exception kernel stack pointer
         str     x21, [sp, #S_SP]         // Store to GeneralRegs.sp field (0xF8)
@@ -92,6 +99,9 @@
     .if \el == 0
         ldr     x23, [sp, #S_SP]          // Load GeneralRegs.sp (0xF8)
         msr     sp_el0, x23               // Restore user stack pointer to SP_EL0
+        // Restore TPIDR_EL0 (user TLS pointer)
+        ldr     x23, [sp, #S_TPIDR]
+        msr     tpidr_el0, x23
     .endif
 
     // Restore general registers x0-x29 (pairs)
@@ -265,13 +275,18 @@ run_user_entry:
     // Load x0 from context
     ldr     x0,  [x28, #0x00]
 
-    // Restore x27, x28, x29 LAST -- x28 is the base register, so it must
-    // be overwritten only after all other loads are complete.
-    // ARM64: ldr xN, [xN, #off] is UNPREDICTABLE, so use a temp reg.
-    ldr     x27, [x28, #0xD8]             // Load user x27 from offset 0xD8
-    ldr     x29, [x28, #0xE8]             // Load user x29 from offset 0xE8
-    ldr     x1,  [x28, #0xE0]             // Load user x28 from offset 0xE0 into temp
-    mov     x28, x1                       // x28 now holds user value
+    // Restore x27, x28, x29 LAST. x28 is the base register and must not be
+    // overwritten until all context loads are done.
+    // FIX: the original code used x1 as a temp to restore x28, which
+    // CORRUPTED x1 (already restored from context). This caused musl's
+    // `add x19, sp, x1` to compute a garbage pointer. Fix: use the kernel
+    // stack to save/restore x30, freeing x30 as a temp for x28.
+    str     x30, [sp, #-16]!             // Save x30 (LR) on kernel stack
+    ldr     x27, [x28, #0xD8]            // Load user x27
+    ldr     x29, [x28, #0xE8]            // Load user x29
+    ldr     x30, [x28, #0xE0]            // Load user x28 into x30 (temp)
+    mov     x28, x30                      // x28 = user x28
+    ldr     x30, [sp], #16               // Restore x30 (LR) from kernel stack
 
     eret                                  // Enter user mode
 

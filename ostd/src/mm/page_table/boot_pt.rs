@@ -167,6 +167,7 @@ impl<E: PteTrait, C: PagingConstsTrait> BootPageTable<E, C> {
         // Walk to the last level of the page table.
         while level > 1 {
             let index = pte_index::<C>(from, level);
+            let pte_vaddr = paddr_to_vaddr(pt) + index * core::mem::size_of::<E>();
             // SAFETY: The result pointer is within the PT frame.
             let pte_ptr = unsafe { (paddr_to_vaddr(pt) as *mut E).add(index) };
             // SAFETY: The pointer to the entry is valid to read.

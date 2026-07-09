@@ -7,7 +7,7 @@ use ostd::sync::SpinLock;
 use smoltcp::{
     socket::PollAt,
     time::Duration,
-    wire::{IpEndpoint, IpRepr, TcpRepr},
+    wire::{IpAddress, IpEndpoint, IpListenEndpoint, IpRepr, Ipv4Address, TcpRepr},
 };
 
 use super::{
@@ -90,7 +90,20 @@ impl<E: Ext> TcpListener<E> {
 
             option.apply(&mut socket);
 
-            if let Err(err) = socket.listen(local_endpoint) {
+            // Convert the local endpoint to a listen endpoint.
+            // When bound to INADDR_ANY (0.0.0.0), use addr=None so that smoltcp's
+            // accepts() matches any local IP address.
+            let listen_endpoint = match local_endpoint.addr {
+                IpAddress::Ipv4(addr) if addr == Ipv4Address::UNSPECIFIED => {
+                    IpListenEndpoint {
+                        addr: None,
+                        port: local_endpoint.port,
+                    }
+                }
+                _ => IpListenEndpoint::from(local_endpoint),
+            };
+
+            if let Err(err) = socket.listen(listen_endpoint) {
                 return Err((bound, err.into()));
             }
 

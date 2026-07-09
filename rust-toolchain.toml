@@ -1,7 +1,7 @@
 [toolchain]
 # Matches upstream asterinas toolchain: nightly-2026-04-03
 # For ARM64 bare-metal target: aarch64-unknown-none
-channel = "nightly-2026-04-03"
+channel = "nightly-2026-05-01"
 components = ["rust-src", "rustc-dev", "llvm-tools-preview"]
 targets = [
     "aarch64-unknown-none",

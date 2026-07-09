@@ -113,7 +113,6 @@ pub(super) fn do_poll(
     #[cfg(target_arch = "aarch64")]
     {
         loop {
-            // Use a short timeout to periodically re-check readiness.
             let short_timeout = Some(Duration::from_millis(10));
             let short_poller = match poll_files.register_poller(short_timeout.as_ref()) {
                 PollerResult::Registered(p) => p,
@@ -122,18 +121,9 @@ pub(super) fn do_poll(
             match short_poller.wait() {
                 Ok(()) | Err(_) => {}
             }
-
-            // Re-check readiness after the timeout/wake.
-            let num_events = poll_files.count_events();
-            if num_events > 0 {
-                return Ok(num_events);
-            }
-
-            // Check if the original timeout has expired.
-            if let Some(orig_timeout) = timeout {
-                // For simplicity, if original timeout is None (infinite),
-                // we keep looping. If it's set, we rely on the count_events
-                // check above to return events before timeout.
+            let n = poll_files.count_events();
+            if n > 0 {
+                return Ok(n);
             }
         }
     }

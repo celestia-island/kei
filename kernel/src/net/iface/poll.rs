@@ -37,13 +37,9 @@ fn spawn_background_poll_thread(iface: Arc<Iface>) {
             let sched_poll = iface.sched_poll();
             let wait_queue = sched_poll.polling_wait_queue();
             loop {
-                // Raise both TX and RX softirqs to process the virtqueues
-                // (free TX buffers, check can_send, invoke callbacks that
-                // trigger iface.poll to actually transmit queued packets).
                 aster_network::raise_send_softirq();
                 aster_network::raise_receive_softirq();
                 iface.poll();
-                // Wait 2ms (the timer IRQ will wake us), yielding CPU to dropbear.
                 let _ = wait_queue.wait_until_or_timeout(
                     || None::<()>,
                     &Duration::from_millis(2),

@@ -275,19 +275,10 @@ impl NetworkDevice {
     }
 
     fn notify_receive_queue(&mut self) {
-        if self.poll_stat.received_packet == 0 {
-            return;
-        }
-
-        debug!(
-            "notify receive queue: received {} packets",
-            self.poll_stat.received_packet
-        );
-        if self.recv_queue.should_notify() {
-            self.recv_queue.notify();
-        }
-
-        self.poll_stat.received_packet = 0;
+        // Always notify the device when new receive buffers are available.
+        // The received_packet check was causing QEMU to miss new buffers
+        // after the first packet was processed.
+        self.recv_queue.notify();
     }
 }
 

@@ -130,11 +130,11 @@ def test_arch(arch: str, output_dir: Path) -> str:
     log_lower = log_content.lower()
     if "panic" in log_lower or "oops" in log_lower:
         if "kernel_main" not in log_lower and "shell" not in log_lower:
-            cf.fail(f"FAIL: kernel panicked")
+            cf.fail("FAIL: kernel panicked")
             return "FAIL"
 
     if any(kw in log_lower for kw in ["kei", "asterinas", "kernel_main", "shell", "console"]):
-        cf.ok(f"PASS: kernel booted")
+        cf.ok("PASS: kernel booted")
         return "PASS"
 
     cf.warn("UNKNOWN: could not determine boot status")
@@ -147,7 +147,7 @@ def main() -> int:
     all_archs = list(ARCH_CONFIG.keys())
     selected = sys.argv[1:] if len(sys.argv) > 1 else all_archs
 
-    cf.section(f"kei multi-architecture boot test")
+    cf.section("kei multi-architecture boot test")
     cf.info(f"  Architectures: {' '.join(selected)}")
 
     output_dir = PROJECT_ROOT / "target" / "test-output"

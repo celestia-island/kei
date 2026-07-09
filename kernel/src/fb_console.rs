@@ -20,9 +20,10 @@ const ROWS: usize = 100; // 800/8=100 rows
 static CURSOR_COL: AtomicUsize = AtomicUsize::new(0);
 static CURSOR_ROW: AtomicUsize = AtomicUsize::new(0);
 
-/// Background (dark blue) and foreground (light green) colors, XRGB8888.
-const BG_COLOR: u32 = 0xFF000018;
-const FG_COLOR: u32 = 0xFF33FF66;
+/// Modern dark theme colors (inspired by One Half Dark), XRGB8888.
+const BG_COLOR: u32 = 0xFF282C34; // One Half Dark background
+const FG_COLOR: u32 = 0xFFDCDFE4; // One Half Dark foreground (soft white)
+const ACCENT_COLOR: u32 = 0xFF61AFEF; // One Half Dark blue accent for banner
 
 /// Clear the framebuffer, reset the cursor, and draw a title banner.
 pub fn init() {
@@ -46,8 +47,9 @@ fn clear() {
 }
 
 fn draw_banner() {
-    // Print a header so the user can immediately see the console is live.
-    print_str(" kei kernel (aarch64) \n");
+    // Print a header in accent color so the user can immediately see the
+    // console is live and properly themed.
+    print_str_color(" kei kernel (aarch64) \n", ACCENT_COLOR);
     print_str(" virtio-gpu framebuffer console \n\n");
 }
 
@@ -59,12 +61,24 @@ pub fn print_str(s: &str) {
     crate::fb_gpu::flush_framebuffer();
 }
 
+/// Print a string with a specific foreground color.
+pub fn print_str_color(s: &str, color: u32) {
+    for &b in s.as_bytes() {
+        write_byte_color(b, color);
+    }
+    crate::fb_gpu::flush_framebuffer();
+}
+
 pub fn println(s: &str) {
     print_str(s);
     print_str("\n");
 }
 
 fn write_byte(byte: u8) {
+    write_byte_color(byte, FG_COLOR);
+}
+
+fn write_byte_color(byte: u8, color: u32) {
     match byte {
         b'\n' => {
             CURSOR_COL.store(0, Ordering::Relaxed);
@@ -80,13 +94,13 @@ fn write_byte(byte: u8) {
             let col = CURSOR_COL.load(Ordering::Relaxed);
             let row = CURSOR_ROW.load(Ordering::Relaxed);
             if col < COLS && row < ROWS {
-                draw_char(byte, col, row);
+                draw_char_color(byte, col, row, color);
             }
             CURSOR_COL.store(col + 1, Ordering::Relaxed);
         }
         _ => {
             // Non-printable: draw a placeholder dot.
-            write_byte(b'.');
+            write_byte_color(b'.', color);
         }
     }
 }
@@ -116,6 +130,10 @@ fn scroll() {
 }
 
 fn draw_char(byte: u8, col: usize, row: usize) {
+    draw_char_color(byte, col, row, FG_COLOR);
+}
+
+fn draw_char_color(byte: u8, col: usize, row: usize, fg: u32) {
     let glyph = font8x8_glyph(byte);
     if let Some((fb, w, _h, _stride)) = crate::fb_gpu::framebuffer_info() {
         let stride = w as usize;
@@ -127,7 +145,7 @@ fn draw_char(byte: u8, col: usize, row: usize) {
                 let bits = glyph[gy];
                 for gx in 0..CHAR_W {
                     let on = (bits >> gx) & 1 == 1;
-                    let color = if on { FG_COLOR } else { BG_COLOR };
+                    let color = if on { fg } else { BG_COLOR };
                     let px = x0 + gx;
                     let py = y0 + gy;
                     if px < stride {

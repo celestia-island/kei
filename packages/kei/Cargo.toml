@@ -14,7 +14,7 @@ keywords = ["no-std", "embedded", "embassy", "iot", "industrial"]
 categories = ["embedded", "no-std", "network-programming"]
 
 [workspace]
-members = ["examples/qemu-mps2"]
+members = ["../qemu-mps2"]
 
 [features]
 # Default: everything that works on no_std + alloc

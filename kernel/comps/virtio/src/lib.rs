@@ -5,6 +5,10 @@
 #![deny(unsafe_code)]
 
 extern crate alloc;
+
+#[cfg(target_arch = "aarch64")]
+pub mod aarch64_raw_gpu_probe;
+
 #[macro_use]
 extern crate ostd_pod;
 
@@ -40,19 +44,48 @@ mod transport;
 
 static VIRTIO_BLOCK_MAJOR_ID: Once<MajorIdOwner> = Once::new();
 
+/// Public init function for manual invocation (aarch64 bypass path).
+pub fn virtio_component_init_pub() -> Result<(), ComponentInitError> {
+    virtio_component_init_inner()
+}
+
 #[init_component]
-fn virtio_component_init() -> Result<(), ComponentInitError> {
+fn virtio_component_init() -> Result<(), ComponentInitError>
+{
+    virtio_component_init_inner()
+}
+
+fn virtio_component_init_inner() -> Result<(), ComponentInitError> {
+    ostd::early_println!("[virtio] allocating major ID...");
     VIRTIO_BLOCK_MAJOR_ID.call_once(|| aster_block::allocate_major().unwrap());
 
+    ostd::early_println!("[virtio] transport::init...");
     // Find all devices and register them to the corresponding crate
     transport::init();
+    ostd::early_println!("[virtio] transport::init done");
 
+    ostd::early_println!("[virtio] entropy::init...");
     device::entropy::init();
+    ostd::early_println!("[virtio] network::init...");
     device::network::init();
+    ostd::early_println!("[virtio] socket::init...");
     device::socket::init();
+    ostd::early_println!("[virtio] device sub-inits done");
 
+    // On aarch64, the IoMem KVirtArea mapping doesn't work without the
+    // kernel page table switch. Instead, manually probe each MMIO device
+    // using raw volatile reads through the linear mapping.
+    #[cfg(target_arch = "aarch64")]
+    {
+        crate::aarch64_raw_gpu_probe::probe();
+    }
+
+    let mut dev_idx = 0;
     while let Some(mut transport) = pop_device_transport() {
+        dev_idx += 1;
+        ostd::early_println!("[virtio] processing device #{}", dev_idx);
         // Reset device
+        ostd::early_println!("[virtio] dev #{}: resetting...", dev_idx);
         transport
             .write_device_status(DeviceStatus::empty())
             .unwrap();
@@ -75,6 +108,7 @@ fn virtio_component_init() -> Result<(), ComponentInitError> {
         }
 
         let device_type = transport.device_type();
+        ostd::early_println!("[virtio] dev #{}: type={:?}", dev_idx, device_type);
         let res = match transport.device_type() {
             VirtioDeviceType::Block => BlockDevice::init(transport),
             VirtioDeviceType::Console => ConsoleDevice::init(transport),
@@ -89,6 +123,7 @@ fn virtio_component_init() -> Result<(), ComponentInitError> {
                 Ok(())
             }
         };
+        ostd::early_println!("[virtio] dev #{} init result: {:?}", dev_idx, res.as_ref().err());
         if res.is_err() {
             error!(
                 "Device initialization error: {:?}, device type: {:?}",

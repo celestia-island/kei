@@ -125,11 +125,8 @@ impl<E: Events, F: EventsFilter<E>> SyncSubject<E, F> {
     /// It will remove the observers which have been freed.
     pub fn notify_observers(&self, events: &E) {
         // Fast path.
-        //
-        // Note: This must use `Release`, which pairs with `Acquire` in `register_observer`, to
-        // ensure that even if this fast path is used, a concurrently registered observer will see
-        // the event we want to notify.
-        if self.num_observers.fetch_add(0, Ordering::Release) == 0 {
+        let num_obs = self.num_observers.fetch_add(0, Ordering::Release);
+        if num_obs == 0 {
             return;
         }
 

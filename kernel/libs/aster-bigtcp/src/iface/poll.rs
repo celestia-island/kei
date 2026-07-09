@@ -192,8 +192,6 @@ impl<E: Ext> PollContext<'_, E> {
         tcp_repr: &TcpRepr,
     ) -> Option<(IpRepr, TcpRepr<'static>)> {
         // Process packets belonging to existing connections first.
-        // Note that we must do this first because SYN packets may match existing TIME-WAIT
-        // sockets. See comments in `TcpConnectionBg::process` for details.
         let connection_key = ConnectionKey::new(
             ip_repr.dst_addr(),
             tcp_repr.dst_port,

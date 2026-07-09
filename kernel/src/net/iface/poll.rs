@@ -18,7 +18,7 @@ pub fn init_in_first_kthread() {
     }
 }
 
-pub(super) fn poll_ifaces() {
+pub(crate) fn poll_ifaces() {
     for iface in iter_all_ifaces() {
         iface.poll();
     }
@@ -28,38 +28,51 @@ fn spawn_background_poll_thread(iface: Arc<Iface>) {
     let task_fn = move || {
         debug!("spawn background poll thread for {:?}", iface.name());
 
-        let sched_poll = iface.sched_poll();
-        let wait_queue = sched_poll.polling_wait_queue();
-
-        loop {
-            let next_poll_at_ms = if let Some(next_poll_at_ms) = sched_poll.next_poll_at_ms() {
-                next_poll_at_ms
-            } else {
-                wait_queue.wait_until(|| sched_poll.next_poll_at_ms())
-            };
-
-            let now_as_ms = Jiffies::elapsed().as_duration().as_millis() as u64;
-
-            // FIXME: Ideally, we should perform the `poll` just before `next_poll_at_ms`.
-            // However, this approach may result in a spinning busy loop
-            // if the `poll` operation yields no results.
-            // To mitigate this issue,
-            // we have opted to assign a high priority to the polling thread,
-            // ensuring that the `poll` runs as soon as possible.
-            // For a more in-depth discussion, please refer to the following link:
-            // <https://github.com/asterinas/asterinas/pull/630#discussion_r1496817030>.
-            if now_as_ms >= next_poll_at_ms {
+        // On aarch64, virtio-mmio IRQ delivery is unreliable (the device may
+        // not fire interrupts on packet arrival/departure). Use a busy-poll
+        // approach: poll the iface at a fixed 2ms interval AND raise TX/RX
+        // softirqs to process the send/recv virtqueues, bypassing IRQ delivery.
+        #[cfg(target_arch = "aarch64")]
+        {
+            let sched_poll = iface.sched_poll();
+            let wait_queue = sched_poll.polling_wait_queue();
+            loop {
+                aster_network::raise_send_softirq();
+                aster_network::raise_receive_softirq();
                 iface.poll();
-                continue;
+                let _ = wait_queue.wait_until_or_timeout(
+                    || None::<()>,
+                    &Duration::from_millis(2),
+                );
             }
+        }
 
-            let duration = Duration::from_millis(next_poll_at_ms - now_as_ms);
-            let _ = wait_queue.wait_until_or_timeout(
-                // If `sched_poll.next_poll_at_ms()` changes to an earlier time, we will end the
-                // waiting.
-                || (sched_poll.next_poll_at_ms()? < next_poll_at_ms).then_some(()),
-                &duration,
-            );
+        // On other architectures, use IRQ-driven scheduling.
+        #[cfg(not(target_arch = "aarch64"))]
+        {
+            let sched_poll = iface.sched_poll();
+            let wait_queue = sched_poll.polling_wait_queue();
+
+            loop {
+                let next_poll_at_ms = if let Some(next_poll_at_ms) = sched_poll.next_poll_at_ms() {
+                    next_poll_at_ms
+                } else {
+                    wait_queue.wait_until(|| sched_poll.next_poll_at_ms())
+                };
+
+                let now_as_ms = Jiffies::elapsed().as_duration().as_millis() as u64;
+
+                if now_as_ms >= next_poll_at_ms {
+                    iface.poll();
+                    continue;
+                }
+
+                let duration = Duration::from_millis(next_poll_at_ms - now_as_ms);
+                let _ = wait_queue.wait_until_or_timeout(
+                    || (sched_poll.next_poll_at_ms()? < next_poll_at_ms).then_some(()),
+                    &duration,
+                );
+            }
         }
     };
 

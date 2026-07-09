@@ -722,6 +722,16 @@ fn clone_tls_regs(
 fn clone_tls_pointer(child_context: &mut UserContext, clone_flags: CloneFlags, tls: u64) {
     if clone_flags.contains(CloneFlags::CLONE_SETTLS) {
         child_context.set_tls_pointer(tls as usize);
+    } else {
+        // fork(): the child must inherit the parent's TLS pointer. Without
+        // this, the child runs with TPIDR_EL0=0 and faults on the first
+        // __pthread_self() access.
+        #[cfg(target_arch = "aarch64")]
+        {
+            let parent_tls = ostd::arch::read_tpidr_el0();
+            child_context.set_tls_pointer(parent_tls);
+        }
+        // On x86_64 the fs_base is inherited via clone_tls_regs.
     }
 }
 

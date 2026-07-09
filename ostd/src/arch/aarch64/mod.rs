@@ -10,7 +10,7 @@ pub mod device;
 pub(crate) mod io;
 pub(crate) mod iommu;
 pub mod irq;
-pub(crate) mod mm;
+pub mod mm;
 mod power;
 pub mod serial;
 pub(crate) mod task;
@@ -84,6 +84,17 @@ pub fn tsc_freq() -> u64 {
 /// Reads the current value of the architected timer counter.
 pub fn read_tsc() -> u64 {
     timer::read_counter()
+}
+
+/// Reads the current TPIDR_EL0 (thread pointer / TLS pointer).
+///
+/// On aarch64, TPIDR_EL0 holds the user-space thread pointer. The kernel
+/// needs to read it when forking (to inherit the child's TLS pointer),
+/// since the trap frame does not save it automatically.
+pub fn read_tpidr_el0() -> usize {
+    let val: usize;
+    unsafe { core::arch::asm!("mrs {0}, tpidr_el0", out(reg) val, options(nomem, nostack)) };
+    val
 }
 
 /// Reads a hardware generated 64-bit random value.

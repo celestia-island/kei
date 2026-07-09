@@ -90,6 +90,11 @@ impl FramebufferConsole {
             self.state.send_char(*byte);
         }
     }
+
+    /// Flushes the console buffer to the framebuffer and pushes to the host scanout.
+    pub fn flush(&mut self) {
+        self.state.flush_fullscreen();
+    }
 }
 
 impl core::fmt::Debug for FramebufferConsole {

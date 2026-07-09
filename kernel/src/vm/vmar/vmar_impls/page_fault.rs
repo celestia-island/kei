@@ -15,6 +15,17 @@ impl Vmar {
             return vm_mapping.handle_page_fault(&self.vm_space, page_fault_info, &mut rss_delta);
         }
 
+        #[cfg(target_arch = "aarch64")]
+        {
+            ostd::early_println!(
+                "[vmar pf] addr={:#x} not in any vm_mapping. Mappings:",
+                address
+            );
+            for vm in inner.vm_mappings.iter() {
+                ostd::early_println!("  range={:#x?}", vm.range());
+            }
+        }
+
         return_errno_with_message!(
             Errno::EACCES,
             "no VM mappings contain the page fault address"

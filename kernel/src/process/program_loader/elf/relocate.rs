@@ -37,4 +37,15 @@ impl RelocatedRange {
     pub(super) fn relocated_start(&self) -> Vaddr {
         self.relocated_start
     }
+
+    /// Returns the load bias, i.e., the difference between the relocated
+    /// start address and the original (ELF) start address.
+    ///
+    /// For non-PIE binaries the load bias is zero (the segments are mapped at
+    /// their link-time addresses). For PIE (static or dynamic) binaries the
+    /// load bias is non-zero because the segments are mapped at a
+    /// randomly/chosen base address that differs from the link-time base.
+    pub(super) fn load_bias(&self) -> i64 {
+        self.relocated_start as i64 - self.original_range.start as i64
+    }
 }

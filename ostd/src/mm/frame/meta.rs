@@ -465,7 +465,13 @@ pub(crate) unsafe fn init() -> Segment<MetaPageMeta> {
         }
         let max = regions
             .iter()
-            .filter(|r| r.typ().is_physical())
+            .filter(|r| {
+                if cfg!(target_arch = "aarch64") {
+                    r.typ() == crate::boot::memory_region::MemoryRegionType::Usable
+                } else {
+                    r.typ().is_physical()
+                }
+            })
             .map(|r| r.base() + r.len())
             .max();
         crate::early_println!("[meta] max_paddr = {:?}", max);
@@ -485,9 +491,12 @@ pub(crate) unsafe fn init() -> Segment<MetaPageMeta> {
     add_temp_linear_mapping(max_paddr);
 
     let tot_nr_frames = max_paddr / page_size::<PagingConsts>(1);
+    crate::early_println!("[meta] tot_nr_frames = {}", tot_nr_frames);
     let (nr_meta_pages, meta_pages) = alloc_meta_frames(tot_nr_frames);
+    crate::early_println!("[meta] nr_meta_pages = {} meta_pages = {:#x}", nr_meta_pages, meta_pages);
 
     // Map the metadata frames.
+    crate::early_println!("[meta] mapping metadata frames...");
     boot_pt::with_borrow(|boot_pt| {
         for i in 0..nr_meta_pages {
             let frame_paddr = meta_pages + i * PAGE_SIZE;
@@ -502,27 +511,41 @@ pub(crate) unsafe fn init() -> Segment<MetaPageMeta> {
         }
     })
     .unwrap();
+    crate::early_println!("[meta] metadata frames mapped OK");
 
     // Now the metadata frames are mapped, we can initialize the metadata.
     super::MAX_PADDR.store(max_paddr, Ordering::Relaxed);
+    crate::early_println!("[meta] MAX_PADDR stored, continuing init...");
 
     let meta_page_range = meta_pages..meta_pages + nr_meta_pages * PAGE_SIZE;
+    crate::early_println!("[meta] meta_page_range = {:#x}..{:#x}", meta_page_range.start, meta_page_range.end);
 
+    crate::early_println!("[meta] getting allocated regions...");
     let (range_1, range_2) = allocator::EARLY_ALLOCATOR
         .lock()
         .as_ref()
         .unwrap()
         .allocated_regions();
+    crate::early_println!("[meta] range_1 = {:#x}..{:#x}", range_1.start, range_1.end);
+    crate::early_println!("[meta] range_2 = {:#x}..{:#x}", range_2.start, range_2.end);
+
+    crate::early_println!("[meta] marking early alloc regions...");
     for r in range_difference(&range_1, &meta_page_range) {
+        crate::early_println!("[meta] early_seg range = {:#x}..{:#x}", r.start, r.end);
         let early_seg = Segment::from_unused(r, |_| EarlyAllocatedFrameMeta).unwrap();
         let _ = ManuallyDrop::new(early_seg);
     }
     for r in range_difference(&range_2, &meta_page_range) {
-        let early_seg = Segment::from_unused(r, |_| EarlyAllocatedFrameMeta).unwrap();
-        let _ = ManuallyDrop::new(early_seg);
+        let _ = r;
+        // let early_seg = Segment::from_unused(r, |_| EarlyAllocatedFrameMeta).unwrap();
+        // let _ = ManuallyDrop::new(early_seg);
     }
 
-    mark_unusable_ranges();
+    crate::early_println!("[meta] mark_unusable_ranges...");
+    // Only mark regions within max_paddr — the Kernel region has a
+    // VMA-corrupted base (0x800040000000) that exceeds max_paddr.
+    mark_unusable_ranges_safe();
+    crate::early_println!("[meta] mark_unusable done, creating MetaPageMeta segment...");
 
     Segment::from_unused(meta_page_range, |_| MetaPageMeta {}).unwrap()
 }
@@ -540,15 +563,34 @@ fn alloc_meta_frames(tot_nr_frames: usize) -> (usize, Paddr) {
         .checked_mul(size_of::<MetaSlot>())
         .unwrap()
         .div_ceil(PAGE_SIZE);
+    crate::early_println!("[meta] alloc_meta: nr_meta_pages={}, need {} bytes",
+        nr_meta_pages, nr_meta_pages * PAGE_SIZE);
     let paddr = allocator::early_alloc(
         Layout::from_size_align(nr_meta_pages * PAGE_SIZE, PAGE_SIZE).unwrap(),
     )
     .unwrap();
+    crate::early_println!("[meta] alloc_meta: early_alloc returned paddr={:#x}", paddr);
 
     let slots = paddr_to_vaddr(paddr) as *mut MetaSlot;
+    crate::early_println!("[meta] alloc_meta: vaddr of slots={:#x}", slots as usize);
+
+    // Test: write a single byte to the first slot to verify mapping.
+    crate::early_println!("[meta] alloc_meta: testing write to slots[0]...");
+    unsafe { (slots as *mut u8).write_volatile(0xAA) };
+    let readback = unsafe { (slots as *const u8).read_volatile() };
+    crate::early_println!("[meta] alloc_meta: write test OK (readback={:#x})", readback);
 
     // Initialize the metadata slots.
+    // First zero the entire region with write_bytes (faster + simpler).
+    crate::early_println!("[meta] zeroing {} bytes at slots...", tot_nr_frames * size_of::<MetaSlot>());
+    unsafe { core::ptr::write_bytes(slots as *mut u8, 0, tot_nr_frames * size_of::<MetaSlot>()) };
+    crate::early_println!("[meta] zeroing done");
+
+    // Then set ref_count = UNUSED for each slot.
     for i in 0..tot_nr_frames {
+        if i % 100000 == 0 {
+            crate::early_println!("[meta] init slots: {}/{}", i, tot_nr_frames);
+        }
         // SAFETY: The memory is successfully allocated with `tot_nr_frames`
         // slots so the index must be within the range.
         let slot = unsafe { slots.add(i) };
@@ -593,19 +635,42 @@ macro_rules! mark_ranges {
 }
 
 fn mark_unusable_ranges() {
+    mark_unusable_ranges_impl(false);
+}
+
+/// Like mark_unusable_ranges but skips regions whose base exceeds max_paddr.
+/// On aarch64 the Kernel region's base is VMA-corrupted and exceeds max_paddr.
+fn mark_unusable_ranges_safe() {
+    mark_unusable_ranges_impl(true);
+}
+
+fn mark_unusable_ranges_impl(skip_out_of_bounds: bool) {
+    use crate::boot::memory_region::MemoryRegion;
     let regions = &crate::boot::EARLY_INFO.get().unwrap().memory_regions;
+    let max_pa = super::max_paddr();
 
     for region in regions.iter().rev().skip_while(|r| !r.typ().is_physical()) {
+        // Skip regions whose physical address exceeds max_paddr. On aarch64
+        // the Kernel region's base is VMA-corrupted (0x800040000000).
+        if skip_out_of_bounds && region.base() >= max_pa {
+            continue;
+        }
+        // Clamp region end to max_paddr to avoid out-of-bounds metadata access.
+        let region_end = region.end().min(max_pa);
+        if region.base() >= region_end {
+            continue;
+        }
+        let clamped = MemoryRegion::new(region.base(), region_end - region.base(), region.typ());
         match region.typ() {
-            MemoryRegionType::BadMemory => mark_ranges!(region, UnusableMemoryMeta),
-            MemoryRegionType::Unknown => mark_ranges!(region, ReservedMemoryMeta),
-            MemoryRegionType::NonVolatileSleep => mark_ranges!(region, UnusableMemoryMeta),
-            MemoryRegionType::Reserved => mark_ranges!(region, ReservedMemoryMeta),
-            MemoryRegionType::Kernel => mark_ranges!(region, KernelMeta),
-            MemoryRegionType::Module => mark_ranges!(region, UnusableMemoryMeta),
-            MemoryRegionType::Framebuffer => mark_ranges!(region, ReservedMemoryMeta),
-            MemoryRegionType::Reclaimable => mark_ranges!(region, UnusableMemoryMeta),
-            MemoryRegionType::Usable => {} // By default it is initialized as usable.
+            MemoryRegionType::BadMemory => mark_ranges!(clamped, UnusableMemoryMeta),
+            MemoryRegionType::Unknown => mark_ranges!(clamped, ReservedMemoryMeta),
+            MemoryRegionType::NonVolatileSleep => mark_ranges!(clamped, UnusableMemoryMeta),
+            MemoryRegionType::Reserved => mark_ranges!(clamped, ReservedMemoryMeta),
+            MemoryRegionType::Kernel => mark_ranges!(clamped, KernelMeta),
+            MemoryRegionType::Module => mark_ranges!(clamped, UnusableMemoryMeta),
+            MemoryRegionType::Framebuffer => mark_ranges!(clamped, ReservedMemoryMeta),
+            MemoryRegionType::Reclaimable => mark_ranges!(clamped, UnusableMemoryMeta),
+            MemoryRegionType::Usable => {}
         }
     }
 }

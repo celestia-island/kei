@@ -48,7 +48,13 @@ fn calibrate() {
 
 /// Reads an `Instant` of the TSC clocksource.
 pub(super) fn read_instant() -> Instant {
-    let clock = CLOCK.get().unwrap();
+    // On aarch64 the aster_time component (which initializes CLOCK via the
+    // inventory-based component system) is bypassed. Return a zero Instant
+    // instead of panicking; time reads will report epoch until a real
+    // clocksource is wired up.
+    let Some(clock) = CLOCK.get() else {
+        return Instant::zero();
+    };
     clock.read_instant()
 }
 

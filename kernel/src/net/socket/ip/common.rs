@@ -16,12 +16,28 @@ use crate::{
 
 fn get_iface_to_bind(ip_addr: &IpAddress) -> Option<Arc<Iface>> {
     match *ip_addr {
-        IpAddress::Ipv4(ipv4_addr) => iter_all_ifaces()
-            .find(|iface| iface.ipv4_addr().is_some_and(|addr| addr == ipv4_addr))
-            .map(Clone::clone),
-        IpAddress::Ipv6(ipv6_addr) => iter_all_ifaces()
-            .find(|iface| iface.ipv6_addr().is_some_and(|addr| addr == ipv6_addr))
-            .map(Clone::clone),
+        IpAddress::Ipv4(ipv4_addr) => {
+            // INADDR_ANY (0.0.0.0): bind to the default interface so that
+            // servers calling bind(0.0.0.0:port) can listen on all interfaces.
+            if ipv4_addr.is_unspecified() {
+                return virtio_iface()
+                    .map(Clone::clone)
+                    .or_else(|| Some(loopback_iface().clone()));
+            }
+            iter_all_ifaces()
+                .find(|iface| iface.ipv4_addr().is_some_and(|addr| addr == ipv4_addr))
+                .map(Clone::clone)
+        }
+        IpAddress::Ipv6(ipv6_addr) => {
+            if ipv6_addr.is_unspecified() {
+                return virtio_iface()
+                    .map(Clone::clone)
+                    .or_else(|| Some(loopback_iface().clone()));
+            }
+            iter_all_ifaces()
+                .find(|iface| iface.ipv6_addr().is_some_and(|addr| addr == ipv6_addr))
+                .map(Clone::clone)
+        }
     }
 }
 

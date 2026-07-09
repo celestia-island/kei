@@ -8,7 +8,7 @@ use core::net::Ipv4Addr;
 
 use jhash::{jhash_1vals, jhash_3vals, jhash_u32_array};
 use ostd::const_assert;
-use smoltcp::wire::{IpAddress, IpEndpoint, IpListenEndpoint};
+use smoltcp::wire::{IpAddress, IpEndpoint, IpListenEndpoint, Ipv4Address};
 
 use crate::{
     ext::Ext,
@@ -40,6 +40,14 @@ impl ListenerKey {
 
     pub(crate) const fn hash(&self) -> SocketHash {
         self.hash
+    }
+
+    pub(crate) const fn addr(&self) -> IpAddress {
+        self.addr
+    }
+
+    pub(crate) const fn port(&self) -> PortNum {
+        self.port
     }
 }
 
@@ -262,16 +270,43 @@ impl<E: Ext> SocketTable<E> {
     }
 
     pub(crate) fn lookup_listener(&self, key: &ListenerKey) -> Option<&Arc<TcpListenerBg<E>>> {
+        // First, try the exact match in the expected hash bucket.
         let bucket = {
             let hash = key.hash();
             let bucket_index = hash & LISTENER_BUCKET_MASK;
             &self.listener_buckets[bucket_index as usize]
         };
 
-        bucket
+        if let Some(listener) = bucket
             .listeners
             .iter()
             .find(|listener| listener.listener_key() == key)
+        {
+            return Some(listener);
+        }
+
+        // Fall back to INADDR_ANY (wildcard) listeners.
+        // A listener bound to 0.0.0.0 should accept connections to any local IP.
+        // The wildcard listener is stored in a different hash bucket, so we need
+        // to search for it explicitly.
+        let wildcard_addr = match key.addr() {
+            IpAddress::Ipv4(_) => IpAddress::Ipv4(Ipv4Address::UNSPECIFIED),
+            IpAddress::Ipv6(_) => return None, // TODO: IPv6 wildcard
+        };
+        let wildcard_key = ListenerKey::new(wildcard_addr, key.port());
+        let wildcard_bucket = {
+            let hash = wildcard_key.hash();
+            let bucket_index = hash & LISTENER_BUCKET_MASK;
+            &self.listener_buckets[bucket_index as usize]
+        };
+
+        wildcard_bucket
+            .listeners
+            .iter()
+            .find(|listener| {
+                let lk = listener.listener_key();
+                lk.port() == key.port() && lk.addr() == wildcard_addr
+            })
     }
 
     pub(crate) fn lookup_connection(

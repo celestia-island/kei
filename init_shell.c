@@ -244,6 +244,10 @@ static int handle_client(int fd) {
     return should_exit;
 }
 
+// Syscall numbers needed for init
+#define SYS_execve  221
+#define SYS_clone   220
+
 void _start(void) {
     sc(SYS_mount, (long)"none",(long)"/proc",(long)"proc",0,0,0);
     sc(SYS_mount, (long)"none",(long)"/sys",(long)"sysfs",0,0,0);
@@ -251,29 +255,32 @@ void _start(void) {
     sc(SYS_mkdir, (long)"/tmp",0777,0,0,0,0);
 
     putstr("\n=== kei ignition (aarch64) ===\n");
+    putstr("Exec'ing dropbear SSH server...\n");
+
+    // Directly execve dropbear — replaces init process.
+    // dropbear runs as PID 1, handles accept+fork internally.
+    static char *db_argv[] = {"/sbin/dropbear","-F","-R","-p","22", 0};
+    static char *db_envp[] = {"PATH=/bin:/sbin","HOME=/root", 0};
+    sc(SYS_execve, (long)"/sbin/dropbear", (long)db_argv, (long)db_envp, 0,0,0);
+
+    // If execve fails, fall through to TCP shell on port 23
+    putstr("ERROR: exec dropbear failed, starting TCP shell on port 23\n");
 
     long sockfd = sc(SYS_socket, AF_INET, SOCK_STREAM, 0, 0,0,0);
     if (sockfd < 0) {
-        putstr("FATAL: socket() failed\n");
         sc(SYS_exit, 1, 0,0,0,0,0);
     }
 
     struct sockaddr_in addr;
     addr.family = AF_INET;
-    addr.port = 0x1600; // port 22 big-endian
+    addr.port = 0x1700; // port 23 big-endian
     addr.addr = 0;
     for (int i=0;i<8;i++) addr.pad[i]=0;
 
-    if (sc(SYS_bind, sockfd, (long)&addr, 16, 0,0,0) < 0) {
-        putstr("FATAL: bind() failed\n");
+    if (sc(SYS_bind, sockfd, (long)&addr, 16, 0,0,0) < 0 ||
+        sc(SYS_listen, sockfd, 5, 0,0,0,0) < 0) {
         sc(SYS_exit, 1, 0,0,0,0,0);
     }
-    if (sc(SYS_listen, sockfd, 5, 0,0,0,0) < 0) {
-        putstr("FATAL: listen() failed\n");
-        sc(SYS_exit, 1, 0,0,0,0,0);
-    }
-
-    putstr("Shell server listening on port 22\n");
     putstr("Connect: nc localhost 2222\n");
 
     // Single-threaded accept loop (no fork needed)

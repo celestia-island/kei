@@ -425,6 +425,7 @@ impl EscapeOp for ConsoleState {
     }
 
     fn render_image(&mut self, pixels: &[Pixel], width: usize, height: usize) {
+        ostd::early_println!("[framebuffer] render_image called: {}x{}", width, height);
         self.blit_pixels(pixels, width, height);
     }
 }

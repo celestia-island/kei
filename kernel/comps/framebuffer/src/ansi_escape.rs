@@ -236,8 +236,20 @@ impl EscapeFsm {
                 if is_last_esc && byte == b'\\' {
                     // DCS complete — try to decode as Sixel if we saw the 'q' command.
                     if saw_command_q {
+                        ostd::early_println!(
+                            "[escape] DCS q complete, dcs_buf len={}, data={:?}",
+                            self.dcs_buf.len(),
+                            core::str::from_utf8(&self.dcs_buf).unwrap_or("<binary>")
+                        );
                         if let Some(img) = crate::sixel::decode(&self.dcs_buf) {
+                            ostd::early_println!(
+                                "[escape] sixel decoded: {}x{}",
+                                img.width,
+                                img.height
+                            );
                             op.render_image(&img.pixels, img.width, img.height);
+                        } else {
+                            ostd::early_println!("[escape] sixel decode returned None");
                         }
                     }
                     self.dcs_buf.clear();

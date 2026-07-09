@@ -10,6 +10,8 @@
 #![allow(unsafe_code)]
 #![allow(dead_code)]
 
+use alloc::vec;
+use alloc::vec::Vec;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 const CHAR_W: usize = 8;
@@ -91,14 +93,18 @@ pub fn print_str(s: &str) {
 }
 
 /// Internal: parse ANSI escape sequences and render text with the current color.
+/// Also handles DCS Sixel sequences for inline image rendering.
 fn print_str_ansi(s: &str) {
-    // Minimal SGR state machine: ESC [ params... m
+    // State machine: ESC [ params... m (SGR) and ESC P q ... ESC \ (Sixel DCS)
     #[derive(PartialEq)]
     enum State {
         Normal,
         Escape,   // saw ESC (0x1b)
         Csi,      // saw ESC [
         CsiParam, // accumulating digits after ESC [
+        DcsParam, // saw ESC P, waiting for 'q' command byte
+        DcsData,  // accumulating sixel data until ESC \
+        DcsEsc,   // saw ESC inside DCS, waiting for \ (ST)
     }
 
     let bytes = s.as_bytes();
@@ -106,6 +112,10 @@ fn print_str_ansi(s: &str) {
     let mut state = State::Normal;
     let mut param_buf: u32 = 0;
     let mut has_param = false;
+    // Sixel data accumulator (static mutable buffer for no_std boot console).
+    // SAFETY: Only accessed from the single-threaded boot console path.
+    static mut DCS_BUF: [u8; 4096] = [0; 4096];
+    static mut DCS_LEN: usize = 0;
 
     while i < bytes.len() {
         let b = bytes[i];
@@ -118,18 +128,84 @@ fn print_str_ansi(s: &str) {
                 }
             }
             State::Escape => {
-                if b == b'[' {
-                    state = State::Csi;
-                    param_buf = 0;
-                    has_param = false;
-                } else {
-                    // Not a CSI — ignore the ESC and render the byte.
-                    state = State::Normal;
-                    if b == 0x1b {
-                        state = State::Escape;
-                    } else {
+                match b {
+                    b'[' => {
+                        state = State::Csi;
+                        param_buf = 0;
+                        has_param = false;
+                    }
+                    b'P' => {
+                        // DCS (Device Control String) — start Sixel accumulation
+                        ostd::early_println!("[fb_console] DCS detected (ESC P)");
+                        unsafe { DCS_LEN = 0; }
+                        state = State::DcsParam;
+                    }
+                    0x1b => {
+                        // Another ESC, stay in Escape
+                    }
+                    _ => {
+                        state = State::Normal;
                         write_byte_color(b, CURRENT_FG.load(Ordering::Relaxed) as u32);
                     }
+                }
+            }
+            State::DcsParam => {
+                match b {
+                    b'q' => {
+                        // Sixel command byte found — start accumulating data
+                        ostd::early_println!("[fb_console] Sixel 'q' command found");
+                        state = State::DcsData;
+                    }
+                    0x1b => {
+                        // ESC inside DCS params — might be ST
+                        state = State::DcsEsc;
+                    }
+                    _ => {
+                        // DCS parameters (digits, semicolons) — skip
+                    }
+                }
+            }
+            State::DcsData => {
+                match b {
+                    0x1b => {
+                        state = State::DcsEsc;
+                    }
+                    _ => {
+                        // Accumulate sixel data
+                        unsafe {
+                            let len = DCS_LEN;
+                            if len < 4096 {
+                                (*core::ptr::addr_of_mut!(DCS_BUF))[len] = b;
+                                DCS_LEN = len + 1;
+                            }
+                        }
+                    }
+                }
+            }
+            State::DcsEsc => {
+                if b == b'\\' {
+                    // ST received — decode and render the Sixel image
+                    let data: Vec<u8> = unsafe {
+                        let len = DCS_LEN;
+                        let buf = core::ptr::addr_of!(DCS_BUF) as *const u8;
+                        core::slice::from_raw_parts(buf, len).to_vec()
+                    };
+                    ostd::early_println!("[fb_console] ST received, dcs_len={}, rendering sixel", data.len());
+                    render_sixel_inline(&data);
+                    state = State::Normal;
+                } else if b == 0x1b {
+                    // Stay in DcsEsc
+                } else {
+                    // Not ST — treat as data
+                    unsafe {
+                        let len = DCS_LEN;
+                        if len + 1 < 4096 {
+                            (*core::ptr::addr_of_mut!(DCS_BUF))[len] = 0x1b;
+                            (*core::ptr::addr_of_mut!(DCS_BUF))[len + 1] = b;
+                            DCS_LEN = len + 2;
+                        }
+                    }
+                    state = State::DcsData;
                 }
             }
             State::Csi => {
@@ -309,4 +385,223 @@ fn font8x8_glyph(c: u8) -> [u8; 8] {
     } else {
         [0; 8]
     }
+}
+
+// ── Sixel inline image rendering ──────────────────────────────────────────
+
+/// Renders a decoded Sixel image (row-major RGB pixels) directly onto the
+/// framebuffer DMA buffer at the current cursor position.
+fn render_sixel_inline(dcs_data: &[u8]) {
+    // Decode the sixel data into RGB pixels
+    let (width, height, pixels) = match decode_sixel(dcs_data) {
+        Some(img) => img,
+        None => {
+            ostd::early_println!("[fb_console] sixel decode returned None");
+            return;
+        }
+    };
+    ostd::early_println!("[fb_console] sixel decoded: {}x{}, first pixel={:#x}", width, height, pixels.get(0).copied().unwrap_or(0));
+    if width == 0 || height == 0 {
+        return;
+    }
+
+    if let Some((fb, fb_w, fb_h, _stride)) = crate::fb_gpu::framebuffer_info() {
+        let stride = fb_w as usize;
+        let col = CURSOR_COL.load(Ordering::Relaxed) * CHAR_W;
+        let row = CURSOR_ROW.load(Ordering::Relaxed) * CHAR_H;
+        ostd::early_println!("[fb_console] rendering at ({},{}) fb={}x{}", col, row, fb_w, fb_h);
+
+        unsafe {
+            let p = fb as *mut u32;
+            for py in 0..height {
+                let dst_y = row + py;
+                if dst_y >= fb_h as usize {
+                    break;
+                }
+                for px in 0..width {
+                    let dst_x = col + px;
+                    if dst_x >= stride {
+                        break;
+                    }
+                    let pixel = pixels[py * width + px];
+                    core::ptr::write_volatile(p.add(dst_y * stride + dst_x), pixel);
+                }
+            }
+        }
+        crate::fb_gpu::flush_framebuffer();
+        ostd::early_println!("[fb_console] sixel rendered and flushed");
+    } else {
+        ostd::early_println!("[fb_console] WARNING: framebuffer_info() returned None");
+    }
+
+    // Advance cursor past the image
+    let img_rows = (height + CHAR_H - 1) / CHAR_H;
+    let new_row = CURSOR_ROW.fetch_add(img_rows, Ordering::Relaxed) + img_rows;
+    if new_row >= ROWS {
+        scroll();
+    }
+    CURSOR_COL.store(0, Ordering::Relaxed);
+    crate::fb_gpu::flush_framebuffer();
+}
+
+/// Decodes Sixel data into (width, height, pixels) where pixels is a
+/// row-major array of XRGB8888 u32 values.
+fn decode_sixel(data: &[u8]) -> Option<(usize, usize, Vec<u32>)> {
+    // VT-330 default palette (16 colors)
+    // Mutable palette: starts with VT-330 defaults, updated by #N;Co;R;G;B.
+    let mut palette: Vec<u32> = vec![
+        0xFF000000, 0xFF3333CC, 0xFFCC3333, 0xFF33CC33,
+        0xFFCC33CC, 0xFF33CCCC, 0xFFCCCC33, 0xFFCCCCCC,
+        0xFF333333, 0xFF3333FF, 0xFFFF3333, 0xFF33FF33,
+        0xFFFF33FF, 0xFF33FFFF, 0xFFFFFF33, 0xFFFFFFFF,
+    ];
+    // Extend palette to 256 entries for safety.
+    palette.resize(256, 0xFF000000);
+
+    let mut current_color: usize = 0;
+    let mut grid: Vec<Vec<u32>> = Vec::new();
+    let mut grid_w: usize = 0;
+    let mut cur_x: usize = 0;
+    let mut cur_sixel_y: usize = 0;
+
+    let mut i = 0;
+    while i < data.len() {
+        let c = data[i];
+        match c {
+            b'#' => {
+                // Color register: #N or #N;Co;R;G;B
+                let (params, consumed) = parse_sixel_params(&data[i + 1..]);
+                if params.len() >= 5 {
+                    // Define color register: #N;Co;R;G;B (Co=2 means RGB)
+                    let reg = params[0] as usize;
+                    let r = params[2];
+                    let g = params[3];
+                    let b = params[4];
+                    let color = 0xFF000000
+                        | ((r * 255 / 100) as u32) << 16
+                        | ((g * 255 / 100) as u32) << 8
+                        | (b * 255 / 100) as u32;
+                    if reg < palette.len() {
+                        palette[reg] = color;
+                    }
+                    current_color = reg;
+                } else if !params.is_empty() {
+                    current_color = params[0] as usize;
+                } else {
+                    current_color = 0;
+                }
+                i += 1 + consumed;
+            }
+            b'!' => {
+                // Repeat: !N<char>
+                let (params, consumed) = parse_sixel_params(&data[i + 1..]);
+                let count = if params.is_empty() { 1 } else { params[0] as usize };
+                i += 1 + consumed;
+                if i < data.len() && (0x3f..=0x7e).contains(&data[i]) {
+                    let bits = (data[i] - 0x3f) as u32;
+                    let color = palette[current_color.min(255)];
+                    for _ in 0..count {
+                        ensure_grid(&mut grid, &mut grid_w, cur_x + 1, (cur_sixel_y + 1) * 6);
+                        write_sixel_col(&mut grid, grid_w, cur_x, cur_sixel_y, bits, color);
+                        cur_x += 1;
+                    }
+                }
+                i += 1;
+            }
+            b'$' => {
+                cur_x = 0;
+                i += 1;
+            }
+            b'-' => {
+                cur_x = 0;
+                cur_sixel_y += 1;
+                i += 1;
+            }
+            0x3f..=0x7e => {
+                let bits = (c - 0x3f) as u32;
+                let color = palette[current_color as usize];
+                ensure_grid(&mut grid, &mut grid_w, cur_x + 1, (cur_sixel_y + 1) * 6);
+                write_sixel_col(&mut grid, grid_w, cur_x, cur_sixel_y, bits, color);
+                cur_x += 1;
+                i += 1;
+            }
+            _ => {
+                i += 1;
+            }
+        }
+    }
+
+    let height = grid.len();
+    if grid_w == 0 || height == 0 {
+        return None;
+    }
+
+    let mut pixels = Vec::with_capacity(grid_w * height);
+    for row in &grid {
+        for x in 0..grid_w {
+            pixels.push(if x < row.len() { row[x] } else { 0xFF000000 });
+        }
+    }
+
+    Some((grid_w, height, pixels))
+}
+
+fn ensure_grid(grid: &mut Vec<Vec<u32>>, grid_w: &mut usize, need_w: usize, need_h: usize) {
+    if need_w > *grid_w {
+        for row in grid.iter_mut() {
+            row.resize(need_w, 0xFF000000);
+        }
+        *grid_w = need_w;
+    }
+    while grid.len() < need_h {
+        grid.push(alloc::vec![0xFF000000; *grid_w]);
+    }
+}
+
+fn write_sixel_col(
+    grid: &mut [Vec<u32>],
+    grid_w: usize,
+    x: usize,
+    sixel_y: usize,
+    bits: u32,
+    color: u32,
+) {
+    if x >= grid_w {
+        return;
+    }
+    for bit in 0..6 {
+        if (bits >> bit) & 1 == 1 {
+            let py = sixel_y * 6 + bit;
+            if py < grid.len() {
+                grid[py][x] = color;
+            }
+        }
+    }
+}
+
+fn parse_sixel_params(data: &[u8]) -> (Vec<u32>, usize) {
+    let mut params = Vec::new();
+    let mut current: u32 = 0;
+    let mut has_digit = false;
+    let mut consumed = 0;
+    for &b in data {
+        match b {
+            b'0'..=b'9' => {
+                current = current.saturating_mul(10).saturating_add((b - b'0') as u32);
+                has_digit = true;
+                consumed += 1;
+            }
+            b';' => {
+                params.push(if has_digit { current } else { 0 });
+                current = 0;
+                has_digit = false;
+                consumed += 1;
+            }
+            _ => break,
+        }
+    }
+    if has_digit {
+        params.push(current);
+    }
+    (params, consumed)
 }

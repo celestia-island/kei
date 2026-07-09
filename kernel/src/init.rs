@@ -274,6 +274,13 @@ fn init_in_first_kthread(path_resolver: &PathResolver) {
         let _ = aster_network::init_component_fn();
         // virtio component init probes devices (needs FDT, which is available)
         let _ = aster_virtio::virtio_component_init_pub();
+
+        // After virtio init, the GPU is probed and framebuffer_info() is valid.
+        // Re-initialize fb_console (draws banner on the now-live framebuffer)
+        // and render a Sixel test image to verify inline image rendering.
+        crate::fb_console::init();
+        print_sixel_test_image();
+
         ostd::early_println!("[kthread] net::init (deferred)");
         crate::net::init();
     }
@@ -286,6 +293,38 @@ fn init_in_first_kthread(path_resolver: &PathResolver) {
 fn print_banner() {
     println!("");
     println!("{}", logo_ascii_art::get_gradient_color_version());
+}
+
+/// Emits a simple Sixel test image (three colored rectangles: red, green, blue)
+/// to verify that the framebuffer console's Sixel DCS parser and renderer work.
+///
+/// The image is 24 pixels wide and 6 pixels tall. Each color block is 8 pixels
+/// wide. Sixel data characters in the range 0x3f–0x7e encode 6 vertical pixels
+/// (bit 0 = topmost). The value `~` (0x7e = 0x3f + 0x3f) sets all 6 bits.
+#[cfg(target_arch = "aarch64")]
+fn print_sixel_test_image() {
+    // Sixel DCS sequence:
+    //   ESC P q        — DCS introducer + Sixel command byte 'q'
+    //   #1;2;100;0;0   — define color register 1 as RGB red (100%, 0%, 0%)
+    //   #1 ~ ~ ~ ~ ~ ~ ~ ~  — select color 1, draw 8 columns of full-height pixels
+    //   $              — carriage return (start of sixel row)
+    //   #2;2;0;100;0   — define color register 2 as RGB green
+    //   #2 ~ ~ ~ ~ ~ ~ ~ ~  — 8 green columns (NOT used — we use $ for CR within row)
+    //   ... actually for horizontal blocks in the same sixel row, we just draw
+    //   different colors side by side without CR.
+    //
+    // Simplified: draw 3 colored blocks side by side in one sixel row.
+    // Each block = select color + 8 data chars of '~' (0x7e = all 6 bits set).
+    // Use byte array to avoid Rust line-continuation whitespace issues.
+    let sixel_bytes: &[u8] = b"\x1bPq#1;2;100;0;0#1~~~~~~~~#2;2;0;100;0#2~~~~~~~~#3;2;0;0;100#3~~~~~~~~\x1b\\";
+    ostd::early_println!("[sixel test] sending {} bytes to fb_console", sixel_bytes.len());
+
+    // Send the Sixel sequence directly through the boot console (fb_console),
+    // which has its own DCS parser and renders directly to the framebuffer DMA.
+    if let Ok(s) = core::str::from_utf8(sixel_bytes) {
+        crate::fb_console::print_str(s);
+    }
+    ostd::early_println!("[sixel test] done sending.");
 }
 
 pub(super) fn on_first_process_startup(ctx: &Context) {
@@ -318,6 +357,9 @@ pub(super) fn on_first_process_startup(ctx: &Context) {
             Ok(()) => ostd::early_println!("[first_proc] tty init done"),
             Err(e) => ostd::early_println!("[first_proc] tty init failed: {:?}", e),
         }
+
+        // (Sixel test moved to init_in_first_kthread where framebuffer_info()
+        // is still valid.)
     }
     // fs::init_in_first_process opens /dev/console as fd 0/1/2, which needs a
     // registered console device driver. On aarch64 the console component isn't

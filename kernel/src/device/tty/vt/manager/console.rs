@@ -294,6 +294,11 @@ impl VtConsole {
             console.set_mode(mode);
             console.activate();
             *backend = VtConsoleBackend::Framebuffer(console);
+            ostd::early_println!("[VT] allocated framebuffer console backend");
+        } else if matches!(*backend, VtConsoleBackend::Framebuffer(_)) {
+            ostd::early_println!("[VT] already has framebuffer backend");
+        } else {
+            ostd::early_println!("[VT] WARNING: framebuffer::get() returned None, backend stays None");
         }
         self.is_allocated.store(true, Ordering::Relaxed);
     }

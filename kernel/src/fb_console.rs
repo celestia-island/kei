@@ -20,10 +20,36 @@ const ROWS: usize = 100; // 800/8=100 rows
 static CURSOR_COL: AtomicUsize = AtomicUsize::new(0);
 static CURSOR_ROW: AtomicUsize = AtomicUsize::new(0);
 
-/// Modern dark theme colors (inspired by One Half Dark), XRGB8888.
+/// The current foreground color for text rendered by `write_byte_color`.
+/// Starts as the One Half Dark default foreground; updated by SGR sequences.
+static CURRENT_FG: AtomicUsize = AtomicUsize::new(FG_COLOR as usize);
+
+/// Modern dark theme colors (One Half Dark from the kou project), XRGB8888.
 const BG_COLOR: u32 = 0xFF282C34; // One Half Dark background
 const FG_COLOR: u32 = 0xFFDCDFE4; // One Half Dark foreground (soft white)
 const ACCENT_COLOR: u32 = 0xFF61AFEF; // One Half Dark blue accent for banner
+
+/// One Half Dark 16-color ANSI palette, ported from kou's render.rs.
+/// Index 0–7 = standard colors, 8–15 = bright variants.
+#[rustfmt::skip]
+const ANSI_PALETTE: [u32; 16] = [
+    0xFF282C34, // 0  Black
+    0xFFE06C75, // 1  Red
+    0xFF98C379, // 2  Green
+    0xFFE5C07B, // 3  Yellow
+    0xFF61AFEF, // 4  Blue
+    0xFFC678DD, // 5  Magenta
+    0xFF56B6C2, // 6  Cyan
+    0xFFDCDFE4, // 7  White
+    0xFF5A6374, // 8  Bright Black (dim gray)
+    0xFFE06C75, // 9  Bright Red
+    0xFF98C379, // 10 Bright Green
+    0xFFE5C07B, // 11 Bright Yellow
+    0xFF61AFEF, // 12 Bright Blue
+    0xFFC678DD, // 13 Bright Magenta
+    0xFF56B6C2, // 14 Bright Cyan
+    0xFFDCDFE4, // 15 Bright White
+];
 
 /// Clear the framebuffer, reset the cursor, and draw a title banner.
 pub fn init() {
@@ -47,21 +73,135 @@ fn clear() {
 }
 
 fn draw_banner() {
-    // Print a header in accent color so the user can immediately see the
-    // console is live and properly themed.
-    print_str_color(" kei kernel (aarch64) \n", ACCENT_COLOR);
-    print_str(" virtio-gpu framebuffer console \n\n");
+    // Print a colorful header using ANSI SGR to demonstrate color support.
+    // The SGR codes reference the One Half Dark palette (ported from kou).
+    print_str("\x1b[34m kei kernel (aarch64) \x1b[0m\n"); // Blue title
+    print_str("\x1b[36m virtio-gpu framebuffer console \x1b[0m\n\n"); // Cyan subtitle
 }
 
-/// Public print: write a string, scroll if needed, and flush.
+/// Public print: write a string with ANSI SGR color support, scroll if needed.
+///
+/// Parses minimal SGR escape sequences (`\x1b[Nm` and `\x1b[N;Mm`) to set the
+/// foreground color from the One Half Dark ANSI palette. This lets kernel boot
+/// log messages (which often use ANSI colors via the `log` crate) display in
+/// full color on the framebuffer console.
 pub fn print_str(s: &str) {
-    for &b in s.as_bytes() {
-        write_byte(b);
-    }
+    print_str_ansi(s);
     crate::fb_gpu::flush_framebuffer();
 }
 
-/// Print a string with a specific foreground color.
+/// Internal: parse ANSI escape sequences and render text with the current color.
+fn print_str_ansi(s: &str) {
+    // Minimal SGR state machine: ESC [ params... m
+    #[derive(PartialEq)]
+    enum State {
+        Normal,
+        Escape,   // saw ESC (0x1b)
+        Csi,      // saw ESC [
+        CsiParam, // accumulating digits after ESC [
+    }
+
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    let mut state = State::Normal;
+    let mut param_buf: u32 = 0;
+    let mut has_param = false;
+
+    while i < bytes.len() {
+        let b = bytes[i];
+        match state {
+            State::Normal => {
+                if b == 0x1b {
+                    state = State::Escape;
+                } else {
+                    write_byte_color(b, CURRENT_FG.load(Ordering::Relaxed) as u32);
+                }
+            }
+            State::Escape => {
+                if b == b'[' {
+                    state = State::Csi;
+                    param_buf = 0;
+                    has_param = false;
+                } else {
+                    // Not a CSI — ignore the ESC and render the byte.
+                    state = State::Normal;
+                    if b == 0x1b {
+                        state = State::Escape;
+                    } else {
+                        write_byte_color(b, CURRENT_FG.load(Ordering::Relaxed) as u32);
+                    }
+                }
+            }
+            State::Csi => {
+                if b.is_ascii_digit() {
+                    param_buf = param_buf.saturating_mul(10).saturating_add((b - b'0') as u32);
+                    has_param = true;
+                    state = State::CsiParam;
+                } else if b == b'm' {
+                    // SGR with no param = reset (SGR 0).
+                    if !has_param {
+                        CURRENT_FG.store(FG_COLOR as usize, Ordering::Relaxed);
+                    }
+                    state = State::Normal;
+                } else if b == b';' {
+                    // Separator — skip (we only handle single-param SGR for fg).
+                    state = State::CsiParam;
+                } else {
+                    // Unknown CSI final byte — swallow the sequence.
+                    state = State::Normal;
+                }
+            }
+            State::CsiParam => {
+                if b.is_ascii_digit() {
+                    param_buf = param_buf.saturating_mul(10).saturating_add((b - b'0') as u32);
+                    has_param = true;
+                } else if b == b';' {
+                    // Multi-param SGR — we only apply the first param for fg color.
+                    // Fall through and keep parsing.
+                } else if b == b'm' {
+                    apply_sgr(param_buf);
+                    param_buf = 0;
+                    has_param = false;
+                    state = State::Normal;
+                } else {
+                    // Unknown CSI final byte — swallow.
+                    state = State::Normal;
+                }
+            }
+        }
+        i += 1;
+    }
+}
+
+/// Apply a single SGR code to the current foreground color.
+fn apply_sgr(code: u32) {
+    let color = match code {
+        0 => Some(FG_COLOR),        // Reset to default fg
+        30 => Some(ANSI_PALETTE[0]), // Black
+        31 => Some(ANSI_PALETTE[1]), // Red
+        32 => Some(ANSI_PALETTE[2]), // Green
+        33 => Some(ANSI_PALETTE[3]), // Yellow
+        34 => Some(ANSI_PALETTE[4]), // Blue
+        35 => Some(ANSI_PALETTE[5]), // Magenta
+        36 => Some(ANSI_PALETTE[6]), // Cyan
+        37 => Some(ANSI_PALETTE[7]), // White
+        39 => Some(FG_COLOR),        // Default fg
+        90 => Some(ANSI_PALETTE[8]),  // Bright Black
+        91 => Some(ANSI_PALETTE[9]),  // Bright Red
+        92 => Some(ANSI_PALETTE[10]), // Bright Green
+        93 => Some(ANSI_PALETTE[11]), // Bright Yellow
+        94 => Some(ANSI_PALETTE[12]), // Bright Blue
+        95 => Some(ANSI_PALETTE[13]), // Bright Magenta
+        96 => Some(ANSI_PALETTE[14]), // Bright Cyan
+        97 => Some(ANSI_PALETTE[15]), // Bright White
+        _ => None, // Unsupported SGR (bold, underline, etc.) — ignore
+    };
+    if let Some(c) = color {
+        CURRENT_FG.store(c as usize, Ordering::Relaxed);
+    }
+}
+
+/// Print a string with a specific foreground color (bypasses ANSI parsing).
 pub fn print_str_color(s: &str, color: u32) {
     for &b in s.as_bytes() {
         write_byte_color(b, color);
@@ -75,7 +215,7 @@ pub fn println(s: &str) {
 }
 
 fn write_byte(byte: u8) {
-    write_byte_color(byte, FG_COLOR);
+    write_byte_color(byte, CURRENT_FG.load(Ordering::Relaxed) as u32);
 }
 
 fn write_byte_color(byte: u8, color: u32) {

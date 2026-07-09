@@ -124,8 +124,17 @@ impl ConsoleState {
         Self {
             x_pos: 0,
             y_pos: 0,
-            fg_color: Pixel::WHITE,
-            bg_color: Pixel::BLACK,
+            // One Half Dark theme defaults (matching ansi_escape::DEFAULT_FG/BG).
+            fg_color: Pixel {
+                red: 0xDC,
+                green: 0xDF,
+                blue: 0xE4,
+            },
+            bg_color: Pixel {
+                red: 0x28,
+                green: 0x2C,
+                blue: 0x34,
+            },
             font: BitmapFont::new_basic8x8(),
             is_active: false,
             mode: ConsoleMode::Text,

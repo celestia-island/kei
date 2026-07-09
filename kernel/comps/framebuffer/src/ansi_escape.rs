@@ -37,6 +37,19 @@ pub(super) trait EscapeOp {
 const MAX_PARAMS: usize = 8;
 const MAX_OSC_LEN: u8 = 128;
 
+/// Default foreground color (One Half Dark foreground).
+const DEFAULT_FG: Pixel = Pixel {
+    red: 0xDC,
+    green: 0xDF,
+    blue: 0xE4,
+};
+/// Default background color (One Half Dark background).
+const DEFAULT_BG: Pixel = Pixel {
+    red: 0x28,
+    green: 0x2C,
+    blue: 0x34,
+};
+
 // FIXME: Currently we only support a few ANSI escape sequences, and we just swallow the
 // unsupported ones.
 #[derive(Clone, Copy, Debug)]
@@ -64,41 +77,46 @@ enum WaitFor {
 
 /// Foreground and background colors.
 ///
+/// Ported from the **One Half Dark** theme in the kou project
+/// (`celestia-island/kou` `src/render.rs`), which itself mirrors Microsoft
+/// Windows Terminal's defaults. This replaces the legacy 170/85/0 VGA palette
+/// with softer, more modern tones that are pleasant on a dark background.
+///
 /// See <https://en.wikipedia.org/wiki/ANSI_escape_code#3-bit_and_4-bit>.
 #[rustfmt::skip]
 const COLORS: [Pixel; 16] = [
-    // Black
-    Pixel { red: 0, green: 0, blue: 0 },
+    // Black       (One Half Dark bg tone)
+    Pixel { red: 0x28, green: 0x2C, blue: 0x34 },
     // Red
-    Pixel { red: 170, green: 0, blue: 0 },
+    Pixel { red: 0xE0, green: 0x6C, blue: 0x75 },
     // Green
-    Pixel { red: 0, green: 170, blue: 0 },
+    Pixel { red: 0x98, green: 0xC3, blue: 0x79 },
     // Yellow
-    Pixel { red: 170, green: 85, blue: 0 },
+    Pixel { red: 0xE5, green: 0xC0, blue: 0x7B },
     // Blue
-    Pixel { red: 0, green: 0, blue: 170 },
+    Pixel { red: 0x61, green: 0xAF, blue: 0xEF },
     // Magenta
-    Pixel { red: 170, green: 0, blue: 170 },
+    Pixel { red: 0xC6, green: 0x78, blue: 0xDD },
     // Cyan
-    Pixel { red: 0, green: 170, blue: 170 },
-    // White
-    Pixel { red: 170, green: 170, blue: 170 },
-    // Bright Black (Gray)
-    Pixel { red: 85, green: 85, blue: 85 },
+    Pixel { red: 0x56, green: 0xB6, blue: 0xC2 },
+    // White       (One Half Dark fg tone)
+    Pixel { red: 0xDC, green: 0xDF, blue: 0xE4 },
+    // Bright Black (dimmed gray)
+    Pixel { red: 0x5A, green: 0x63, blue: 0x74 },
     // Bright Red
-    Pixel { red: 255, green: 85, blue: 85 },
+    Pixel { red: 0xE0, green: 0x6C, blue: 0x75 },
     // Bright Green
-    Pixel { red: 85, green: 255, blue: 85 },
+    Pixel { red: 0x98, green: 0xC3, blue: 0x79 },
     // Bright Yellow
-    Pixel { red: 255, green: 255, blue: 85 },
+    Pixel { red: 0xE5, green: 0xC0, blue: 0x7B },
     // Bright Blue
-    Pixel { red: 85, green: 85, blue: 255 },
+    Pixel { red: 0x61, green: 0xAF, blue: 0xEF },
     // Bright Magenta
-    Pixel { red: 255, green: 85, blue: 255 },
+    Pixel { red: 0xC6, green: 0x78, blue: 0xDD },
     // Bright Cyan
-    Pixel { red: 85, green: 255, blue: 255 },
+    Pixel { red: 0x56, green: 0xB6, blue: 0xC2 },
     // Bright White
-    Pixel { red: 255, green: 255, blue: 255 },
+    Pixel { red: 0xDC, green: 0xDF, blue: 0xE4 },
 ];
 
 impl EscapeFsm {
@@ -351,8 +369,8 @@ impl EscapeFsm {
             match op_code {
                 // Reset text attributes
                 0 => {
-                    op.set_fg_color(Pixel::WHITE);
-                    op.set_bg_color(Pixel::BLACK);
+                    op.set_fg_color(DEFAULT_FG);
+                    op.set_bg_color(DEFAULT_BG);
                 }
 
                 // Set foreground colors
@@ -371,7 +389,7 @@ impl EscapeFsm {
                     cursor += 4;
                 }
                 // Reset to the default foreground color
-                39 => op.set_fg_color(Pixel::WHITE),
+                39 => op.set_fg_color(DEFAULT_FG),
                 90..=97 => op.set_fg_color(COLORS[op_code as usize - 90 + 8]),
 
                 // Set background colors
@@ -390,7 +408,7 @@ impl EscapeFsm {
                     cursor += 4;
                 }
                 // Reset to the default background color
-                49 => op.set_bg_color(Pixel::BLACK),
+                49 => op.set_bg_color(DEFAULT_BG),
                 100..=107 => op.set_bg_color(COLORS[op_code as usize - 100 + 8]),
 
                 // Invalid or unsupported
@@ -464,8 +482,8 @@ mod test {
             Self {
                 x: 0,
                 y: 0,
-                fg: Pixel::WHITE,
-                bg: Pixel::BLACK,
+                fg: DEFAULT_FG,
+                bg: DEFAULT_BG,
                 last_ed: None,
             }
         }
@@ -565,40 +583,45 @@ mod test {
         let mut esc_fsm = EscapeFsm::new();
         let mut state = State::default();
 
-        // Set the foreground color and background color to "Black".
+        // Set the foreground color and background color to ANSI "Black" (index 0).
+        // With the One Half Dark palette, index 0 = (0x28, 0x2C, 0x34).
         eat_escape_sequence(&mut esc_fsm, &mut state, b"\x1B[30;40m");
-        assert_eq!(state.fg, Pixel::BLACK);
-        assert_eq!(state.bg, Pixel::BLACK);
+        assert_eq!(state.fg, COLORS[0]);
+        assert_eq!(state.bg, COLORS[0]);
 
         assert!(!esc_fsm.eat(b'a', &mut state));
 
-        // Reset.
+        // Reset (SGR 0) restores the One Half Dark default fg/bg.
         eat_escape_sequence(&mut esc_fsm, &mut state, b"\x1B[0m");
-        assert_eq!(state.fg, Pixel::WHITE);
-        assert_eq!(state.bg, Pixel::BLACK);
+        assert_eq!(state.fg, DEFAULT_FG);
+        assert_eq!(state.bg, DEFAULT_BG);
 
         assert!(!esc_fsm.eat(b'a', &mut state));
 
-        // Set the foreground color and background color to "Bright White".
+        // Set the foreground and background to "Bright White" (index 15).
         eat_escape_sequence(&mut esc_fsm, &mut state, b"\x1B[97m");
-        assert_eq!(state.fg, Pixel::WHITE);
+        assert_eq!(state.fg, COLORS[15]);
         eat_escape_sequence(&mut esc_fsm, &mut state, b"\x1B[107m");
-        assert_eq!(state.bg, Pixel::WHITE);
+        assert_eq!(state.bg, COLORS[15]);
 
         assert!(!esc_fsm.eat(b'a', &mut state));
 
-        // Reset.
+        // Reset (empty SGR = SGR 0).
         eat_escape_sequence(&mut esc_fsm, &mut state, b"\x1B[m");
-        assert_eq!(state.fg, Pixel::WHITE);
-        assert_eq!(state.bg, Pixel::BLACK);
+        assert_eq!(state.fg, DEFAULT_FG);
+        assert_eq!(state.bg, DEFAULT_BG);
 
         assert!(!esc_fsm.eat(b'a', &mut state));
 
-        // Set the foreground color and background color using 8-bit/24-bit code.
+        // Set colors using 8-bit (256-color) and 24-bit (truecolor) codes.
+        // 38;5;0 = 256-color index 0 (black via Linux vt.c mapping = Pixel(0,0,0)).
         eat_escape_sequence(&mut esc_fsm, &mut state, b"\x1B[38;5;0m");
         assert_eq!(state.fg, Pixel::BLACK);
+        // 48;2;255;255;255 = truecolor white.
         eat_escape_sequence(&mut esc_fsm, &mut state, b"\x1B[48;2;255;255;255m");
         assert_eq!(state.bg, Pixel::WHITE);
+        // 38;5;8 = 256-color index 8 (bright black = Pixel(85,85,85) via vt.c).
+        // 48;5;16 = 256-color index 16 (first 6x6x6 cube entry = Pixel(0,0,0)).
         eat_escape_sequence(&mut esc_fsm, &mut state, b"\x1B[38;5;8;48;5;16m");
         assert_eq!(
             state.fg,
@@ -609,8 +632,9 @@ mod test {
             }
         );
         assert_eq!(state.bg, Pixel::BLACK);
+        // 39 = default fg; 48;2;41;41;41 = truecolor dark gray.
         eat_escape_sequence(&mut esc_fsm, &mut state, b"\x1B[39;48;2;41;41;41m");
-        assert_eq!(state.fg, Pixel::WHITE);
+        assert_eq!(state.fg, DEFAULT_FG);
         assert_eq!(
             state.bg,
             Pixel {
@@ -619,6 +643,7 @@ mod test {
                 blue: 41
             }
         );
+        // 38;5;255 = 256-color grayscale near-white; 49 = default bg.
         eat_escape_sequence(&mut esc_fsm, &mut state, b"\x1B[38;5;255;49m");
         assert_eq!(
             state.fg,
@@ -628,14 +653,14 @@ mod test {
                 blue: 238
             }
         );
-        assert_eq!(state.bg, Pixel::BLACK);
+        assert_eq!(state.bg, DEFAULT_BG);
 
         assert!(!esc_fsm.eat(b'a', &mut state));
 
         // Reset.
         eat_escape_sequence(&mut esc_fsm, &mut state, b"\x1B[m");
-        assert_eq!(state.fg, Pixel::WHITE);
-        assert_eq!(state.bg, Pixel::BLACK);
+        assert_eq!(state.fg, DEFAULT_FG);
+        assert_eq!(state.bg, DEFAULT_BG);
 
         assert!(!esc_fsm.eat(b'a', &mut state));
     }

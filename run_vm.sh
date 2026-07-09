@@ -85,43 +85,25 @@ esac
 # MSYS2 converts /init to C:\Program Files\Git\init, breaking boot.
 KCMDLINE="init=/init SHELL=/bin/sh LOGNAME=root HOME=/ USER=root PATH=/bin:/sbin"
 
-# Launch QEMU. We use cmd.exe /c start /B on Windows to fully detach the
-# process so it survives after the launching shell exits. MSYS_NO_PATHCONV=1
-# is passed inline to prevent path mangling only for this invocation.
-case "$QEMU_BIN" in
-    *.exe|/c/*|/C/*)
-        # Windows QEMU: detach via cmd.exe
-        WINQEMU=$(cygpath -w "$QEMU_BIN" 2>/dev/null || echo "$QEMU_BIN")
-        MSYS_NO_PATHCONV=1 cmd.exe /c start /B "" "$WINQEMU" \
-            -cpu cortex-a72 -machine virt,gic-version=3,virtualization=on \
-            -m 2G -smp 1 --no-reboot \
-            $DISPLAY_OPT \
-            -device virtio-gpu-device \
-            -device virtio-keyboard-device \
-            -serial file:"$WINLOG" \
-            -netdev user,id=net0,hostfwd=tcp::2222-:22 \
-            -device virtio-net-device,netdev=net0 \
-            -kernel "$WINIMAGE" \
-            -initrd "$WININITRD" \
-            -append "$KCMDLINE" >/dev/null 2>&1
-        ;;
-    *)
-        # Linux/WSL QEMU: use setsid to detach
-        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" setsid "$QEMU_BIN" \
-            -cpu cortex-a72 -machine virt,gic-version=3,virtualization=on \
-            -m 2G -smp 1 --no-reboot \
-            $DISPLAY_OPT \
-            -device virtio-gpu-device \
-            -device virtio-keyboard-device \
-            -serial file:"$WINLOG" \
-            -netdev user,id=net0,hostfwd=tcp::2222-:22 \
-            -device virtio-net-device,netdev=net0 \
-            -kernel "$WINIMAGE" \
-            -initrd "$WININITRD" \
-            -append "$KCMDLINE" >/dev/null 2>&1 &
-        echo $! > "$PIDFILE"
-        ;;
-esac
+# Launch QEMU. The key to a stable window on Git Bash/Windows is running QEMU
+# in the background (&) followed by `disown`, which removes it from the shell's
+# job table so it survives when the launching shell exits. MSYS_NO_PATHCONV=1
+# prevents MSYS2 from mangling the -append cmdline (/init -> C:\...\init).
+MSYS_NO_PATHCONV=1 "$QEMU_BIN" \
+    -cpu cortex-a72 -machine virt,gic-version=3,virtualization=on \
+    -m 2G -smp 1 --no-reboot \
+    $DISPLAY_OPT \
+    -device virtio-gpu-device \
+    -device virtio-keyboard-device \
+    -serial file:"$WINLOG" \
+    -netdev user,id=net0,hostfwd=tcp::2222-:22 \
+    -device virtio-net-device,netdev=net0 \
+    -kernel "$WINIMAGE" \
+    -initrd "$WININITRD" \
+    -append "$KCMDLINE" >/dev/null 2>&1 &
+QEMU_PID=$!
+disown $QEMU_PID 2>/dev/null
+echo $QEMU_PID > "$PIDFILE"
 
 echo "QEMU started"
 echo "Kernel: ARM64 Image ($IMAGE)"

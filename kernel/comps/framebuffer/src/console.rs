@@ -291,6 +291,65 @@ impl ConsoleState {
         }
     }
 
+    /// Blits an image (row-major pixel array) onto the framebuffer at the
+    /// current cursor position. Used for Sixel inline image rendering.
+    ///
+    /// The image is clipped to the framebuffer bounds. After rendering, the
+    /// cursor advances past the image height.
+    fn blit_pixels(&mut self, pixels: &[Pixel], img_w: usize, img_h: usize) {
+        if img_w == 0 || img_h == 0 {
+            return;
+        }
+
+        let fb_w = self.backend.width();
+        let fb_h = self.backend.height();
+        let rendered_pixel_size = self.backend.render_pixel(Pixel::BLACK).nbytes();
+        let is_output_enabled = self.is_output_enabled();
+
+        // Clip the image to framebuffer bounds.
+        let x_start = self.x_pos.min(fb_w);
+        let y_start = self.y_pos.min(fb_h);
+        let draw_w = img_w.min(fb_w.saturating_sub(x_start));
+        let draw_h = img_h.min(fb_h.saturating_sub(y_start));
+
+        for row in 0..draw_h {
+            let py = y_start + row;
+            let off = self.backend.calc_offset(x_start, py).as_usize();
+            let row_bytes = draw_w * rendered_pixel_size;
+            let buf = &mut self.bytes[off..off + row_bytes];
+
+            // Render each pixel of this image row into the framebuffer format.
+            for col in 0..draw_w {
+                let pixel = pixels[row * img_w + col];
+                let rendered = self.backend.render_pixel(pixel);
+                let chunk = &mut buf[col * rendered_pixel_size..(col + 1) * rendered_pixel_size];
+                chunk.copy_from_slice(rendered.as_slice());
+            }
+
+            // Write to the live framebuffer if output is enabled.
+            if is_output_enabled {
+                self.backend.write_bytes_at(off, &self.bytes[off..off + row_bytes]).unwrap();
+            }
+        }
+
+        // Flush the dirty region to the host scanout (required for Blit backends).
+        if is_output_enabled {
+            self.backend.flush(x_start, y_start, draw_w, draw_h);
+        }
+
+        // Advance cursor past the image height (in font-cell units).
+        let font_h = self.font.height();
+        let cells_h = (img_h + font_h - 1) / font_h;
+        let new_y = self.y_pos + cells_h * font_h;
+        if new_y >= fb_h {
+            // Scroll up if the image went past the bottom.
+            self.shift_lines_up();
+        } else {
+            self.y_pos = new_y;
+        }
+        self.x_pos = 0;
+    }
+
     /// Calculates the pixel coordinates for the cursor cell.
     fn cursor_cell_rect(&self) -> (usize, usize, usize, usize) {
         let cx0 = self.x_pos;
@@ -363,5 +422,9 @@ impl EscapeOp for ConsoleState {
                 self.fill_rect_pixels(0, 0, w, h, bg);
             }
         }
+    }
+
+    fn render_image(&mut self, pixels: &[Pixel], width: usize, height: usize) {
+        self.blit_pixels(pixels, width, height);
     }
 }

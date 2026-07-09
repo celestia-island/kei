@@ -19,6 +19,7 @@ pub mod font;
 pub mod framebuffer;
 pub mod mode;
 pub mod pixel;
+mod sixel;
 
 use component::{ComponentInitError, init_component};
 

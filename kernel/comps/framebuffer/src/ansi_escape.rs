@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
+use alloc::vec::Vec;
+
 use crate::pixel::Pixel;
 
 /// A finite-state machine (FSM) to handle ANSI escape sequences.
@@ -7,6 +9,8 @@ use crate::pixel::Pixel;
 pub(super) struct EscapeFsm {
     state: WaitFor,
     params: [Option<u32>; MAX_PARAMS],
+    /// Accumulator for DCS (Device Control String) payloads, used for Sixel.
+    dcs_buf: Vec<u8>,
 }
 
 /// The mode for "Erase in Display" (ED) commands.
@@ -32,6 +36,10 @@ pub(super) trait EscapeOp {
 
     /// Erases part or all of the display.
     fn erase_in_display(&mut self, mode: EraseInDisplay);
+
+    /// Renders a Sixel inline image at the current cursor position.
+    /// `pixels` is row-major RGB data; `width`/`height` are in pixels.
+    fn render_image(&mut self, pixels: &[Pixel], width: usize, height: usize);
 }
 
 const MAX_PARAMS: usize = 8;
@@ -73,6 +81,9 @@ enum WaitFor {
     ///
     /// This will be terminated by a bell (BEL, 0x07) or a String Terminator (ST, "ESC\").
     Osc { len: u8, is_last_esc: bool },
+    /// Accumulates a DCS (Device Control String) payload, terminated by ST ("ESC\").
+    /// Used for Sixel image data (DCS q ... ST).
+    Dcs { is_last_esc: bool, saw_command_q: bool },
 }
 
 /// Foreground and background colors.
@@ -129,6 +140,7 @@ impl EscapeFsm {
         Self {
             state: WaitFor::Escape,
             params: [None; MAX_PARAMS],
+            dcs_buf: Vec::new(),
         }
     }
 
@@ -166,6 +178,17 @@ impl EscapeFsm {
                         }
                     }
 
+                    // DCS (Device Control String) begins. ESC P starts a DCS
+                    // sequence, terminated by ST ("ESC\"). Sixel images use
+                    // DCS with the 'q' command byte.
+                    b'P' => {
+                        self.dcs_buf.clear();
+                        self.state = WaitFor::Dcs {
+                            is_last_esc: false,
+                            saw_command_q: false,
+                        };
+                    }
+
                     // The character is invalid. We cannot handle it, so we are aborting the ANSI
                     // escape sequence.
                     _ => self.state = WaitFor::Escape,
@@ -201,6 +224,43 @@ impl EscapeFsm {
                         }
                     }
                 }
+
+                true
+            }
+
+            WaitFor::Dcs {
+                is_last_esc,
+                saw_command_q,
+            } => {
+                // Check for String Terminator (ST = "ESC \")
+                if is_last_esc && byte == b'\\' {
+                    // DCS complete — try to decode as Sixel if we saw the 'q' command.
+                    if saw_command_q {
+                        if let Some(img) = crate::sixel::decode(&self.dcs_buf) {
+                            op.render_image(&img.pixels, img.width, img.height);
+                        }
+                    }
+                    self.dcs_buf.clear();
+                    self.state = WaitFor::Escape;
+                    return true;
+                }
+
+                // Detect the 'q' Sixel command byte (first non-parameter byte).
+                // DCS format: ESC P <params> q <data> ESC \
+                // The <params> are digits/semicolons before the command byte.
+                let new_saw_q = saw_command_q
+                    || (byte == b'q' && !is_last_esc);
+
+                // If we've seen 'q', accumulate data bytes. Otherwise, these are
+                // DCS parameters (digits/semicolons) that we skip.
+                if new_saw_q && byte != b'q' && !is_last_esc {
+                    self.dcs_buf.push(byte);
+                }
+
+                self.state = WaitFor::Dcs {
+                    is_last_esc: byte == Self::ESC,
+                    saw_command_q: new_saw_q,
+                };
 
                 true
             }
@@ -505,6 +565,10 @@ mod test {
 
         fn erase_in_display(&mut self, mode: EraseInDisplay) {
             self.last_ed = Some(mode);
+        }
+
+        fn render_image(&mut self, _pixels: &[Pixel], _width: usize, _height: usize) {
+            // No-op in unit tests; image rendering is verified at integration level.
         }
     }
 

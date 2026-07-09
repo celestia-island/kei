@@ -1,11 +1,13 @@
 name: CI
 on:
   push:
-    branches: [dev, main]
+    branches: [master, dev, main]
   pull_request:
-    branches: [dev, main]
+    branches: [master, dev, main]
 
 jobs:
+  commit-msg-lint:
+    uses: celestia-island/celestia-devtools/.github/workflows/commit-msg-lint.yml@master
   check-bsp:
     runs-on: ubuntu-latest
     steps:

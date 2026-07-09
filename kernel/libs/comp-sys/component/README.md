@@ -65,6 +65,6 @@ fn main(){
 
 ## Notes
 
-- Currently, initialization requires the presence of a `Components.toml` file, which stores some information about components and access control. The [tests](tests/kernel/Components.toml) provides a sample file of it. If the components declared inside `Components.toml` is inconsistent with the component found by `parse_metadata` macro (i.e. A crate depends on the component library but is not declared in `Components.toml`), then a compilation error will occur.
+- Currently, initialization requires the presence of a `Components.toml` file, which stores some information about components and access control. The [root Components.toml](../../../../Components.toml) provides a sample file of it. If the components declared inside `Components.toml` is inconsistent with the component found by `parse_metadata` macro (i.e. A crate depends on the component library but is not declared in `Components.toml`), then a compilation error will occur.
 
 - The `parse_metadata` macro will generate the information of all components. But ultimately which functions are called still depends on which `#[init_component]` macros are extended. If you want to test a component. Then, other components with a lower priority than it or other unused high-priority components will not be initialized at runtime.

@@ -126,8 +126,6 @@ impl<E: Events, F: EventsFilter<E>> SyncSubject<E, F> {
     pub fn notify_observers(&self, events: &E) {
         // Fast path.
         let num_obs = self.num_observers.fetch_add(0, Ordering::Release);
-        #[cfg(target_arch = "aarch64")]
-        ostd::early_println!("[subject] notify_observers: num_observers={}", num_obs);
         if num_obs == 0 {
             return;
         }
@@ -135,8 +133,6 @@ impl<E: Events, F: EventsFilter<E>> SyncSubject<E, F> {
         // Slow path: broadcast the new events to all observers.
         let mut num_freed = 0;
         let mut observers = self.observers.lock();
-        #[cfg(target_arch = "aarch64")]
-        let total_obs = observers.len();
         observers.retain(|observer, filter| {
             if let Some(observer) = observer.upgrade() {
                 if filter.filter(events) {

@@ -107,24 +107,26 @@ pub(super) fn do_poll(
 
     // On aarch64, the Pollee cross-thread notification is unreliable (the
     // busy-poll thread's Pollee::notify doesn't wake the select waiter due to
-    // observer registration timing). As a workaround, use a short timeout
-    // (10ms) so the poll periodically re-checks readiness. This allows the
-    // bigtcp busy-poll thread to process incoming packets between checks.
+    // observer registration timing). As a workaround, we poll network ifaces
+    // directly to process pending packets (including TCP handshakes and
+    // timer callbacks) and then check for events. This ensures that connections
+    // become visible to select/accept without relying on cross-thread wakeups.
     #[cfg(target_arch = "aarch64")]
     {
+        let wq = ostd::sync::WaitQueue::new();
         loop {
-            let short_timeout = Some(Duration::from_millis(10));
-            let short_poller = match poll_files.register_poller(short_timeout.as_ref()) {
-                PollerResult::Registered(p) => p,
-                PollerResult::FoundEvents(n) => return Ok(n),
-            };
-            match short_poller.wait() {
-                Ok(()) | Err(_) => {}
-            }
+            // Poll network interfaces to process pending packets
+            // and trigger timer callbacks. This also completes any
+            // in-progress TCP handshakes.
+            crate::net::poll_ifaces();
+
             let n = poll_files.count_events();
             if n > 0 {
                 return Ok(n);
             }
+
+            // Give other threads a chance to run.
+            ostd::task::Task::yield_now();
         }
     }
 

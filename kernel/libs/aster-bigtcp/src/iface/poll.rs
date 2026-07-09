@@ -85,7 +85,6 @@ impl<E: Ext> PollContext<'_, E> {
                     IpPacket::Ipv6(p) => self.parse_and_process_ipv6(p),
                 };
                 let Some(reply) = reply else { return };
-                ostd::early_println!("[bigtcp] poll_ingress: dispatching reply packet");
                 dispatch_phy(&reply, self.iface.context_mut(), tx_token);
             });
         }
@@ -193,8 +192,6 @@ impl<E: Ext> PollContext<'_, E> {
         tcp_repr: &TcpRepr,
     ) -> Option<(IpRepr, TcpRepr<'static>)> {
         // Process packets belonging to existing connections first.
-        // Note that we must do this first because SYN packets may match existing TIME-WAIT
-        // sockets. See comments in `TcpConnectionBg::process` for details.
         let connection_key = ConnectionKey::new(
             ip_repr.dst_addr(),
             tcp_repr.dst_port,
@@ -392,11 +389,8 @@ impl<E: Ext> PollContext<'_, E> {
         D: Device + ?Sized,
         Q: FnMut(&Packet, &mut Context, D::TxToken<'_>),
     {
-        ostd::early_println!("[bigtcp] poll_egress: checking transmit");
         while let Some(tx_token) = device.transmit(self.iface.context().now()) {
-            ostd::early_println!("[bigtcp] poll_egress: got tx_token, dispatching");
             if !self.dispatch_ip(tx_token, dispatch_phy) {
-                ostd::early_println!("[bigtcp] poll_egress: dispatch_ip returned false, breaking");
                 break;
             }
         }

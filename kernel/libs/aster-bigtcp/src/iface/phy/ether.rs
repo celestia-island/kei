@@ -128,11 +128,6 @@ impl<D, E: Ext> EtherIface<D, E> {
             None
         })?;
 
-        ostd::early_println!(
-            "[ether] pkt: ethertype={:?}, dst_mac={:?}, our_mac={:?}, len={}",
-            repr.ethertype, repr.dst_addr, self.ether_addr, data.len()
-        );
-
         // On aarch64, accept all unicast packets.
         if !repr.dst_addr.is_broadcast() && repr.dst_addr != self.ether_addr {
             #[cfg(not(target_arch = "aarch64"))]
@@ -145,10 +140,6 @@ impl<D, E: Ext> EtherIface<D, E> {
                     ostd::early_println!("[ether] Ipv4Packet::new_checked FAILED");
                     None
                 })?;
-                ostd::early_println!(
-                    "[ether] IPv4: src={:?} dst={:?} proto={:?}",
-                    pkt.src_addr(), pkt.dst_addr(), pkt.next_header()
-                );
                 Ok(IpPacket::Ipv4(pkt))
             }
             EthernetProtocol::Ipv6 => {
@@ -277,21 +268,19 @@ impl<D, E: Ext> EtherIface<D, E> {
         caps: &DeviceCapabilities,
         tx_token: T,
     ) {
-        tx_token.consume(
-            ether_repr.buffer_len() + ip_pkt.ip_repr().buffer_len(),
-            |buffer| {
-                let mut frame = EthernetFrame::new_unchecked(buffer);
-                ether_repr.emit(&mut frame);
+        let ip_repr = ip_pkt.ip_repr();
+        let total_len = ether_repr.buffer_len() + ip_repr.buffer_len();
+        tx_token.consume(total_len, |buffer: &mut [u8]| {
+            let mut frame = EthernetFrame::new_unchecked(buffer);
+            ether_repr.emit(&mut frame);
 
-                let ip_repr = ip_pkt.ip_repr();
-                ip_repr.emit(frame.payload_mut(), &caps.checksum);
-                ip_pkt.emit_payload(
-                    &ip_repr,
-                    &mut frame.payload_mut()[ip_repr.header_len()..],
-                    caps,
-                );
-            },
-        );
+            ip_repr.emit(frame.payload_mut(), &caps.checksum);
+            ip_pkt.emit_payload(
+                &ip_repr,
+                &mut frame.payload_mut()[ip_repr.header_len()..],
+                caps,
+            );
+        });
     }
 
     /// Consumes the token and emits an ARP packet.

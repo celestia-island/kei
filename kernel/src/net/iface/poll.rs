@@ -18,7 +18,7 @@ pub fn init_in_first_kthread() {
     }
 }
 
-pub(super) fn poll_ifaces() {
+pub(crate) fn poll_ifaces() {
     for iface in iter_all_ifaces() {
         iface.poll();
     }

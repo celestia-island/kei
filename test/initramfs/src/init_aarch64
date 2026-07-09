@@ -8,15 +8,19 @@ echo "=== kei ignition (aarch64) ==="
 
 mkdir -p /var/run
 
-# Start dropbear as daemon (no -F). The daemon forks a child for each
-# connection. The poll retry workaround handles select/poll readiness.
-echo "Starting dropbear on port 22..."
-/sbin/dropbear -E -R -p 22
-echo "dropbear started (pid=$?)"
+# Start dropbear in foreground mode (-F). This avoids musl daemon() fork
+# which fails on aarch64. In -F mode, dropbear handles one connection then
+# exits. The SSH client must connect while dropbear is running.
+echo "Starting dropbear on port 22 (foreground)..."
+/sbin/dropbear -F -E -R -p 22 &
 
 echo ""
 echo "Boot complete. SSH on port 22 (host port 2222)."
+echo "Waiting for connections..."
+
+# Keep the init process alive so the system doesn't shut down
 while true; do sleep 10; done
+
 
 
 

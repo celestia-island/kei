@@ -12,6 +12,13 @@
 *.log
 qemu.log
 
+# QEMU device tree blobs dumped at runtime for debugging
+qemu_virt.dtb
+
+# Screenshots captured while running the kernel in QEMU
+screenshot*.png
+qemu_window*.png
+
 # Python cache
 __pycache__/
 *.pyc

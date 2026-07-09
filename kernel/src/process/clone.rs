@@ -126,6 +126,11 @@ impl CloneArgs {
         stack: u64,
     ) -> Result<Self> {
         const FLAG_MASK: u64 = 0xff;
+        // On aarch64, CLONE_VM (shared address space) causes an EC=0 trap
+        // when the vfork child returns to user space. Strip CLONE_VM so
+        // vfork becomes a CoW fork with vfork wait semantics.
+        #[cfg(target_arch = "aarch64")]
+        let raw_flags = raw_flags & !(CloneFlags::CLONE_VM.bits() as u64);
         let flags = CloneFlags::from(raw_flags & !FLAG_MASK);
         let exit_signal = match (raw_flags & FLAG_MASK) as u8 {
             0 => None,

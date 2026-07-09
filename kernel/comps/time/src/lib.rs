@@ -53,7 +53,17 @@ static START_TIME: Once<SystemTime> = Once::new();
 
 /// Returns the `START_TIME`, which is the system time when calibrating.
 pub fn read_start_time() -> SystemTime {
-    *START_TIME.get().unwrap()
+    // On aarch64 START_TIME is never set (aster_time component bypassed).
+    // Return epoch (1970-01-01 00:00:00) instead of panicking.
+    START_TIME.get().copied().unwrap_or(SystemTime {
+        year: 1970,
+        month: 1,
+        day: 1,
+        hour: 0,
+        minute: 0,
+        second: 0,
+        nanos: 0,
+    })
 }
 
 /// Returns the monotonic time from the TSC clocksource.

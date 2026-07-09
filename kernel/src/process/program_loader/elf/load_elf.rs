@@ -94,6 +94,14 @@ pub fn load_elf_to_vmar(
     // process's address space and compute the thread pointer (TPIDR_EL0 on aarch64).
     let tls_pointer = setup_tls(vmar, &elf_headers);
 
+    // On aarch64, apply ELF relocations at load time (like Linux binfmt_elf)
+    // so the static binary doesn't need to process them itself (which requires
+    // a fully-initialized TLS that the kernel hasn't set up yet).
+    #[cfg(target_arch = "aarch64")]
+    {
+        apply_relocations(vmar, &elf_file, &elf_mapped_info.full_range)?;
+    }
+
     Ok(ElfLoadInfo {
         entry_point,
         user_stack_top,
@@ -414,7 +422,16 @@ fn map_segment_vmo(
         (start, end - start)
     };
 
-    let perms = loadable_phdr.vm_perms();
+    let mut perms = loadable_phdr.vm_perms();
+    // DIAGNOSTIC (aarch64): static busybox processes its own .rela.plt at
+    // startup (lazy IFUNC resolution), writing into the RX LOAD segment where
+    // .rela.plt lives (0x4001d8+). Until the kernel applies ELF relocations
+    // at load time (like Linux's binfmt_elf), grant WRITE on all segments so
+    // the user-space relocation processing doesn't fault.
+    #[cfg(target_arch = "aarch64")]
+    {
+        perms |= VmPerms::WRITE;
+    }
     let offset = map_at.align_down(PAGE_SIZE);
 
     if segment_size != 0 {
@@ -529,31 +546,253 @@ fn map_vdso_to_vmar(vmar: &Vmar) -> Option<Vaddr> {
 fn setup_tls(vmar: &Vmar, elf_headers: &ElfHeaders) -> Option<Vaddr> {
     use crate::vm::perms::VmPerms;
 
-    // Determine the TLS block size from PT_TLS.
-    // We need enough space for both the TLS data (at negative offsets from TP)
-    // and the TCB (at small positive offsets from TP).
-    let tls_memsz = elf_headers.tls_phdr().map(|t| t.memsz).unwrap_or(0);
-    if tls_memsz == 0 && !cfg!(target_arch = "aarch64") {
-        return None;
+    // Determine the TLS block size from PT_TLS. Even if there is no PT_TLS
+    // (or it's empty), we still allocate a TLS block with a struct pthread
+    // (TCB) and set TPIDR_EL0 — musl reads TPIDR_EL0 very early (in
+    // __libc_start_main) for __pthread_self(), and TPIDR_EL0=0 causes
+    // immediate faults.
+    let (tls_memsz, tls_filesz, tls_align, tls_phdr_vaddr) = match elf_headers.tls_phdr() {
+        Some(phdr) if phdr.memsz > 0 => (phdr.memsz, phdr.filesz, phdr.align.max(16), phdr.vaddr),
+        _ => (0, 0, 16, 0), // no PT_TLS: still set up a pthread/TCB
+    };
+
+    // On aarch64, set up a TLS block matching musl's TLS_ABOVE_TP layout
+    // used by the statically-linked musl busybox/dropbear binaries.
+    //
+    // musl TLS_ABOVE_TP layout (arch/aarch64/pthread_arch.h):
+    //   [TLS data (.tdata/.tbss)] [gap=16] [struct pthread (0xc8 B)] [TPIDR_EL0 →]
+    //   __pthread_self() = TPIDR_EL0 - sizeof(struct pthread) = TP - 0xc8
+    //   struct pthread field offsets:
+    //     0x00 self, 0x08 prev, 0x10 next, 0x18 sysinfo,
+    //     0x20 tid, 0x24 errno_val, ...
+    //     0x98 locale (locale_t = struct __locale_struct *)
+    //   errno is at __pthread_self()->errno_val = (TP - 0xc8) + 0x24 = TP - 0xa4
+    //
+    // musl reads TPIDR_EL0 very early in __libc_start_main, so the kernel must
+    // provide a valid struct pthread with self/dtv pointers.
+    #[cfg(target_arch = "aarch64")]
+    {
+        use crate::vm::perms::VmPerms;
+
+        // musl struct pthread on aarch64 is 0xc8 bytes.
+        let pthread_size = 0xc8usize;
+        let gap = 16usize; // GAP_ABOVE_TP
+        let dtv_size = 24usize;
+
+        let tls_data_aligned = (tls_memsz + tls_align - 1) & !(tls_align - 1);
+        // Layout: [TLS data] [gap] [struct pthread] [TP]
+        let total = (tls_data_aligned + gap + pthread_size + dtv_size + 4095) & !4095;
+
+        let tls_base = vmar
+            .new_map(total, VmPerms::READ | VmPerms::WRITE)
+            .ok()?
+            .handle_page_faults_around()
+            .build()
+            .ok()?;
+
+        // struct pthread starts after the TLS data + gap.
+        let td_addr = tls_base + tls_data_aligned + gap;
+        let dtv_addr = td_addr + pthread_size;
+        // TPIDR_EL0 points right after struct pthread.
+        let tp = dtv_addr;
+
+        // --- struct pthread (at td_addr) ---
+        // self(0x0) = td_addr: so __pthread_self()->self == __pthread_self()
+        let self_bytes = (td_addr as u64).to_le_bytes();
+        let mut r = ostd::mm::VmReader::from(&self_bytes[..]).to_fallible();
+        let _ = vmar.write_alien(td_addr, &mut r);
+
+        // dtv(0x8) field — musl stores dtv at offset 0xc0 (tail of struct
+        // pthread in TLS_ABOVE_TP). Point it at the dtv array.
+        let dtv_ptr = (dtv_addr as u64).to_le_bytes();
+        let mut r = ostd::mm::VmReader::from(&dtv_ptr[..]).to_fallible();
+        let _ = vmar.write_alien(td_addr + 0xc0, &mut r);
+
+        // canary(0xb8) — musl stores canary at offset 0xb8. Leave zeroed.
+
+        // locale(0x98) = pointer to a zeroed __locale_struct (C locale).
+        // musl's locale functions read __pthread_self()->locale. A zeroed
+        // __locale_struct means C locale (musl falls back to built-in data).
+        // The struct is zeroed already (within the pthread allocation).
+        let locale_struct_addr = td_addr + 0x40; // unused region inside pthread
+        let locale_ptr_bytes = (locale_struct_addr as u64).to_le_bytes();
+        let mut r = ostd::mm::VmReader::from(&locale_ptr_bytes[..]).to_fallible();
+        let _ = vmar.write_alien(td_addr + 0x98, &mut r);
+
+        // dtv array: dtv[0] = 1 (tls_cnt), dtv[1] = tls_base
+        let one_bytes = 1u64.to_le_bytes();
+        let mut r = ostd::mm::VmReader::from(&one_bytes[..]).to_fallible();
+        let _ = vmar.write_alien(dtv_addr, &mut r);
+
+        let base_bytes = (tls_base as u64).to_le_bytes();
+        let mut r = ostd::mm::VmReader::from(&base_bytes[..]).to_fallible();
+        let _ = vmar.write_alien(dtv_addr + 8, &mut r);
+
+        // Copy .tdata from the LOAD segment to the TLS data area.
+        if tls_filesz > 0 {
+            let mut buf = vec![0u8; tls_filesz];
+            let src_reader = vmar
+                .read_alien(
+                    tls_phdr_vaddr,
+                    &mut ostd::mm::VmWriter::from(buf.as_mut_slice()).to_fallible(),
+                )
+                .ok();
+            if src_reader.is_some() {
+                let mut r = ostd::mm::VmReader::from(buf.as_slice()).to_fallible();
+                let _ = vmar.write_alien(tls_base, &mut r);
+            }
+        }
+
+        ostd::early_println!(
+            "[tls] musl: base={:#x} td={:#x} tp={:#x} dtv={:#x} psz={:#x}",
+            tls_base, td_addr, tp, dtv_addr, pthread_size
+        );
+        return Some(tp);
     }
 
-    // On aarch64: TPIDR_EL0 points past the TLS data. The TCB is at TPIDR_EL0
-    // + small offsets (up to ~64 bytes). We need to ensure both the TLS data
-    // (below TP) and the TCB (above TP) are within allocated pages.
-    // Allocate 2 pages to be safe.
-    let alloc_pages = 2usize;
-    let alloc_size = alloc_pages * PAGE_SIZE;
+    // On other architectures, allocate a separate TLS block.
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        let _ = vmar; // suppress unused warning
+        let alloc_pages = 2usize;
+        let alloc_size = alloc_pages * PAGE_SIZE;
+        let tls_base = vmar
+            .new_map(alloc_size, VmPerms::READ | VmPerms::WRITE)
+            .ok()?
+            .handle_page_faults_around()
+            .build()
+            .ok()?;
+        let tp = tls_base + PAGE_SIZE;
+        Some(tp)
+    }
+}
 
-    let tls_base = vmar
-        .new_map(alloc_size, VmPerms::READ | VmPerms::WRITE)
-        .ok()?
-        .handle_page_faults_around()
-        .build()
-        .ok()?;
+/// Applies ELF relocations at load time (aarch64 only).
+///
+/// Static binaries (like busybox) and static-PIE binaries (like dropbear) may
+/// contain RELA relocations (R_AARCH64_RELATIVE, R_AARCH64_GLOB_DAT,
+/// R_AARCH64_ABS64) that must be applied to the GOT before user-space runs.
+/// Without this, the binary tries to process its own relocations during early
+/// init, which fails because the TLS/TCB isn't fully set up yet.
+///
+/// For PIE (ET_DYN) binaries the ELF `r_offset` and the symbol addends are
+/// relative to the link-time base (which starts at 0), so both the patch
+/// address and the value must be adjusted by the load bias — exactly as
+/// Linux's `binfmt_elf` does when it calls the architecture's relocation
+/// helper after mapping the segments.
+#[cfg(target_arch = "aarch64")]
+fn apply_relocations(
+    vmar: &Vmar,
+    elf_file: &Path,
+    relocated_range: &RelocatedRange,
+) -> Result<()> {
+    const SHT_RELA: u32 = 4;
+    const R_AARCH64_RELATIVE: u32 = 1027;
+    const R_AARCH64_GLOB_DAT: u32 = 1025;
+    const R_AARCH64_ABS64: u32 = 257;
+    // R_AARCH64_IRELATIVE (1032) is NOT handled here: the kernel forbids
+    // unsafe code (#![deny(unsafe_code)]), so we cannot transmute and call
+    // the IFUNC resolver. Static binaries process their own IRELATIVE
+    // entries at startup; the segments are mapped writable (see the
+    // DIAGNOSTIC in map_segment_vmo) to allow this.
 
-    // TPIDR_EL0 = tls_base + PAGE_SIZE.
-    // TLS data is at [tls_base + PAGE_SIZE - tls_memsz, tls_base + PAGE_SIZE).
-    // TCB is at [tls_base + PAGE_SIZE, tls_base + PAGE_SIZE + 64) — within the second page.
-    let tp = tls_base + PAGE_SIZE;
-    Some(tp)
+    let load_bias = relocated_range.load_bias();
+    // Convert to unsigned for arithmetic below. Negative bias never happens
+    // in practice (segments are always mapped at or above their link addr),
+    // but use wrapping to avoid panics.
+    let load_bias_u = load_bias as u64;
+
+    let inode = elf_file.inode();
+
+    // Read the ELF header to get section header info.
+    let mut ehdr_buf = vec![0u8; 64];
+    let read = inode.read_bytes_at(0, &mut ehdr_buf)?;
+    if read < 64 {
+        return Ok(());
+    }
+
+    let e_shoff = u64::from_le_bytes(ehdr_buf[40..48].try_into().unwrap()) as usize;
+    let e_shentsize = u16::from_le_bytes(ehdr_buf[58..60].try_into().unwrap()) as usize;
+    let e_shnum = u16::from_le_bytes(ehdr_buf[60..62].try_into().unwrap()) as usize;
+    if e_shoff == 0 || e_shnum == 0 || e_shentsize == 0 {
+        return Ok(());
+    }
+
+    // Read the section header table.
+    let shdr_total = e_shnum * e_shentsize;
+    let mut shdr_buf = vec![0u8; shdr_total];
+    inode.read_bytes_at(e_shoff, &mut shdr_buf)?;
+
+    let mut reloc_count = 0usize;
+    let mut skip_count = 0usize;
+    for i in 0..e_shnum {
+        let off = i * e_shentsize;
+        let sh_type = u32::from_le_bytes(shdr_buf[off + 4..off + 8].try_into().unwrap());
+        if sh_type != SHT_RELA {
+            continue;
+        }
+        let sh_offset = u64::from_le_bytes(shdr_buf[off + 24..off + 32].try_into().unwrap()) as usize;
+        let sh_size = u64::from_le_bytes(shdr_buf[off + 32..off + 40].try_into().unwrap()) as usize;
+
+        let n_entries = sh_size / 24;
+        let mut rela_buf = vec![0u8; sh_size];
+        inode.read_bytes_at(sh_offset, &mut rela_buf)?;
+
+        for j in 0..n_entries {
+            let eo = j * 24;
+            let r_offset = u64::from_le_bytes(rela_buf[eo..eo + 8].try_into().unwrap());
+            let r_info = u64::from_le_bytes(rela_buf[eo + 8..eo + 16].try_into().unwrap());
+            let r_addend = u64::from_le_bytes(rela_buf[eo + 16..eo + 24].try_into().unwrap());
+            let r_type = (r_info & 0xFFFFFFFF) as u32;
+
+            // The actual patch address is the link-time offset adjusted by the
+            // load bias. For non-PIE binaries the bias is 0, so this is a no-op.
+            let patch_addr = r_offset.wrapping_add(load_bias_u) as usize;
+
+            // Compute the relocation value.
+            //   - R_AARCH64_RELATIVE: value = load_bias + addend
+            //   - R_AARCH64_GLOB_DAT/ABS64: value = load_bias + addend
+            //   - R_AARCH64_IRELATIVE: call the IFUNC resolver at
+            //     (load_bias + addend) and use its return value. The resolver
+            //     is a short position-independent function (e.g. selects
+            //     memcpy/memset variant based on CPU features). We call it via
+            //     a raw function pointer; the user pages are accessible from
+            //     kernel mode on aarch64, and these resolvers don't do syscalls.
+            let value: u64 = match r_type {
+                R_AARCH64_RELATIVE | R_AARCH64_GLOB_DAT | R_AARCH64_ABS64 => {
+                    r_addend.wrapping_add(load_bias_u)
+                }
+                _ => continue,
+            };
+
+            let val_bytes = value.to_le_bytes();
+            let mut reader = ostd::mm::VmReader::from(&val_bytes[..]).to_fallible();
+            match vmar.write_alien(patch_addr, &mut reader) {
+                Ok(_) => reloc_count += 1,
+                Err((e, _)) => {
+                    skip_count += 1;
+                    // Only print the first few failures to avoid flooding the log.
+                    if skip_count <= 8 {
+                        ostd::early_println!(
+                            "[reloc] failed at {:#x} (orig {:#x}, bias {:#x}): {:?}",
+                            patch_addr,
+                            r_offset,
+                            load_bias_u,
+                            e
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    if reloc_count > 0 || skip_count > 0 {
+        ostd::early_println!(
+            "[reloc] applied {} relocations (skipped {}), load_bias={:#x}",
+            reloc_count,
+            skip_count,
+            load_bias_u
+        );
+    }
+    Ok(())
 }

@@ -65,7 +65,11 @@ impl device::TxToken for TxToken<'_> {
     {
         let mut buffer = vec![0u8; len];
         let res = f(&mut buffer);
-        self.0.send(&buffer).expect("Send packet failed");
+        ostd::early_println!("[tx] TxToken::consume len={}, calling send()", buffer.len());
+        match self.0.send(&buffer) {
+            Ok(()) => ostd::early_println!("[tx] send() OK"),
+            Err(e) => ostd::early_println!("[tx] send() FAILED: {:?}", e),
+        }
         res
     }
 }

@@ -17,9 +17,25 @@ use crate::{fs::vfs::inode::MknodType, prelude::*};
 
 /// Unpack and prepare the rootfs from the initramfs CPIO buffer.
 pub fn init_in_first_kthread(path_resolver: &PathResolver) -> Result<()> {
-    let initramfs_buf = boot_info()
-        .initramfs
-        .ok_or_else(|| Error::with_message(Errno::EINVAL, "no initramfs found"))?;
+    let initramfs_buf = boot_info().initramfs.ok_or_else(|| {
+        Error::with_message(Errno::EINVAL, "no initramfs found")
+    });
+
+    // On aarch64, QEMU `-kernel <ELF>` does not load the `-initrd` file into
+    // guest RAM nor write the linux,initrd-start/end properties to the FDT
+    // (the ELF boot path bypasses arm_load_kernel's initrd handling). As a
+    // fallback, embed the initramfs at compile time. This is gated to aarch64
+    // so x86_64 (where QEMU passes initrd normally) is unaffected.
+    #[cfg(target_arch = "aarch64")]
+    let initramfs_buf: &[u8] = match initramfs_buf {
+        Ok(buf) => buf,
+        Err(_) => {
+            ostd::early_println!("[rootfs] FDT has no initramfs, using embedded copy");
+            include_bytes!("../../../test/initramfs/build/initramfs.cpio.gz")
+        }
+    };
+    #[cfg(not(target_arch = "aarch64"))]
+    let initramfs_buf: &[u8] = initramfs_buf?;
 
     let (reader, suffix) = match &initramfs_buf[..4] {
         // Gzip magic number: 0x1F 0x8B
@@ -32,18 +48,22 @@ pub fn init_in_first_kthread(path_resolver: &PathResolver) -> Result<()> {
         _ => (Cow::Borrowed(initramfs_buf), ""),
     };
 
-    println!("[kernel] unpacking initramfs.cpio{} to rootfs ...", suffix);
+    ostd::early_println!("[rootfs] unpacking initramfs.cpio{} to rootfs ...", suffix);
 
     let mut decoder = CpioDecoder::new(Cursor::new(reader));
 
     while let Some(entry_result) = decoder.next() {
         let mut entry = entry_result?;
         if let Err(e) = try_append_entry_to_rootfs(&mut entry, path_resolver) {
-            warn!("failed to add entry {} to rootfs: {:?}", entry.name(), e);
+            ostd::early_println!(
+                "[rootfs] failed to add entry {}: {:?}",
+                entry.name(),
+                e
+            );
         }
     }
 
-    println!("[kernel] rootfs is ready");
+    ostd::early_println!("[rootfs] rootfs is ready");
     Ok(())
 }
 

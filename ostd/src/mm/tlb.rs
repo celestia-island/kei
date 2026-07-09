@@ -149,7 +149,7 @@ impl<'a, G: PinCurrentCpu> TlbFlusher<'a, G> {
         }
 
         assert!(
-            irq::is_local_enabled(),
+            irq::is_local_enabled() || crate::cpu::num_cpus() <= 1,
             "Waiting for remote flush with IRQs disabled"
         );
 

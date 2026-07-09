@@ -115,6 +115,47 @@ unsafe extern "C" fn aarch64_boot(fdt_paddr: usize) -> ! {
     crate::early_println!("[kei] aarch64_boot: entering Rust code");
     crate::early_println!("[kei] FDT physical address: {:#x}", fdt_paddr);
 
+    // QEMU's `-kernel` only programs x0 = FDT address for non-ELF (ARM64
+    // Image) kernels. When an ELF kernel is loaded, QEMU jumps to the ELF
+    // entry with x0 = 0, but it still generates the device tree blob and
+    // loads it somewhere in RAM. Recover it by scanning low RAM for the FDT
+    // magic (0xd00dfeed). The boot page table maps the first 4 GiB of RAM
+    // via 1 GiB blocks, so the scan is safe.
+    // Ref: https://stackoverflow.com/questions/78957741/no-fdt-bootparam-in-aarch64-virt
+    let fdt_paddr = if fdt_paddr == 0 {
+        const FDT_MAGIC: u32 = 0xD00DFEED;
+        let ram_base = 0x4000_0000usize;
+        let scan_end = ram_base + (512 << 20); // first 512 MiB
+        let mut found = 0usize;
+        let mut addr = ram_base;
+        while addr + 8 <= scan_end {
+            let ptr = paddr_to_vaddr(addr) as *const u32;
+            let val = unsafe { core::ptr::read_volatile(ptr) };
+            if val.to_le() == FDT_MAGIC {
+                let size_ptr = paddr_to_vaddr(addr + 4) as *const u8;
+                let mut sz = [0u8; 4];
+                unsafe { core::ptr::copy_nonoverlapping(size_ptr, sz.as_mut_ptr(), 4) };
+                let totalsize = u32::from_be_bytes(sz);
+                if totalsize > 0 && totalsize < (4 << 20) {
+                    found = addr;
+                    break;
+                }
+            }
+            addr += 4;
+        }
+        crate::early_println!("[kei] FDT scan (x0=0): found at {:#x}", found);
+        found
+    } else {
+        fdt_paddr
+    };
+
+    if fdt_paddr == 0 {
+        crate::early_println!("[kei] FATAL: no FDT found, hanging");
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
     let fdt_ptr = paddr_to_vaddr(fdt_paddr) as *const u8;
     crate::early_println!("[kei] FDT virtual address: {:#x}", fdt_ptr as usize);
 

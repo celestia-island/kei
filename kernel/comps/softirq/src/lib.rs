@@ -126,6 +126,15 @@ static LINES: Once<[SoftIrqLine; SoftIrqLine::NR_LINES as usize]> = Once::new();
 
 #[init_component]
 fn init() -> Result<(), ComponentInitError> {
+    init_inner()
+}
+
+/// Manual init for aarch64 (component system bypassed).
+pub fn init_component_fn() -> Result<(), ComponentInitError> {
+    init_inner()
+}
+
+fn init_inner() -> Result<(), ComponentInitError> {
     let lines: [SoftIrqLine; SoftIrqLine::NR_LINES as usize] =
         core::array::from_fn(|i| SoftIrqLine::new(i as u8));
     LINES.call_once(|| lines);

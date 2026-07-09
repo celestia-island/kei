@@ -234,6 +234,12 @@ fn parse_package_id_string(package_id: &str) -> ParsedID {
     // After that, it's
     // "path+file://<crate_path>#<crate_name>@<crate_version>", in which the crate
     // name might not exist if it is the last component of the path.
+    //
+    // Since Rust 1.84 (approximately), Cargo percent-encodes non-ASCII bytes in
+    // the path portion of the package id (e.g. `/mnt/d/%E6%BA%90...`). We must
+    // percent-decode the path before using it, otherwise a workspace located
+    // under a directory whose name contains non-ASCII characters (very common on
+    // internationalized systems) cannot be built with cargo-osdk at all.
     if package_id.starts_with("path+file://") {
         // After 1.77.1
         if package_id.contains('@') {
@@ -241,15 +247,21 @@ fn parse_package_id_string(package_id: &str) -> ParsedID {
             ParsedID {
                 name: package_id_segments[1].to_string(),
                 version: package_id_segments[2].to_string(),
-                path: package_id_segments[0]
-                    .trim_start_matches("path+file://")
-                    .to_string(),
+                path: percent_decode(
+                    package_id_segments[0]
+                        .trim_start_matches("path+file://")
+                        .to_string()
+                        .as_str(),
+                ),
             }
         } else {
             let package_id_segments = package_id.split(['#']).collect::<Vec<&str>>();
-            let path = package_id_segments[0]
-                .trim_start_matches("path+file://")
-                .to_string();
+            let path = percent_decode(
+                package_id_segments[0]
+                    .trim_start_matches("path+file://")
+                    .to_string()
+                    .as_str(),
+            );
             ParsedID {
                 name: PathBuf::from(path.clone())
                     .file_name()
@@ -267,12 +279,36 @@ fn parse_package_id_string(package_id: &str) -> ParsedID {
         ParsedID {
             name: default_member[0].to_string(),
             version: default_member[1].to_string(),
-            path: default_member[2]
-                .trim_start_matches("(path+file://")
-                .trim_end_matches(')')
-                .to_string(),
+            path: percent_decode(
+                default_member[2]
+                    .trim_start_matches("(path+file://")
+                    .trim_end_matches(')'),
+            ),
         }
     }
+}
+
+/// Decodes percent-encoded sequences (%XX) in a URL-style path string.
+///
+/// Cargo percent-encodes non-ASCII bytes in package id paths. This helper
+/// reverses that encoding so the resulting path can be used on the filesystem.
+fn percent_decode(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            let hex = &input[i + 1..i + 3];
+            if let Ok(byte) = u8::from_str_radix(hex, 16) {
+                out.push(byte);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// Print source line stack trace if a panic is detected from QEMU log.

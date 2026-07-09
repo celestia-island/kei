@@ -23,9 +23,12 @@ pub fn sys_clone(
     parent_context: &UserContext,
 ) -> Result<SyscallReturn> {
     let args = CloneArgs::for_clone(clone_flags, parent_tidptr, child_tidptr, tls, new_sp)?;
-    debug!("clone args = {:x?}", args);
+    #[cfg(target_arch = "aarch64")]
+    ostd::early_println!("[syscall] clone flags={:#x}", clone_flags);
 
     let child_pid = clone_child(ctx, parent_context, args)?;
+    #[cfg(target_arch = "aarch64")]
+    ostd::early_println!("[syscall] clone OK child_pid={}", child_pid);
     Ok(SyscallReturn::Return(child_pid as _))
 }
 

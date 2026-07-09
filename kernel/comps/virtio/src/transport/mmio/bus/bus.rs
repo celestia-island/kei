@@ -40,6 +40,11 @@ pub struct MmioBus {
 impl MmioBus {
     /// Registers a MMIO driver to the MMIO bus.
     pub fn register_driver(&mut self, driver: Arc<dyn MmioDriver>) {
+        // NOTE: Previously aarch64 skipped the probe loop because MMIO reads
+        // faulted under the boot page table. Now that the kernel page table is
+        // activated (commit dfd7324) and IoMem works, we probe normally so that
+        // virtio-net, virtio-keyboard, etc. are discovered and registered.
+        {
         debug!("Register driver: {:#x?}", driver);
         let length = self.common_devices.len();
         for _ in (0..length).rev() {
@@ -61,9 +66,14 @@ impl MmioBus {
             self.common_devices.push_back(device);
         }
         self.drivers.push(driver);
+        }
     }
 
     pub(super) fn register_mmio_device(&mut self, mut mmio_device: MmioCommonDevice) {
+        // NOTE: Previously aarch64 skipped device ID read and probing due to
+        // boot page table MMIO faults. Now that the kernel page table is active,
+        // we register normally so drivers can probe the device.
+        {
         let device_id = mmio_device.read_device_id().unwrap();
         for driver in self.drivers.iter() {
             mmio_device = match driver.probe(mmio_device) {
@@ -81,6 +91,7 @@ impl MmioBus {
             };
         }
         self.common_devices.push_back(mmio_device);
+        }
     }
 
     pub(super) const fn new() -> Self {
@@ -89,5 +100,15 @@ impl MmioBus {
             devices: Vec::new(),
             drivers: Vec::new(),
         }
+    }
+
+    /// Returns the number of common devices (aarch64 debug helper).
+    pub fn common_devices_len(&self) -> usize {
+        self.common_devices.len()
+    }
+
+    /// Returns a reference to the i-th common device (aarch64 debug helper).
+    pub fn common_devices_get(&self, i: usize) -> &MmioCommonDevice {
+        &self.common_devices[i]
     }
 }

@@ -60,6 +60,14 @@ fn component_init() -> Result<(), ComponentInitError> {
     Ok(())
 }
 
+/// Manual initialization entry point for use when the component system is
+/// bypassed (e.g., on aarch64).
+pub fn init_component_fn() -> Result<(), ComponentInitError> {
+    let component = Component::init()?;
+    COMPONENT.call_once(|| component);
+    Ok(())
+}
+
 #[derive(Debug)]
 struct Component {
     console_device_table: SpinLock<BTreeMap<String, Arc<dyn AnyConsoleDevice>>, LocalIrqDisabled>,

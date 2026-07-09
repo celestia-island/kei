@@ -32,3 +32,5 @@ __pycache__/
 # Cargo lock for osdk (it has its own)
 /osdk/Cargo.lock
 /Cargo.lock
+
+dist/

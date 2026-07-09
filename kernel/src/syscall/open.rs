@@ -31,6 +31,9 @@ pub fn sys_openat(
         dirfd, path, flags, mode
     );
 
+    #[cfg(target_arch = "aarch64")]
+    let path_str = path.to_string_lossy().into_owned();
+
     let file_handle = {
         let path = path.to_string_lossy();
         let fs_path = FsPath::from_fd_at(dirfd, path.as_ref(), EmptyPathStr::Reject)?;
@@ -45,11 +48,18 @@ pub fn sys_openat(
             flags,
             InodeMode::from_bits_truncate(mask_mode),
         )
-        .map_err(|err| match err.error() {
-            Errno::EINTR => Error::new(Errno::ERESTARTSYS),
-            _ => err,
+        .map_err(|err| {
+            #[cfg(target_arch = "aarch64")]
+            ostd::early_println!("[syscall] open({:?}) FAILED: {:?}", path_str, err.error());
+            match err.error() {
+                Errno::EINTR => Error::new(Errno::ERESTARTSYS),
+                _ => err,
+            }
         })?
     };
+
+    #[cfg(target_arch = "aarch64")]
+    ostd::early_println!("[syscall] open({:?}) OK", path_str);
 
     let fd = {
         let file_table = ctx.thread_local.borrow_file_table();

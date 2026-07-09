@@ -180,6 +180,13 @@ fn do_execve_no_return(
     // Set up the CPU context.
     set_cpu_context(thread_local, user_context, elf_load_info);
 
+    // Set the TLS pointer from the ELF load info (setup_tls in load_elf
+    // computed it). set_cpu_context resets tls_pointer to 0; we must restore
+    // the new value so the exec'd process has a valid TPIDR_EL0.
+    if let Some(tls_ptr) = elf_load_info.tls_pointer {
+        user_context.set_tls_pointer(tls_ptr);
+    }
+
     // If this was a vfork child, reset vfork-specific state.
     reset_vfork_child(process);
 

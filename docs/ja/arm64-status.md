@@ -43,18 +43,18 @@ ARM64 コードは kei のリポジトリで直接メンテナンスされてい
 
 ## 既知の問題
 
-| Issue | Severity | kei Action |
+| 問題 | 重要度 | kei の対応 |
 |-------|----------|------------|
-| Code needs audit and hardening | High | M2 audit: review every file |
-| Third-party GICv3 crate | Medium | Replace with in-tree driver |
-| QEMU-only testing | High | Real hardware boot on NanoPi R3S |
-| No SMP/multi-core | Medium | Add PSCI secondary CPU bring-up |
+| コードの監査と強化が必要 | 高 | M2 監査: 全ファイルをレビュー |
+| サードパーティ GICv3 crate | 中 | 内蔵ドライバに置き換え |
+| QEMU のみのテスト | 高 | NanoPi R3S での実機起動 |
+| SMP/マルチコア未対応 | 中 | PSCI セカンダリ CPU 起動を追加 |
 
 ## QEMU テストマトリクス
 
-| QEMU Machine | CPU | RAM | Boot | Notes |
+| QEMU マシン | CPU | RAM | 起動 | 備考 |
 |-------------|-----|-----|------|-------|
-| virt | cortex-a55 | 2GB | ✅ | Primary test target |
-| virt | cortex-a72 | 2GB | 🔲 | Validate across ARM cores |
-| virt | max | 4GB | 🔲 | Enable all ARM features |
-| sbsa-ref | max | 4GB | 🔲 | Server-style boot |
+| virt | cortex-a55 | 2GB | ✅ | 主要テストターゲット |
+| virt | cortex-a72 | 2GB | 🔲 | ARM コア間検証 |
+| virt | max | 4GB | 🔲 | 全 ARM 機能を有効化 |
+| sbsa-ref | max | 4GB | 🔲 | サーバースタイル起動 |

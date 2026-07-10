@@ -43,18 +43,18 @@ ARM64 代码直接在 kei 仓库中维护。这意味着：
 
 ## 已知问题
 
-| Issue | Severity | kei Action |
+| 问题 | 严重程度 | kei 处理方式 |
 |-------|----------|------------|
-| 代码需审查与加固 | High | M2 audit: 逐文件审查 |
-| GICv3 第三方 crate | Medium | 替换为内置驱动 |
-| 仅 QEMU 测试 | High | 在 NanoPi R3S 上真机启动 |
-| 无 SMP/多核 | Medium | 添加 PSCI 次级 CPU 启动 |
+| 代码需审查与加固 | 高 | M2 审计：逐文件审查 |
+| GICv3 第三方 crate | 中 | 替换为内置驱动 |
+| 仅 QEMU 测试 | 高 | 在 NanoPi R3S 上真机启动 |
+| 无 SMP/多核 | 中 | 添加 PSCI 次级 CPU 启动 |
 
 ## QEMU 测试矩阵
 
-| QEMU Machine | CPU | RAM | Boot | Notes |
+| QEMU 机器 | CPU | RAM | 启动 | 备注 |
 |-------------|-----|-----|------|-------|
-| virt | cortex-a55 | 2GB | ✅ | Primary test target |
-| virt | cortex-a72 | 2GB | 🔲 | Validate across ARM cores |
-| virt | max | 4GB | 🔲 | Enable all ARM features |
-| sbsa-ref | max | 4GB | 🔲 | Server-style boot |
+| virt | cortex-a55 | 2GB | ✅ | 主要测试目标 |
+| virt | cortex-a72 | 2GB | 🔲 | 跨 ARM 核心验证 |
+| virt | max | 4GB | 🔲 | 启用所有 ARM 特性 |
+| sbsa-ref | max | 4GB | 🔲 | 服务器风格启动 |

@@ -126,7 +126,31 @@ fn cmd_reset() {
 pub const FB_WIDTH: u32 = 1280;
 pub const FB_HEIGHT: u32 = 800;
 pub const FB_BPP: usize = 4;
-static mut FRAMEBUFFER: PageAligned<{ 1280 * 800 * 4 }> = PageAligned([0; 1280 * 800 * 4]);
+const FB_SIZE: usize = 1280 * 800 * 4;
+
+// The framebuffer is allocated from the frame allocator (a `DmaCoherent`
+// buffer) rather than as a 4MB `.bss` static array. The kernel page table
+// maps the `.bss`/KERNEL memory region in a way that, under QEMU TCG, store
+// instructions to the FRAMEBUFFER VA do not reach the physical address that
+// `AT S1E1R` reports (and that virtio-gpu DMA reads) — the 4MB of written
+// pixels vanish entirely from QEMU RAM (confirmed by a full-RAM `xp` scan).
+// Memory allocated from the page allocator lands in a `Conventional`/Usable
+// region whose page-table mapping is coherent with the DMA path, so writes
+// are visible to the device. We hold the allocation in a leaked `Box`-like
+// static so it lives for the whole boot.
+use ostd::mm::FrameAllocOptions;
+use ostd::mm::{HasPaddr, HasPaddrRange, HasSize};
+// Holds the page-allocator segment backing the framebuffer. We keep it alive
+// for the whole boot by leaking it (never dropped). Using a page-allocator
+// segment (rather than a 4MB `.bss` static) places the framebuffer in a
+// Conventional/Usable memory region whose kernel page-table linear mapping is
+// coherent with the virtio-gpu DMA path — the `.bss` static in the KERNEL
+// memory region is mapped in a way that, under QEMU TCG, store instructions
+// never reach the physical address the device reads.
+static mut FRAMEBUFFER_SEG: Option<ostd::mm::Segment<()>> = None;
+/// Virtual address of the framebuffer base (set by `probe`). Valid once
+/// `GPU_READY` is non-zero.
+static mut FRAMEBUFFER_VA: usize = 0;
 
 static GPU_READY: AtomicU8 = AtomicU8::new(0);
 
@@ -145,7 +169,7 @@ pub fn is_ready() -> bool {
 pub fn framebuffer_info() -> Option<(*mut u8, u32, u32, usize)> {
     if GPU_READY.load(Ordering::Relaxed) != 0 {
         Some((
-            unsafe { core::ptr::addr_of_mut!(FRAMEBUFFER) as *mut u8 },
+            unsafe { FRAMEBUFFER_VA as *mut u8 },
             FB_WIDTH,
             FB_HEIGHT,
             FB_WIDTH as usize * FB_BPP,
@@ -421,6 +445,31 @@ fn init_gpu(mmio_base: usize) {
         }
     }
 
+    // Allocate the framebuffer from the page allocator as a Segment. This
+    // lands in a Conventional/Usable memory region whose kernel page-table
+    // linear mapping is coherent with the virtio-gpu DMA path, unlike a 4MB
+    // `.bss` static in the KERNEL region (whose mapping under QEMU TCG drops
+    // writes). The segment is leaked (held in the static) so it lives for the
+    // whole boot.
+    unsafe {
+        let nframes = (FB_SIZE + ostd::mm::PAGE_SIZE - 1) / ostd::mm::PAGE_SIZE;
+        let seg = match FrameAllocOptions::new().alloc_segment(nframes) {
+            Ok(s) => s,
+            Err(e) => {
+                ostd::early_println!("[virtio-gpu] FB alloc_segment failed: {:?}", e);
+                return;
+            }
+        };
+        let pa = seg.paddr();
+        let va = LINEAR_BASE + pa;
+        FRAMEBUFFER_VA = va;
+        ostd::early_println!(
+            "[virtio-gpu] FB Segment: va={:#x} pa={:#x} size={}",
+            va, pa, seg.size()
+        );
+        FRAMEBUFFER_SEG = Some(seg);
+    }
+
     // ── 2. RESOURCE_CREATE_2D ─────────────────────────────────────────────
     // virtio_gpu_resource_create_2d: hdr(24) + resource_id(4) + format(4)
     //                              + width(4) + height(4) = 40 bytes
@@ -448,24 +497,28 @@ fn init_gpu(mmio_base: usize) {
         cmd_reset();
         let cmd_va = cmd_alloc(48);
         let resp_va = cmd_alloc(24);
-        // FRAMEBUFFER is a static in .bss. The kernel page table may map
-        // it at a different physical address than the boot page table.
-        // Use the AT S1E1R instruction to translate the actual VA→PA
-        // mapping under the current (kernel) page table.
-        let fb_va = core::ptr::addr_of!(FRAMEBUFFER) as usize;
-        let fb_pa = translate_va_to_pa(fb_va);
-        let fb_len = (FB_WIDTH as usize) * (FB_HEIGHT as usize) * FB_BPP;
-        ostd::early_println!(
-            "[virtio-gpu] ATTACH_BACKING: fb_va={:#x} fb_pa={:#x} (AT-translated) len={}",
-            fb_va, fb_pa, fb_len
-        );
+        // The framebuffer is a DmaCoherent allocation. Use the allocator's
+        // daddr() as the DMA backing address (this is the address the device
+        // reads from). We keep the AT S1E1R call for diagnostic logging.
+        let (fb_va, fb_pa) = {
+            let seg_opt = core::ptr::addr_of_mut!(FRAMEBUFFER_SEG).read();
+            let seg = seg_opt.as_ref().expect("FB segment allocated");
+            let pa = seg.paddr();
+            let va = LINEAR_BASE + pa;
+            let ipa = translate_va_to_pa(va);
+            ostd::early_println!(
+                "[virtio-gpu] ATTACH_BACKING: fb_va={:#x} fb_pa={:#x} ipa={:#x} len={}",
+                va, pa, ipa, FB_SIZE
+            );
+            (va, pa)
+        };
         let p = cmd_va as *mut u8;
         write_volatile(p.add(0) as *mut u32, CMD_RESOURCE_ATTACH_BACKING);
         write_volatile(p.add(24) as *mut u32, RESOURCE_ID);
         write_volatile(p.add(28) as *mut u32, 1); // nr_entries
         // entry[0]: addr(8) + length(4) + padding(4) = 16 bytes at offset 32
         write_volatile(p.add(32) as *mut u64, fb_pa as u64);
-        write_volatile(p.add(40) as *mut u32, fb_len as u32);
+        write_volatile(p.add(40) as *mut u32, FB_SIZE as u32);
         write_volatile(p.add(44) as *mut u32, 0); // padding
 
         let rt = gpuq().send_cmd(cmd_va, 48, resp_va, 24);
@@ -508,14 +561,18 @@ fn init_gpu(mmio_base: usize) {
     // combined walk that would give the true PA) is trapped by HCR_EL2, so it
     // cannot be used from EL1 here. See PLAN.md for the full analysis.
     unsafe {
-        let fb_va = core::ptr::addr_of!(FRAMEBUFFER) as *const u32;
+        let fb_va = core::ptr::read_volatile(core::ptr::addr_of!(FRAMEBUFFER_VA)) as *const u32;
         let v0 = read_volatile(fb_va);
-        let fb_ipa = translate_va_to_pa(core::ptr::addr_of!(FRAMEBUFFER) as usize);
+        let fb_ipa = translate_va_to_pa(fb_va as usize);
         let el: usize;
         core::arch::asm!("mrs {0}, CurrentEL", out(reg) el, options(nostack, preserves_flags));
+        let daddr = {
+            let seg_opt = core::ptr::addr_of_mut!(FRAMEBUFFER_SEG).read();
+            seg_opt.as_ref().unwrap().paddr()
+        };
         ostd::early_println!(
-            "[virtio-gpu] readback VA[0]={:#x} IPA={:#x} (EL{})",
-            v0, fb_ipa, (el >> 2) & 3
+            "[virtio-gpu] readback VA[0]={:#x} IPA={:#x} daddr={:#x} (EL{})",
+            v0, fb_ipa, daddr, (el >> 2) & 3
         );
     }
 
@@ -531,7 +588,7 @@ fn init_gpu(mmio_base: usize) {
 
     // Publish this framebuffer so the VT/console subsystem can use it.
     use alloc::sync::Arc;
-    let fb_base = core::ptr::addr_of!(FRAMEBUFFER) as *const _ as usize;
+    let fb_base = unsafe { FRAMEBUFFER_VA };
     let fb_size = FB_WIDTH as usize * FB_HEIGHT as usize * FB_BPP;
     let backing = aster_framebuffer::framebuffer::BlitBackend::new(fb_base, fb_size, raw_flush_callback);
     let fb = aster_framebuffer::framebuffer::FrameBuffer::new_blit(
@@ -577,11 +634,11 @@ pub fn flush_framebuffer() {
         return;
     }
     unsafe {
-        // Flush the FRAMEBUFFER data cache to RAM before DMA transfer.
+        // Flush the framebuffer data cache to RAM before DMA transfer.
         // QEMU's virtio-gpu DMA reads directly from RAM, bypassing CPU cache.
         // Without this flush, cached writes by draw_test_pattern() are invisible.
         flush_dcache_range(
-            core::ptr::addr_of!(FRAMEBUFFER) as usize,
+            FRAMEBUFFER_VA,
             (FB_WIDTH as usize) * (FB_HEIGHT as usize) * FB_BPP,
         );
 
@@ -690,7 +747,7 @@ fn translate_va_to_pa(va: usize) -> usize {
 /// display is actually live in the QEMU window.
 fn draw_test_pattern() {
     unsafe {
-        let fb = core::ptr::addr_of_mut!(FRAMEBUFFER) as *mut u32;
+        let fb = FRAMEBUFFER_VA as *mut u32;
         for y in 0..FB_HEIGHT {
             for x in 0..FB_WIDTH {
                 let idx = (y as usize) * (FB_WIDTH as usize) + (x as usize);

@@ -51,6 +51,16 @@
 
 **2026-07-11 四次修正（页分配器 Segment 路径）**：将 FRAMEBUFFER 从 4MB `.bss` 静态改为页分配器 `FrameAllocOptions::alloc_segment` 分配（落在 Usable 内存区，PA `0x60c00000`），与 `GpuDevice::init` 用同一类内存。probe 完整跑通：`SET_SCANOUT resp=0x1100`、`display ready: 1280x800`、`readback VA[0]=0xff00ff00`。**但 QEMU `xp /xg 0x60c00000` 仍返回 0**——即使 Usable 区的页分配器内存，内核 PT 下的 store 也未到达 QEMU RAM。对比：`meta::init` 在 boot PT 期间向 `0xffff800048300000`（同区）写入 `0xaa` **成功**（readback OK），而 probe 在 kernel PT 期间向 `0xffff800060c00000` 写入**失败**。结论收敛：**根因是 kernel page table（`init_kernel_page_table` 经 `cursor.map` 构建）的线性映射，在 kernel PT 下 store 指令不到达 QEMU 物理 RAM，而 boot PT 下的 store 正常。** 这不是内存区域问题（Usable 区同样失效），而是 kernel PT 本身的线性映射 PTE 问题。该路径用 `FrameAllocOptions::alloc_segment`（debug 构建触发 frame allocator 的 `debug_assert`，需 release 构建绕过，但 WSL CJK 路径权限阻塞了 release 构建）。深层修复需调试 `ostd/src/mm/page_table/cursor/` 的 `map` 逻辑为何在 TCG 下产出不可见的 store。
 
+**2026-07-11 ✅ 修复完成（固定 PA 0x60000000）**：通过在 `activate_kernel_page_table` 后向固定 PA `0x60000000`（region 7 Usable 区）写入标记并用 QEMU `xp` 验证，发现**该 PA 的 store 能到达 QEMU RAM**（`xp` 读到 `0xdeadbeefcafebabe`）——即 kernel PT 线性映射对某些 PA 工作正常，对 4MB `.bss` 与页分配器 segment 的 PA 不正常。根因最终定性：**`.bss` 大静态与 page-allocator segment 的 PA 在 kernel PT 下的映射有缺陷，但固定 PA 区间（0x60000000 起）的线性映射正常。**
+
+**修复**：将 FRAMEBUFFER 从 `.bss`/segment 改为固定 PA `0x60000000`（region 7，经 `LINEAR_BASE + 0x60000000` 映射），并缩小 `draw_test_pattern`（4MB volatile 写在 TCG 下太慢，会阻塞 flush）。验证证据：
+- QEMU `xp /xg 0x60000000` → `0xff00ff00ff00ff00`（绿色像素，DMA 可见）
+- virtio-gpu trace：`res_xfer_toh_2d` + `res_flush` 均执行
+- **screendump：778002/1024000 非黑像素（76%），首像素 `(0,255,0)` 绿色 + `(255,119,0)` 橙色**
+- 串口：`display ready: 1280x800 scanout was 1280x800`、`readback VA[0]=0xff00ff00`
+
+**kei virtio-gpu scanout 端到端像素输出验证通过。** 提交：kei dev（fixed-PA FRAMEBUFFER + 精简 draw_test_pattern）。
+
 ### kei 内核完整启动 + 用户空间进程（2026-07-04）🎉
 
 **重大里程碑**：kei 内核在 QEMU arm64 上完整启动并成功加载用户空间 ELF 进程。

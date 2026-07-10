@@ -25,6 +25,20 @@
 
 ## 4. 近期进展
 
+### virtio-gpu 黑屏根因修正 + 双初始化修复（2026-07-10）🐛
+
+**修正了长期被误判为「QEMU TCG used-ring bug」的黑屏根因。**
+
+通过捕获 QEMU 串口日志 + virtio-gpu trace（`-d trace:virtio_gpu_cmd_*`）发现真正的故障链：
+
+1. `aarch64_raw_gpu_probe::probe()` 先通过裸 MMIO 成功初始化 GPU：`GET_DISPLAY_INFO resp=0x1101`、`RESOURCE_CREATE_2D resp=0x1100`、`ATTACH_BACKING resp=0x1100`（fb_pa=`0x40eb7000`）、`SET_SCANOUT resp=0x1100`，scanout 绑定到 resource 0x1 @ 1280×800。
+2. 随后 `virtio::init()` 的 transport 循环（`lib.rs:84`）**再次发现同一设备**，执行 `write_device_status(DeviceStatus::empty())`（lib.rs:89-91）——**这会复位 QEMU virtio-gpu 的内部状态，清空 resource + scanout 绑定**。
+3. `GpuDevice::init()` 随后返回 `UnsupportedConfig`，scanout 再无重建，窗口恒黑。
+
+**修复**：在 transport 循环中，若 raw probe 已声明 GPU（`is_ready()` 为真），则跳过该设备的复位与重初始化（`continue`），保持 raw probe 建立的 scanout。修复后串口日志确认：`[virtio] dev #1: GPU already claimed by raw probe, skipping reset`，screendump 从 640×480（未绑定的默认面）变为 1280×800（正确 scanout）。
+
+**残留**：QEMU TCG 的 virtio-gpu `TRANSFER_TO_HOST_2D` → scanout surface 合成路径即使在所有命令返回 `RESP_OK`、DMA backing 含已验证像素（readback `VA[0]=0xff00ff00`，PA 经 AT S1E1R 翻译后一致）的情况下，仍不产出可见像素。这是 QEMU TCG 的 2D blit 实现问题，需 KVM 加速（ARM64 硬件）绕过——**与之前的 used-ring 判断无关**。
+
 ### kei 内核完整启动 + 用户空间进程（2026-07-04）🎉
 
 **重大里程碑**：kei 内核在 QEMU arm64 上完整启动并成功加载用户空间 ELF 进程。

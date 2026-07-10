@@ -130,6 +130,17 @@ static mut FRAMEBUFFER: PageAligned<{ 1280 * 800 * 4 }> = PageAligned([0; 1280 *
 
 static GPU_READY: AtomicU8 = AtomicU8::new(0);
 
+/// Whether the raw MMIO probe has already claimed and configured the GPU.
+///
+/// The virtio transport loop (`virtio::init`) independently discovers the same
+/// virtio-mmio GPU and resets it (`write_device_status(empty)`), which would
+/// discard the resource + scanout binding this probe established. When this
+/// returns true, the transport loop must skip the GPU so we keep the working
+/// scanout. See `lib.rs` init loop.
+pub fn is_ready() -> bool {
+    GPU_READY.load(Ordering::Relaxed) != 0
+}
+
 /// Returns (framebuffer ptr, width, height, stride_bytes) once the GPU is up.
 pub fn framebuffer_info() -> Option<(*mut u8, u32, u32, usize)> {
     if GPU_READY.load(Ordering::Relaxed) != 0 {
@@ -486,6 +497,26 @@ fn init_gpu(mmio_base: usize) {
     // because flush_framebuffer() checks GPU_READY as a guard.
     GPU_READY.store(1, Ordering::Relaxed);
     draw_test_pattern();
+
+    // Diagnostic: read back a few pixels to confirm the writes landed in the
+    // FRAMEBUFFER, and read the same offsets through the AT-translated PA via
+    // the linear mapping. If the two disagree, the DMA backing PA points at a
+    // different page than the one we drew to (the root cause of a black
+    // scanout even though every virtio-gpu command returned RESP_OK).
+    unsafe {
+        let fb_va = core::ptr::addr_of!(FRAMEBUFFER) as *const u32;
+        let v0 = read_volatile(fb_va);
+        let v_border = read_volatile(fb_va.add(8)); // first border pixel (x=8,y=0)
+        let fb_pa = translate_va_to_pa(core::ptr::addr_of!(FRAMEBUFFER) as usize);
+        let pa_va = LINEAR_BASE + fb_pa;
+        let pa0 = read_volatile((pa_va) as *const u32);
+        let pa_border = read_volatile((pa_va + 8 * 4) as *const u32);
+        ostd::early_println!(
+            "[virtio-gpu] readback VA[0]={:#x} VA[8]={:#x} | PA[0]={:#x} PA[8]={:#x} (pa={:#x})",
+            v0, v_border, pa0, pa_border, fb_pa
+        );
+    }
+
     flush_framebuffer();
 
     ostd::early_println!(

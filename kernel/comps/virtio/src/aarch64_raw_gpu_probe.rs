@@ -185,15 +185,18 @@ impl GpuQueue {
         let resp_slot = (cmd_slot + 1) % self.qsize;
 
         // desc[cmd_slot]: cmd (device-readable, chains to resp_slot)
+        // Use AT S1E1R to get the real PA for DMA.
         let d0 = self.desc_base + cmd_slot * 16;
-        write_volatile(d0 as *mut u64, (cmd_va - LINEAR_BASE) as u64);
+        let cmd_pa = translate_va_to_pa(cmd_va);
+        write_volatile(d0 as *mut u64, cmd_pa as u64);
         write_volatile((d0 + 8) as *mut u32, cmd_len as u32);
         write_volatile((d0 + 12) as *mut u16, VIRTIO_DESC_F_NEXT);
         write_volatile((d0 + 14) as *mut u16, resp_slot as u16);
 
         // desc[resp_slot]: response (device-writable)
         let d1 = self.desc_base + resp_slot * 16;
-        write_volatile(d1 as *mut u64, (resp_va - LINEAR_BASE) as u64);
+        let resp_pa = translate_va_to_pa(resp_va);
+        write_volatile(d1 as *mut u64, resp_pa as u64);
         write_volatile((d1 + 8) as *mut u32, resp_len as u32);
         write_volatile((d1 + 12) as *mut u16, VIRTIO_DESC_F_WRITE);
         write_volatile((d1 + 14) as *mut u16, 0);
@@ -336,7 +339,7 @@ fn init_gpu(mmio_base: usize) {
     // address (QueuePfn = PA / page_size, decoded as PA << page_shift). With
     // the kernel at the linear VMA, VA != PA, so compute both.
     let base_va = unsafe { core::ptr::addr_of!(VQ_MEM) as usize };
-    let base_pa = base_va - LINEAR_BASE;
+    let base_pa = translate_va_to_pa(base_va);
     let avail_base = base_va + desc_sz;
     let used_base = base_va + used_off;
 
@@ -434,13 +437,17 @@ fn init_gpu(mmio_base: usize) {
         cmd_reset();
         let cmd_va = cmd_alloc(48);
         let resp_va = cmd_alloc(24);
-        // FRAMEBUFFER is a static in .bss, linked at the linear-mapping VMA.
-        // virtio-gpu ATTACH_BACKING needs the *physical* address (the device
-        // DMAs from it). With the kernel linked at the linear VMA, the VA
-        // (addr_of) != PA; convert VA -> PA by subtracting LINEAR_BASE.
+        // FRAMEBUFFER is a static in .bss. The kernel page table may map
+        // it at a different physical address than the boot page table.
+        // Use the AT S1E1R instruction to translate the actual VA→PA
+        // mapping under the current (kernel) page table.
         let fb_va = core::ptr::addr_of!(FRAMEBUFFER) as usize;
-        let fb_pa = fb_va - LINEAR_BASE;
+        let fb_pa = translate_va_to_pa(fb_va);
         let fb_len = (FB_WIDTH as usize) * (FB_HEIGHT as usize) * FB_BPP;
+        ostd::early_println!(
+            "[virtio-gpu] ATTACH_BACKING: fb_va={:#x} fb_pa={:#x} (AT-translated) len={}",
+            fb_va, fb_pa, fb_len
+        );
         let p = cmd_va as *mut u8;
         write_volatile(p.add(0) as *mut u32, CMD_RESOURCE_ATTACH_BACKING);
         write_volatile(p.add(24) as *mut u32, RESOURCE_ID);
@@ -537,6 +544,14 @@ pub fn flush_framebuffer() {
         return;
     }
     unsafe {
+        // Flush the FRAMEBUFFER data cache to RAM before DMA transfer.
+        // QEMU's virtio-gpu DMA reads directly from RAM, bypassing CPU cache.
+        // Without this flush, cached writes by draw_test_pattern() are invisible.
+        flush_dcache_range(
+            core::ptr::addr_of!(FRAMEBUFFER) as usize,
+            (FB_WIDTH as usize) * (FB_HEIGHT as usize) * FB_BPP,
+        );
+
         // TRANSFER_TO_HOST_2D: hdr(24) + rect(16) + offset(8) + resource_id(4) + padding(4) = 56
         cmd_reset();
         let cmd_va = cmd_alloc(56);
@@ -571,6 +586,66 @@ pub fn flush_framebuffer() {
         if rt != RESP_OK_NODATA {
             ostd::early_println!("[virtio-gpu] FLUSH resp={:#x}", rt);
         }
+    }
+}
+
+/// Flushes (cleans) the data cache for the given virtual address range.
+///
+/// On ARM64, CPU writes to Normal Memory go through the cache hierarchy.
+/// When an external DMA master (like QEMU's virtio-gpu) reads from RAM,
+/// it bypasses the CPU cache. This function pushes dirty cache lines to
+/// RAM so that DMA reads see the latest data.
+///
+/// Uses `DC CIVAC` (Clean+Invalidate by VA to PoC) on each cache line.
+fn flush_dcache_range(va_start: usize, len: usize) {
+    let line = 64usize; // ARM64 cache line size (typically 64 bytes)
+    let mut addr = va_start & !(line - 1);
+    let end = va_start + len;
+    unsafe {
+        core::arch::asm!("dmb ish", options(nostack, preserves_flags));
+        while addr < end {
+            core::arch::asm!(
+                "dc civac, {0}",
+                in(reg) addr,
+                options(nostack, preserves_flags),
+            );
+            addr += line;
+        }
+        core::arch::asm!("dsb ish", options(nostack, preserves_flags));
+    }
+}
+
+/// Translates a kernel virtual address to a physical address using the
+/// ARM64 AT S1E1R instruction. This reads the actual page table mapping
+/// at EL1, ensuring we get the correct PA even after the kernel page
+/// table switch (where the boot PT linear mapping may differ from the
+/// kernel PT's mapping).
+///
+/// Falls back to `va - LINEAR_BASE` if AT translation fails (bit 0 of
+/// PAR_EL1 = 1 indicates abort).
+fn translate_va_to_pa(va: usize) -> usize {
+    // Use AT S1E1R to translate VA at EL1 read
+    let par: usize;
+    unsafe {
+        core::arch::asm!(
+            "at s1e1r, {0}",
+            in(reg) va,
+            options(nostack, preserves_flags),
+        );
+        core::arch::asm!(
+            "mrs {0}, par_el1",
+            out(reg) par,
+            options(nostack, preserves_flags),
+        );
+    }
+    // PAR_EL1 bit 0 = 0 means success; PA is in bits [47:12]
+    if par & 1 == 0 {
+        let pa = par & 0x0000_FFFF_F000;
+        // Add the page offset from the VA
+        pa | (va & 0xFFF)
+    } else {
+        // Abort — fall back to linear mapping arithmetic
+        va.wrapping_sub(LINEAR_BASE)
     }
 }
 

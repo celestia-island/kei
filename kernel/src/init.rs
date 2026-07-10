@@ -275,12 +275,6 @@ fn init_in_first_kthread(path_resolver: &PathResolver) {
         // virtio component init probes devices (needs FDT, which is available)
         let _ = aster_virtio::virtio_component_init_pub();
 
-        // After virtio init, the GPU is probed and framebuffer_info() is valid.
-        // Re-initialize fb_console (draws banner on the now-live framebuffer)
-        // and render a Sixel test image to verify inline image rendering.
-        crate::fb_console::init();
-        print_sixel_test_image();
-
         ostd::early_println!("[kthread] net::init (deferred)");
         crate::net::init();
     }

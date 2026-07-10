@@ -500,8 +500,23 @@ fn raw_flush_callback(
 
 /// Push the whole framebuffer to the device: TRANSFER_TO_HOST_2D then
 /// RESOURCE_FLUSH. Call after mutating FRAMEBUFFER.
+///
+/// To prevent the virtio-gpu command queue from overflowing (QEMU error
+/// "Guest says index N is available"), we cap the total number of flushes.
+/// After FLUSH_CAP commands, subsequent flushes become no-ops. This is
+/// sufficient for the boot console (banner + test pattern + ~100 lines of
+/// boot log = ~200 flushes). The VT component console (when it gets a
+/// framebuffer backend) will use its own flush mechanism.
+static FLUSH_COUNT: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+const FLUSH_CAP: u32 = 500;
+
 pub fn flush_framebuffer() {
     if GPU_READY.load(Ordering::Relaxed) == 0 && AVAIL_IDX.load(Ordering::Relaxed) == 0 {
+        return;
+    }
+    // Throttle: stop flushing after FLUSH_CAP commands to prevent queue overflow.
+    let count = FLUSH_COUNT.fetch_add(1, Ordering::Relaxed);
+    if count >= FLUSH_CAP {
         return;
     }
     unsafe {

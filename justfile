@@ -58,11 +58,11 @@ versions:
 # client keypair and embed the public key into the initramfs.
 
 # Generate an ed25519 SSH keypair for VM access (one-time setup).
-# The private key is saved to test/initramfs/build/client_ssh_key.
+# The private key is saved to tests/initramfs/build/client_ssh_key.
 [script('bash')]
 setup-keys:
     set -e
-    KEYDIR="test/initramfs/build"
+    KEYDIR="tests/initramfs/build"
     mkdir -p "$KEYDIR"
     if [ -f "$KEYDIR/client_ssh_key" ]; then
         echo "SSH key already exists at $KEYDIR/client_ssh_key"
@@ -86,10 +86,10 @@ ssh-info:
     @echo "║  Port:     2222                                              ║"
     @echo "║  User:     root                                              ║"
     @echo "║  Auth:     public-key (ed25519)                              ║"
-    @echo "║  Key:      test/initramfs/build/client_ssh_key               ║"
+    @echo "║  Key:      tests/initramfs/build/client_ssh_key               ║"
     @echo "╠══════════════════════════════════════════════════════════════╣"
     @echo "║  Connect:                                                    ║"
-    @echo "║    ssh -i test/initramfs/build/client_ssh_key \\             ║"
+    @echo "║    ssh -i tests/initramfs/build/client_ssh_key \\             ║"
     @echo "║        -o StrictHostKeyChecking=no -p 2222 root@127.0.0.1    ║"
     @echo "╚══════════════════════════════════════════════════════════════╝"
     @echo ""
@@ -156,7 +156,7 @@ _build-aarch64:
     fi
     # Build ARM64 Image from ELF
     echo "[build] Creating ARM64 Image..."
-    wsl -d Ubuntu-24.04 -- bash -c 'python3 "/mnt/d/源代码/工程项目/celestia/kei/tools/make_arm64_image.py" "/mnt/d/源代码/工程项目/celestia/kei/target/osdk/aster-kernel/aster-kernel-osdk-bin.qemu_elf" "/mnt/d/源代码/工程项目/celestia/kei/target/osdk/aster-kernel/aster-kernel-osdk-bin.image" 2>&1 | tail -1'
+    wsl -d Ubuntu-24.04 -- bash -c 'python3 "/mnt/d/源代码/工程项目/celestia/kei/scripts/tools/make_arm64_image.py" "/mnt/d/源代码/工程项目/celestia/kei/target/osdk/aster-kernel/aster-kernel-osdk-bin.qemu_elf" "/mnt/d/源代码/工程项目/celestia/kei/target/osdk/aster-kernel/aster-kernel-osdk-bin.image" 2>&1 | tail -1'
     echo "[build] Done. Kernel image: target/osdk/aster-kernel/aster-kernel-osdk-bin.image"
 
 # Format Rust + Markdown docs
@@ -288,7 +288,7 @@ _run-aarch64 HEADLESS:
 
     # Convert paths for Windows QEMU
     WINIMAGE=$(cygpath -w "target/osdk/aster-kernel/aster-kernel-osdk-bin.image" 2>/dev/null || echo "target/osdk/aster-kernel/aster-kernel-osdk-bin.image")
-    WININITRD=$(cygpath -w "test/initramfs/build/initramfs_aarch64.cpio.gz" 2>/dev/null || echo "test/initramfs/build/initramfs_aarch64.cpio.gz")
+    WININITRD=$(cygpath -w "tests/initramfs/build/initramfs_aarch64.cpio.gz" 2>/dev/null || echo "tests/initramfs/build/initramfs_aarch64.cpio.gz")
     WINLOG=$(cygpath -w "target/qemu_serial.log" 2>/dev/null || echo "target/qemu_serial.log")
 
     # Launch QEMU in the foreground. The SDL window appears, and the terminal
@@ -408,7 +408,7 @@ screenshot FILE="target/screenshot.ppm":
 # Connect to the running aarch64 VM via SSH.
 ssh:
     @echo "Connecting to kei VM via SSH..."
-    ssh -i test/initramfs/build/client_ssh_key \
+    ssh -i tests/initramfs/build/client_ssh_key \
         -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
         -p 2222 root@127.0.0.1
 

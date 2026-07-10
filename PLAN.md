@@ -47,6 +47,8 @@
 
 **这是 kei 内核侧的 stage-2 页表 bug，不是 QEMU 的限制。** 修复方向：(1) 让 EL2 stub 在 drop 到 EL1 前禁用 stage-2（`HCR_EL2.VM=0`，使 IPA==PA），或 (2) 修复 stage-2 表覆盖全部内核 .bss（含 4MB FRAMEBUFFER），或 (3) 用内核页分配器（`DmaCoherent`，`GpuDevice::init` 路径已用）替代裸 `.bss` 静态数组——分配器走的页会被 stage-2 正确映射。此修复涉及 ostd/EL2 boot 代码，超出本会话范围。
 
+**2026-07-11 三次修正（QEMU `xp` 全 RAM 扫描）**：上述 stage-2 假设**也不完全准确**。进一步用 QEMU monitor `xp /xg` 对整个 2GB RAM（`0x40000000..0xC0000000`，4MB 步长）扫描 `0xff00ff00`/`0xcafebabe` 标记，**全 RAM 无一命中**——内核写入 FRAMEBUFFER VA 的 4MB 数据在 QEMU 物理内存中**任何位置都不存在**，尽管内核从该 VA 读回 `0xff00ff00` 且无页错误。`HCR_EL2=0x80000000`（仅 RW=1，VM=0）表明 stage-2 实际**未启用**，故 IPA==PA，`AT S1E1R` 返回的应是真 PA。结论：**kei 内核页表（ostd 构建）将 FRAMEBUFFER 的 4MB `.bss` 静态区域映射到了一个 AT S1E1R 报告的 PA（`0x40eb7000`，在 QEMU RAM 范围内），但实际 store 指令落在了别处且无故障——这是 ostd 页表构造器与 TCG store 路径不一致的深层 bug。** 16KB 的 VQ_MEM 正常，4MB 的 FRAMEBUFFER 异常，差异在区域大小与可能的块映射（2MB block）边界。修复需深入 ostd 页表构造代码。`lib.rs` 已加 `RAW_GPU_PROBE_ENABLED` 常量（默认 true）便于 A/B 测试 asterinas `GpuDevice::init`（DmaCoherent）路径——但实测该路径返回 `UnsupportedConfig`，同样不通。
+
 ### kei 内核完整启动 + 用户空间进程（2026-07-04）🎉
 
 **重大里程碑**：kei 内核在 QEMU arm64 上完整启动并成功加载用户空间 ELF 进程。

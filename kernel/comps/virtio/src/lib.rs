@@ -75,8 +75,12 @@ fn virtio_component_init_inner() -> Result<(), ComponentInitError> {
     // On aarch64, the IoMem KVirtArea mapping doesn't work without the
     // kernel page table switch. Instead, manually probe each MMIO device
     // using raw volatile reads through the linear mapping.
+    // Set to false to A/B-test the asterinas GpuDevice::init (DmaCoherent)
+    // path instead of the raw .bss-backed probe.
     #[cfg(target_arch = "aarch64")]
-    {
+    const RAW_GPU_PROBE_ENABLED: bool = true;
+    #[cfg(target_arch = "aarch64")]
+    if RAW_GPU_PROBE_ENABLED {
         crate::aarch64_raw_gpu_probe::probe();
     }
 

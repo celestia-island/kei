@@ -11,14 +11,14 @@ jobs:
   check-bsp:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@nightly
       - run: cd bsp && cargo check
 
   check-vendored-versions:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Show vendored upstream versions
         run: |
           echo "=== Upstream asterinas ==="
@@ -34,7 +34,7 @@ jobs:
       # is not always available for pinned toolchains).
       RUSTUP_TOOLCHAIN: stable
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt

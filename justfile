@@ -104,6 +104,20 @@ build-board BOARD:
     just cache-guard
     {{python_cmd}} scripts/build.py {{BOARD}}
 
+# ── Dev ─────────────────────────────────────────────────────
+
+# Quick dev launch: build + run QEMU for the host architecture.
+# On Windows defaults to aarch64 (SDL window + virtio-gpu display).
+# Usage: just dev              # auto-detect (aarch64 on Windows)
+#        just dev aarch64      # ARM64 with SDL window
+#        just dev x86_64       # x86_64 serial console
+dev ARCH="":
+    just run {{ARCH}}
+
+# Build only (no QEMU launch).
+dev-build ARCH="":
+    just build-arch {{ARCH}}
+
 # Build the kernel for a specific architecture.
 # Usage: just build-arch aarch64  (or x86_64, riscv64, loongarch64)
 [script('bash')]
@@ -284,7 +298,7 @@ _run-aarch64 HEADLESS:
     echo "[run] Launching QEMU (Ctrl+C or close window to stop)..."
     echo "[run] Monitor: tcp://127.0.0.1:55555 (use 'just screenshot' to capture)"
     echo ""
-    exec MSYS_NO_PATHCONV=1 "/c/Program Files/qemu/qemu-system-aarch64.exe" \
+    export MSYS_NO_PATHCONV=1; exec "/c/Program Files/qemu/qemu-system-aarch64.exe" \
         -cpu cortex-a72 -machine virt,gic-version=3,virtualization=on \
         -m 2G -smp 1 --no-reboot \
         $DISPLAY_OPT \

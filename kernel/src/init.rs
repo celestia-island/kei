@@ -271,20 +271,20 @@ fn init_in_first_kthread(path_resolver: &PathResolver) {
         // virtio component init probes devices (needs FDT, which is available)
         let _ = aster_virtio::virtio_component_init_pub();
 
-        // Now that virtio has probed the GPU and the framebuffer is ready,
-        // publish it to the display subsystem so /dev/fb0 and VT console work.
+        // Publish the framebuffer. On QEMU TCG aarch64, Arc::new can trigger
+        // a page fault (heap allocator issue). We try it but continue on failure.
         ostd::early_println!("[kthread] publishing framebuffer...");
         let published = aster_virtio::aarch64_raw_gpu_probe::publish_framebuffer();
         if published {
             ostd::early_println!("[kthread] framebuffer published OK");
-            // Register the /dev/fb0 character device now that the framebuffer
-            // is available. On aarch64, device::init_in_first_kthread() is not
-            // called (it's gated to non-aarch64), so we register fb here.
             crate::device::fb::register_late();
             ostd::early_println!("[kthread] /dev/fb0 registered");
         } else {
-            ostd::early_println!("[kthread] WARNING: framebuffer not published (GPU not ready?)");
+            ostd::early_println!("[kthread] WARNING: framebuffer not published");
         }
+        // Note: even without publish, the GPU probe has already set up the
+        // scanout with the framebuffer resource. The display shows whatever
+        // is in the DMA buffer.
 
         // NOTE: fb_console::init() is intentionally NOT called. It triggers
         // flush_framebuffer() which sends TRANSFER_TO_HOST_2D commands that

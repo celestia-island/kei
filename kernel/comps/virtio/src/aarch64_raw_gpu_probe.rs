@@ -123,10 +123,10 @@ fn cmd_reset() {
 // 640x480 @ 32bpp = 1 228 800 bytes. Small but reliable; QEMU's default
 // scanout is 1280x800 but SET_SCANOUT lets us pick a sub-rectangle, so a
 // 640x480 framebuffer fills the top-left of the screen.
-pub const FB_WIDTH: u32 = 1280;
-pub const FB_HEIGHT: u32 = 800;
+pub const FB_WIDTH: u32 = 640;
+pub const FB_HEIGHT: u32 = 480;
 pub const FB_BPP: usize = 4;
-const FB_SIZE: usize = 1280 * 800 * 4;
+const FB_SIZE: usize = 640 * 480 * 4;
 
 // The framebuffer is allocated from the frame allocator (a `DmaCoherent`
 // buffer) rather than as a 4MB `.bss` static array. The kernel page table
@@ -536,15 +536,17 @@ fn init_gpu(mmio_base: usize) {
     // because flush_framebuffer() checks GPU_READY as a guard.
     GPU_READY.store(1, Ordering::Relaxed);
 
-    // Draw a simple test pattern directly to the framebuffer.
-    // PA 0x60000000 IS mapped in the kernel page table via the linear mapping
-    // (max_paddr = 0xC0000000 > 0x60000000).
-    // Skip the slow kernel-side framebuffer fill. QEMU TCG makes any large
-    // memory write extremely slow. Instead, we just flush the initial (empty)
-    // framebuffer and let userspace or a background thread fill it later.
-    ostd::early_println!("[virtio-gpu] skipping fb fill (TCG too slow)");
+    // Fill a portion of the framebuffer for visible output.
+    // On QEMU TCG, DMA buffer writes at ~1ms/byte. 10 rows = 25KB ≈ 25s.
+    ostd::early_println!("[virtio-gpu] filling 100 rows...");
+    unsafe {
+        let fb = FRAMEBUFFER_VA as *mut u8;
+        let row_size = (FB_WIDTH as usize) * FB_BPP;
+        core::ptr::write_bytes(fb, 0xFFu8, 100 * row_size);
+    }
+    ostd::early_println!("[virtio-gpu] fill done, flushing...");
     flush_framebuffer();
-    ostd::early_println!("[virtio-gpu] initial flush done");
+    ostd::early_println!("[virtio-gpu] flush done");
 
     ostd::early_println!(
         "[virtio-gpu] display ready: {}x{} scanout was {}x{}",

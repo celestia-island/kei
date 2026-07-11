@@ -369,6 +369,52 @@ pub(super) fn on_first_process_startup(ctx: &Context) {
         // the published FrameBuffer, which does not go through the TTY layer.
         ostd::early_println!("[first_proc] skipping tty subsystem (aarch64, QEMU TCG workaround)");
 
+        // Create /dev/fb0 device node directly in the rootfs.
+        // The full device::init_in_first_process hangs because mounting ramfs
+        // on /dev is unreliable on aarch64 QEMU TCG. Instead, we register
+        // device nodes directly into the existing rootfs /dev directory.
+        ostd::early_println!("[first_proc] registering device nodes...");
+        {
+            let fs = ctx.thread_local.borrow_fs();
+            let path_resolver = fs.resolver().read();
+            // Register just char device nodes (fb0, null, zero, etc.) directly.
+            for device in crate::device::registry::char::collect_all() {
+                if let Some(meta) = device.devtmpfs_meta() {
+                    let dev_id = device.id().as_encoded_u64();
+                    let _ = crate::device::add_node(
+                        crate::device::DeviceType::Char,
+                        dev_id,
+                        &meta,
+                        &path_resolver,
+                    );
+                }
+            }
+            ostd::early_println!("[first_proc] device nodes registered");
+        }
+
+        // Spawn a background thread that flushes the framebuffer to the display
+        // after the init process has written its content. The flush sends
+        // TRANSFER_TO_HOST_2D + RESOURCE_FLUSH via the virtio-gpu virtqueue,
+        // pushing the DMA buffer to QEMU's scanout surface.
+        // We use a long delay because QEMU TCG makes per-4KB writes very slow.
+        {
+            use crate::thread::kernel_thread::ThreadOptions;
+            let task_fn = move || {
+                // Wait ~5 minutes for init to write framebuffer data.
+                // (At ~0.5s per 256KB write, 16 writes = ~8s, but we give
+                // extra time for boot overhead.)
+                ostd::early_println!("[flush] waiting 300s for fb writes...");
+                for _ in 0..3_000_000_000u64 {
+                    core::hint::spin_loop();
+                }
+                ostd::early_println!("[flush] flushing framebuffer...");
+                aster_virtio::aarch64_raw_gpu_probe::flush_framebuffer();
+                ostd::early_println!("[flush] flush complete.");
+            };
+            ThreadOptions::new(task_fn).spawn();
+            ostd::early_println!("[first_proc] flush thread spawned");
+        }
+
         // (Sixel test moved to init_in_first_kthread where framebuffer_info()
         // is still valid.)
     }

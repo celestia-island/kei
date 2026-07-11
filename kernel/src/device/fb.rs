@@ -527,8 +527,10 @@ impl FileOps for FbHandle {
             }
             reader.skip(remain);
             self.framebuffer.write_bytes_at(offset, &buf[..remain])?;
-            // Push the dirty region to the host scanout for blit-backed FBs.
-            self.framebuffer.flush_all();
+            // NOTE: flush_all() is NOT called per-write. QEMU TCG has a limit
+            // of ~8 virtio-gpu commands, and each flush uses 2 commands.
+            // Userspace should trigger a flush via ioctl or msync after all
+            // writes are complete.
             Ok(remain)
         }
     }

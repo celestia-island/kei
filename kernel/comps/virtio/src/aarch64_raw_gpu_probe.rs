@@ -536,10 +536,12 @@ fn init_gpu(mmio_base: usize) {
     // because flush_framebuffer() checks GPU_READY as a guard.
     GPU_READY.store(1, Ordering::Relaxed);
 
-    // Skip the framebuffer clear — writing 1M u32 to PA 0x60000000 causes a
-    // page fault in QEMU TCG mode after the GPU init sequence. The screen
-    // will be black until user-space aris-render writes to /dev/fb0.
-    // (Restoring this requires debugging the linear-mapping write fault.)
+    // The framebuffer DMA buffer at PA 0x60000000 is NOT mapped in the kernel
+    // page table (it's a fixed PA outside the frame allocator's metadata range).
+    // Kernel-side writes via the linear mapping cause a translation fault.
+    // Instead, user-space writes to /dev/fb0 (which goes through the BlitBackend
+    // write_bytes path). The kernel-side clear is skipped.
+    // A kernel thread will flush the display after user-space writes complete.
 
     ostd::early_println!(
         "[virtio-gpu] display ready: {}x{} scanout was {}x{}",

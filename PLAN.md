@@ -49,9 +49,18 @@
 - justfile `wslq-*` recipes：`wslq-run`/`wslq-ui`/`wslq-screenshot`/`wslq-setup`
 
 **已知限制**：
-1. **kei_ui（完整 Blitz+Vello 浏览器 UI）在 musl runtime init 阶段 NULL deref**：`address=0x0`，RT_SIGACTION 之后。qemu-user-static 下正常，说明是 kei 内核 ELF TLS/auxv 兼容问题（疑似匿名 mmap 页未清零或 TLS 块内容损坏）。kei_fbtest 因不重 TLS 可正常运行。修复需深入调试 ostd ELF loader + demand-paging 清零逻辑。
-2. **x86_64 编译有 9 个 acpi crate 错误**（E0432/E0433/E0277）：`acpi::madt`/`AcpiHandler` 等 API 在 acpi 6.1.1 变更，kei fork 未适配。预先存在的 regression，非本次引入。
-3. **WSL2 仅装了 qemu-system-arm**（aarch64），x86_64/riscv64 的 system emulator 需 `apt install qemu-system-x86 qemu-system-misc`（需 sudo 密码）。Windows QEMU 有全部架构。
+1. **用户态 mmap store 不到达物理 RAM（ostd 页表构造器 bug，最终根因）**：`kei_memtest` 诊断程序（`tests/initramfs/src/memtest.c`）确认：mmap 匿名区域写入 8192 个 8 字节字后读回，**8190 个损坏**（99.98%）。fresh mmap 正确清零（0 nonzero），说明问题不在分配而在**写入后数据丢失**。sbrk 返回 -1（brk 扩展也失败）。malloc 100K 有 99984/102400 字节损坏。
+
+   **这是同一个 PLAN.md 记录的 fb store-invisibility bug，但影响所有用户态匿名映射**。kei_fbtest 能工作因为它用固定 PA `0x60000000` 的线性映射（绕过 bug），而 kei_ui/render_test/kei_desktop 用 heap/mmap（无法绕过）。
+
+   **影响链**：所有使用堆分配的复杂用户态程序（含 kei_ui 的 Vello 渲染、kei_desktop 的 C 程序）都因脏内存导致 NULL/无效指针崩溃（`far=0x0` 或 `far=0x10`）。一致的损坏模式 `x21=0x7840407878404078`（ASCII `x@@x` 重复）出现在所有崩溃中。
+
+   **修复方向**（需深入 ostd `packages/ostd/src/mm/page_table/cursor/` 的 `map` 逻辑）：调查为何 demand-paged 用户映射在 TCG 下 store 不到达物理页。已排除：TLB 一致性（加 flush 无效）、页清零（alloc_frame 正确清零）、分配失败（frame 正常分配）。PLAN.md 前四轮迭代定位到"kernel PT 线性映射的 store 路径 vs boot PT 不一致"，但深层根因仍在 cursor.map 内部。
+
+2. **kei_ui 启动已验证（DIRECT_INIT 绕过 busybox）**：修改 `build_render_initramfs.py` 让 `/init` 直接是 kei_ui ELF（不经 busybox shell），kei_ui 成功启动并输出 `rendering 1280x800 UI...`（在 Vello 渲染阶段因上述 mmap bug 崩溃）。busybox 本身也因同样 bug 崩溃。
+
+3. **x86_64 编译有 9 个 acpi crate 错误**（E0432/E0433/E0277）：`acpi::madt`/`AcpiHandler` 等 API 在 acpi 6.1.1 变更，kei fork 未适配。预先存在的 regression，非本次引入。
+4. **WSL2 仅装了 qemu-system-arm**（aarch64），x86_64/riscv64 的 system emulator 需 `apt install qemu-system-x86 qemu-system-misc`（需 sudo 密码）。Windows QEMU 有全部架构。
 
 ### 跨架构编译状态（2026-07-12）
 

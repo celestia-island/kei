@@ -35,7 +35,7 @@ int main() {
 
     // Test 1: mmap anonymous
     size_t sz = 64 * 1024; // 64KB = 16 pages
-    uint64_t *m = mmap(NULL, sz, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    uint64_t *m = mmap(NULL, sz, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
     if (m == MAP_FAILED) {
         dprintf(2, "mmap failed\n");
         return 1;

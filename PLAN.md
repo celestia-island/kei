@@ -31,14 +31,20 @@
 
 **最终突破（2026-07-12 晚）：浏览器桌面 UI 渲染成功**
 
-`kei_desktop`（C 程序，`tests/initramfs/src/kei_desktop.c`）通过 **row-by-row 渲染策略**绕过 ostd 大块 mmap 损坏 bug，成功在屏幕上显示浏览器风格桌面界面：
-- 蓝色 header bar + "KEI BROWSER" 标题
-- 地址栏 `https://celestia.world/kei`
-- 三个信息卡片（SYSTEM STATUS / RESOURCES / DISPLAY）
-- **76.9% 非黑像素**（screendump 验证）
-- 中间像素 RGB=(33,37,43) = `#21252B` card 背景色，确认 UI 布局正确
+`kei_fbtest`（aris-render 包的 binary，`aris/packages/render/src/bin/kei_fbtest.rs`）通过 **row-by-row fb write 策略**成功在屏幕上显示浏览器风格桌面界面：
+- 蓝色 header bar + 白色标题图案 + 地址栏
+- 三个信息卡片（含绿色/红色/灰色指示线）
+- **77.0% 非黑像素**（screendump 验证）
+- 首像素 RGB=(97,175,239) = `#61AFEF` 蓝色 header
+- 中间像素 RGB=(33,37,43) = `#21252B` card 背景色
 
-**关键洞察**：ostd 大块 mmap 损坏 bug 只影响 >16 页的连续分配。row-by-row 策略每次只渲染一行（2.5KB）到小 buffer，通过 seek+write 写入 /dev/fb0，始终在安全分配区内。
+**关键修复**：
+1. 移除 tracing-subscriber（导致新 musl 二进制在 kei 上卡在初始化）
+2. Row-by-row fb write（每次 2560 字节，避免大 write 卡住 fb write_at）
+3. TLB flush 修复 mmap store-invisibility（所有 mmap 大小 0% corruption）
+4. NULL page workaround（kei_ui 的 Vello NULL deref 不再崩溃）
+
+**kei_ui（Blitz DOM + Vello CPU）状态**：成功启动并输出 `rendering HTML`，但 Vello 内部确定性 NULL deref（`far=0x10`）导致渲染循环。即使最小 HTML 也触发，说明 NULL 在 Vello 初始化而非 HTML 内容。qemu-user 下正常，根因在 ostd VM 与 musl/Vello 数据结构初始化的深层兼容性。
 
 通过 QEMU monitor `screendump` + 自研零依赖 PPM→PNG 转换器（`scripts/ppm_to_png.py`）实现截屏分析，验证像素输出。
 

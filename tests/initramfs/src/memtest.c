@@ -35,19 +35,38 @@ int main() {
 
     // Test 1: mmap anonymous
     size_t sz = 64 * 1024; // 64KB = 16 pages
-    uint64_t *m = mmap(NULL, sz, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
+    uint64_t *m = mmap(NULL, sz, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (m == MAP_FAILED) {
         dprintf(2, "mmap failed\n");
         return 1;
     }
-    dprintf(2, "mmap at %p\n", m);
+    dprintf(2, "mmap at %p (size %d)\n", m, (int)sz);
 
-    // Touch all pages to trigger demand paging
+    // Write a sentinel to the very first word of each 4KB page
+    // so we can find which physical page each VA maps to via QEMU xp.
+    for (int pg = 0; pg < (int)(sz/4096); pg++) {
+        uint64_t *page = (uint64_t *)((char *)m + pg * 4096);
+        page[0] = 0xAAAABBBB0000ULL + pg;   // page 0 -> 0xAAAABBBB0000, etc
+        page[1] = (uint64_t)(uintptr_t)page;  // remember the VA
+    }
+    dprintf(2, "wrote sentinels to %d pages\n", (int)(sz/4096));
+
+    // Immediately read back the sentinels
+    int sentinel_ok = 0;
+    for (int pg = 0; pg < (int)(sz/4096); pg++) {
+        uint64_t *page = (uint64_t *)((char *)m + pg * 4096);
+        if (page[0] == 0xAAAABBBB0000ULL + pg && page[1] == (uint64_t)(uintptr_t)page) {
+            sentinel_ok++;
+        } else {
+            if (pg < 3) dprintf(2, "SENTINEL FAIL pg=%d: [0]=%#lx [1]=%#lx\n", pg, page[0], page[1]);
+        }
+    }
+    dprintf(2, "sentinel readback: %d/%d pages OK\n", sentinel_ok, (int)(sz/4096));
+
+    // Now the full pattern test
     for (int i = 0; i < (int)(sz/8); i++) {
         m[i] = 0xDEADBEEFCAFE000ULL + i;
     }
-
-    // Verify
     int bad = 0;
     for (int i = 0; i < (int)(sz/8); i++) {
         if (m[i] != 0xDEADBEEFCAFE000ULL + i) bad++;
@@ -98,8 +117,9 @@ int main() {
     int fd = open("/dev/fb0", O_RDWR);
     if (fd >= 0) {
         dprintf(2, "fb0 opened, writing test pattern\n");
-        // Simple blue + green pattern
-        static uint32_t fbuf[640 * 480];
+        // Simple blue + green pattern (use mmap, not .bss)
+        uint32_t *fbuf = mmap(NULL, 640*480*4, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+        if (fbuf == MAP_FAILED) { dprintf(2, "fbuf mmap failed\n"); close(fd); while(1) sleep(3600); }
         for (int y = 0; y < 480; y++) {
             for (int x = 0; x < 640; x++) {
                 if (y < 50) fbuf[y*640+x] = 0xFFEF6140; // blue header (BGRX)
@@ -107,7 +127,7 @@ int main() {
                 else fbuf[y*640+x] = 0xFF7998C3; // green-ish
             }
         }
-        write(fd, fbuf, sizeof(fbuf));
+        write(fd, fbuf, 640*480*4);
         close(fd);
         dprintf(2, "fb write done\n");
     }

@@ -11,6 +11,7 @@
 
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/mman.h>
 #include <sys/ioctl.h>
 #include <linux/fb.h>
 #include <string.h>
@@ -36,7 +37,9 @@ static inline uint32_t pixel(uint8_t b, uint8_t g, uint8_t r) {
 #define C_WHITE    0xFFFFFFFF
 #define C_ADDRBG   0xFF1B1F23  // address bar bg
 
-static uint32_t fb[FB_W * FB_H];
+// fb buffer allocated via mmap at runtime (avoids .bss page fault path
+// which still has issues on kei; mmap anonymous works after TLB flush fix).
+static uint32_t *fb = NULL;
 
 static void fill_rect(int x0, int y0, int w, int h, uint32_t color) {
     for (int y = y0; y < y0 + h && y < FB_H; y++) {
@@ -111,6 +114,15 @@ static void draw_text(int x, int y, const char *s, uint32_t color, int scale) {
 }
 
 int main(int argc, char **argv) {
+    // Allocate framebuffer via mmap (works with TLB flush fix; .bss does not)
+    fb = mmap(NULL, FB_W * FB_H * BPP, PROT_READ | PROT_WRITE,
+              MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (fb == MAP_FAILED) {
+        const char msg[] = "kei_desktop: mmap fb failed\n";
+        write(2, msg, sizeof(msg) - 1);
+        return 1;
+    }
+
     // Clear to dark background
     memset(fb, 0x34, sizeof(fb)); // 0x3428 -- approximate; fix below
     fill_rect(0, 0, FB_W, FB_H, C_BG);

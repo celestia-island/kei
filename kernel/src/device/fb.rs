@@ -535,38 +535,26 @@ impl FileOps for FbHandle {
             reader.skip(copied);
             Ok(copied)
         } else {
-            // Blit-backed framebuffer: copy userspace bytes into the DMA buffer
-            // via the stable linear mapping. Use read_fallible to safely handle
-            // user pages that may fault. On any fault, stop writing (partial fb
-            // is better than a crash).
-            const CHUNK_SIZE: usize = 4096;
-            let mut chunk = vec![0u8; CHUNK_SIZE];
-            let mut total_copied = 0;
-            let mut cur_offset = offset;
-            while total_copied < len {
-                let to_copy = (len - total_copied).min(CHUNK_SIZE);
-                let mut writer =
-                    ostd::mm::VmWriter::from(chunk[..to_copy].as_mut()).to_fallible();
-                match reader.read_fallible(&mut writer) {
-                    Ok(copied) => {
-                        if copied == 0 { break; }
-                        self.framebuffer.write_bytes_at(cur_offset, &chunk[..copied])?;
-                        total_copied += copied;
-                        cur_offset += copied;
-                    }
-                    Err((_, copied)) => {
-                        // A user page faulted. Write what we read, then stop.
-                        if copied > 0 {
-                            let _ = self.framebuffer.write_bytes_at(cur_offset, &chunk[..copied]);
-                            total_copied += copied;
-                        }
-                        break;
-                    }
+            // Blit-backed framebuffer: copy userspace bytes directly to the DMA
+            // buffer via the stable linear mapping. Use a small stack buffer
+            // to avoid large heap allocations.
+            const CHUNK: usize = 8192;
+            let mut total = 0;
+            let mut off = offset;
+            while total < len {
+                let n = (len - total).min(CHUNK);
+                let mut buf = [0u8; CHUNK];
+                #[allow(unsafe_code)]
+                unsafe {
+                    core::ptr::copy_nonoverlapping(reader.cursor(), buf.as_mut_ptr(), n);
                 }
+                reader.skip(n);
+                self.framebuffer.write_bytes_at(off, &buf[..n])?;
+                total += n;
+                off += n;
             }
-            // Push pixels to the host scanout.
             self.framebuffer.flush_all();
-            Ok(total_copied)
+            Ok(total)
         }
     }
 }

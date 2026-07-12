@@ -7,10 +7,9 @@ impl Vmar {
     pub fn handle_page_fault(&self, page_fault_info: &PageFaultInfo) -> Result<()> {
         let address = page_fault_info.address;
 
-        // WORKAROUND: Map a zeroed page at the NULL region (0x0-0x1000) on
-        // demand. Vello/Blitz's parley font system dereferences a NULL+offset
-        // pointer (far=0x10) in skrifa::metrics::Metrics::new due to a
-        // musl/kei incompatibility in fontique's font collection init.
+        // Re-enabled: map zero page at NULL to prevent crashes. The code may
+        // loop, but the KEI_NO_DOM env var makes render_html skip the path
+        // entirely (using fallback rendering instead).
         #[cfg(target_arch = "aarch64")]
         if address < ostd::mm::PAGE_SIZE {
             let map_addr = address & !(ostd::mm::PAGE_SIZE - 1);

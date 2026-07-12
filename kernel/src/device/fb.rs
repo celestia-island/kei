@@ -536,26 +536,33 @@ impl FileOps for FbHandle {
             Ok(copied)
         } else {
             // Blit-backed framebuffer: copy userspace bytes into the DMA buffer
-            // via the stable linear mapping. Use a small chunk buffer to avoid
-            // large kernel heap allocations (which can fail/OOM for 1.2MB writes).
+            // via the stable linear mapping. Use read_fallible to safely handle
+            // user pages that may fault. On any fault, stop writing (partial fb
+            // is better than a crash).
             const CHUNK_SIZE: usize = 4096;
             let mut chunk = vec![0u8; CHUNK_SIZE];
             let mut total_copied = 0;
             let mut cur_offset = offset;
             while total_copied < len {
                 let to_copy = (len - total_copied).min(CHUNK_SIZE);
-                let remain = reader.remain().min(to_copy);
-                if remain == 0 {
-                    break;
+                let mut writer =
+                    ostd::mm::VmWriter::from(chunk[..to_copy].as_mut()).to_fallible();
+                match reader.read_fallible(&mut writer) {
+                    Ok(copied) => {
+                        if copied == 0 { break; }
+                        self.framebuffer.write_bytes_at(cur_offset, &chunk[..copied])?;
+                        total_copied += copied;
+                        cur_offset += copied;
+                    }
+                    Err((_, copied)) => {
+                        // A user page faulted. Write what we read, then stop.
+                        if copied > 0 {
+                            let _ = self.framebuffer.write_bytes_at(cur_offset, &chunk[..copied]);
+                            total_copied += copied;
+                        }
+                        break;
+                    }
                 }
-                #[allow(unsafe_code)]
-                unsafe {
-                    core::ptr::copy_nonoverlapping(reader.cursor(), chunk.as_mut_ptr(), remain);
-                }
-                reader.skip(remain);
-                self.framebuffer.write_bytes_at(cur_offset, &chunk[..remain])?;
-                total_copied += remain;
-                cur_offset += remain;
             }
             // Push pixels to the host scanout.
             self.framebuffer.flush_all();

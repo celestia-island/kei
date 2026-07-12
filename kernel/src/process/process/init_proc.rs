@@ -42,6 +42,10 @@ pub fn spawn_init_process(
         envp.push(CString::new(RAYON_VAR).unwrap());
     }
 
+    // KEI_NO_DOM: skip Blitz DOM creation (other dyn Trait dispatches in
+    // fontique/skrifa still fail even after the Blob vtable fix).
+    envp.push(CString::new("KEI_NO_DOM=1").unwrap());
+
     let process = if let Some(executable_path) = executable_path {
         create_init_process(
             executable_path,

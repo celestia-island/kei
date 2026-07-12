@@ -79,7 +79,37 @@
 3. **x86_64 编译有 9 个 acpi crate 错误**（E0432/E0433/E0277）：`acpi::madt`/`AcpiHandler` 等 API 在 acpi 6.1.1 变更，kei fork 未适配。预先存在的 regression，非本次引入。
 4. **WSL2 仅装了 qemu-system-arm**（aarch64），x86_64/riscv64 的 system emulator 需 `apt install qemu-system-x86 qemu-system-misc`（需 sudo 密码）。Windows QEMU 有全部架构。
 
-### 跨架构编译状态（2026-07-12）
+### 跨架构编译状态（2026-07-13 更新）
+
+| 架构 | 编译 | 启动 | 用户空间 | 显示 | 备注 |
+|------|------|------|------|------|------|
+| **aarch64** | ✅ | ✅ 完整启动 + 用户空间 | ✅ kei_desktop 运行 | ✅ aris-render Windows 风格桌面 81.5% 非黑像素 (640x480) | ARM64 Image 格式启动，FDT@0x48200000 |
+| **riscv64** | ✅ (VDSO_LIBRARY_DIR 已设置) | ✅ OpenSBI→S-mode→ostd init DONE→Components Bootstrap | ❌ 组件初始化 trap（距用户空间一步） | — | rv64,svpbmt,zkr；vDSO=vdso_riscv64.so |
+| **x86_64** | ✅ (acpi 5.2.0 + tdx fix) | ⚠️ multiboot1 64-bit ELF 无法用 QEMU `-kernel` 加载 | — | — | 需要 GRUB ISO loader（无 sudo 无法安装 grub-mkrescue） |
+
+**2026-07-13 多架构验证里程碑**：
+
+1. **aarch64 完整桌面渲染** 🎉：通过 ARM64 Image 格式（objcopy 从 ELF 转换）让 QEMU 正确生成 FDT 并通过 x0 传递。`kei_desktop`（aris-render 包）渲染 Windows 风格桌面：
+   - 什亭之匣白天壁纸渐变（#b8f7f8→#e9f1fc，采样自 shittim-chest bg.webp）
+   - 桌面图标（浏览器/文件/终端/设置 2x2 网格）
+   - "aris · kei" 窗口（标题栏 + 地址栏 + 内容）
+   - 开始菜单（搜索框 + 6 个应用磁贴 + 电源按钮）
+   - 任务栏（Start 按钮 + 固定应用 + 系统托盘 + 时钟）
+   - **验证：640x480 screendump 81.5% 非黑像素，首像素 #b8f7f8 = 壁纸顶色**
+
+2. **riscv64 启动到组件阶段**：内核在 QEMU virt + OpenSBI v1.5.1 下从 S-mode 启动，完整通过 ostd 初始化（frame allocator、kernel page table、SMP），到达 component bootstrap 后 trap。距 spawn_init_process 仅一步。
+
+3. **x86_64 编译通过但启动受阻**：acpi 6.1.1→5.2.0 降级 + tdx_guest cfg 修复后编译 0 错误。但 64-bit multiboot1 ELF 无法用 QEMU `-kernel` 加载（"Cannot load x86-64 image, give a 32bit one"）。需要 GRUB rescue ISO（`boot.method = "grub-rescue-iso"`），但环境无 grub-mkrescue/xorriso。
+
+**关键修复（本次会话）**：
+- **aarch64 FDT 缺失**：OSDK 输出的 ELF 不触发 QEMU 的 ARM64 Image 检测，导致 FDT 不生成（x0=0，RAM 全零）。修复：`aarch64-linux-gnu-objcopy -O binary` 生成 ARM64 Image 格式（带 "ARMd" magic @ offset 56），QEMU 正确生成 FDT 并通过 x0 传递。
+- **riscv64/x86_64 编译**：`VDSO_LIBRARY_DIR=tests/vdso` 环境变量；wsl_build_kernels.sh 自动设置。
+- **DrvFs root-owned 文件权限**：WSL target/ 下有 1928 个 root 拥有的 build artifact（来自历史 root 构建），导致 cargo "Permission denied"。清理 release/{deps,.fingerprint,build,incremental} 后修复。
+- **CJK 路径**：`/mnt/d/源代码/...` 下 cargo-osdk 可工作但慢；通过 `bash script.sh`（而非内联 `bash -lc`）避免变量展开破坏。
+
+**kei_desktop 二进制**（`aris/packages/render/src/bin/kei_desktop.rs`）：纯像素渲染（5x7 位图字体 + Bgrx 背景色），通过 `/dev/fb0` write 路径输出。避免 tracing-subscriber（musl malloc 初始化卡死）。支持 `KEI_FB` 环境变量覆盖 fb 路径（主机测试用）。所有 3 架构交叉编译成功（aarch64/riscv64gc/x86_64-unknown-linux-musl）。
+
+### 跨架构编译状态（2026-07-12 存档）
 
 | 架构 | 编译 | 启动 | 显示 | 备注 |
 |------|------|------|------|------|

@@ -120,9 +120,13 @@ fn cmd_reset() {
 }
 
 // ── Kernel framebuffer ───────────────────────────────────────────────────
-// 640x480 @ 32bpp = 1 228 800 bytes. Small but reliable; QEMU's default
-// scanout is 1280x800 but SET_SCANOUT lets us pick a sub-rectangle, so a
-// 640x480 framebuffer fills the top-left of the screen.
+// 640x480 @ 32bpp = 1 228 800 bytes. The aris-render kei_desktop UI renders a
+// Windows-like desktop at this resolution. QEMU's default scanout is 1280x800
+// but SET_SCANOUT lets us pick a sub-rectangle, so a 640x480 framebuffer fills
+// the top-left of the screen.
+// NOTE: 800x600 (1.92MB) triggers a deterministic ostd page-table bug after
+// ~7 flushes; 640x480 (1.2MB) is the largest size that reliably survives the
+// full kei_desktop render.
 pub const FB_WIDTH: u32 = 640;
 pub const FB_HEIGHT: u32 = 480;
 pub const FB_BPP: usize = 4;

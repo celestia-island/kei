@@ -180,7 +180,10 @@ fn create_init_task(
     // On aarch64, TPIDR_EL0 must point past the end of the TLS block.
     // Without this, any thread-local access before C library init crashes.
     if let Some(tls_ptr) = elf_load_info.tls_pointer {
+        #[cfg(target_arch = "aarch64")]
         user_ctx.set_tls_pointer(tls_ptr);
+        #[cfg(not(target_arch = "aarch64"))]
+        let _ = tls_ptr;
     }
 
     let thread_name = ThreadName::new_from_executable_path(&elf_abs_path);

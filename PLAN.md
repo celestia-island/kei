@@ -53,6 +53,21 @@
 2. **x86_64 编译有 9 个 acpi crate 错误**（E0432/E0433/E0277）：`acpi::madt`/`AcpiHandler` 等 API 在 acpi 6.1.1 变更，kei fork 未适配。预先存在的 regression，非本次引入。
 3. **WSL2 仅装了 qemu-system-arm**（aarch64），x86_64/riscv64 的 system emulator 需 `apt install qemu-system-x86 qemu-system-misc`（需 sudo 密码）。Windows QEMU 有全部架构。
 
+### 跨架构编译状态（2026-07-12）
+
+| 架构 | 编译 | 启动 | 显示 | 备注 |
+|------|------|------|------|------|
+| **aarch64** | ✅ | ✅ 完整启动 + 用户空间 | ✅ aris-render 像素上屏 (70.6%) | WSL2 QEMU 验证，主开发架构 |
+| **riscv64** | ⚠️ 仅缺 vdso_riscv64.so | — | — | inode cfg fix 后内核代码编译通过；vDSO 需交叉编译 |
+| **x86_64** | ❌ 9 个 acpi crate 错误 | — | — | 预存 regression：acpi 6.1.1 API 变更未适配 |
+
+**修复的 riscv64 编译 bug**（`kernel/src/fs/file/inode_handle.rs`）：`file_ops_and_is_offset_aware` 的 aarch64 fallback 只门控了 `let inode` 但后续行无条件使用 `inode`，导致 riscv64 E0425。修复：整个 fallback 块用 `cfg(target_arch = "aarch64")` 门控。
+
+**输入设备验证**（WSL2 QEMU monitor 模拟）：
+- virtio-keyboard：注册成功（`QEMU Virtio Keyboard`, KEY=true）
+- virtio-mouse：注册成功（`QEMU Virtio Mouse`, KEY=true, REL=true）
+- 点击模拟（`mouse_move`/`mouse_button`/`sendkey`）：前后截屏像素一致（kei_fbtest 无交互逻辑，预期行为）
+
 ### virtio-gpu 黑屏根因修正 + 双初始化修复（2026-07-10 → 07-11 修正）🐛
 
 **修正了长期被误判为「QEMU TCG used-ring bug」的黑屏根因。**

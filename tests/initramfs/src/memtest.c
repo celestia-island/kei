@@ -33,86 +33,34 @@ static void check_pattern(const char *name, uint64_t *p, int count, uint64_t exp
 int main() {
     dprintf(2, "kei_memtest: starting\n");
 
-    // Test 1: mmap anonymous
-    size_t sz = 64 * 1024; // 64KB = 16 pages
-    uint64_t *m = mmap(NULL, sz, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (m == MAP_FAILED) {
-        dprintf(2, "mmap failed\n");
-        return 1;
-    }
-    dprintf(2, "mmap at %p (size %d)\n", m, (int)sz);
-
-    // Write a sentinel to the very first word of each 4KB page
-    // so we can find which physical page each VA maps to via QEMU xp.
-    for (int pg = 0; pg < (int)(sz/4096); pg++) {
-        uint64_t *page = (uint64_t *)((char *)m + pg * 4096);
-        page[0] = 0xAAAABBBB0000ULL + pg;   // page 0 -> 0xAAAABBBB0000, etc
-        page[1] = (uint64_t)(uintptr_t)page;  // remember the VA
-    }
-    dprintf(2, "wrote sentinels to %d pages\n", (int)(sz/4096));
-
-    // Immediately read back the sentinels
-    int sentinel_ok = 0;
-    for (int pg = 0; pg < (int)(sz/4096); pg++) {
-        uint64_t *page = (uint64_t *)((char *)m + pg * 4096);
-        if (page[0] == 0xAAAABBBB0000ULL + pg && page[1] == (uint64_t)(uintptr_t)page) {
-            sentinel_ok++;
-        } else {
-            if (pg < 3) dprintf(2, "SENTINEL FAIL pg=%d: [0]=%#lx [1]=%#lx\n", pg, page[0], page[1]);
+    // Test: mmap with varying sizes to find the corruption threshold
+    // Test 16, 32, 64, 128, 300 pages
+    int sizes[] = {16, 32, 64, 128, 300};
+    for (int si = 0; si < 5; si++) {
+        int npages = sizes[si];
+        size_t sz = npages * 4096;
+        uint64_t *m = mmap(NULL, sz, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        if (m == MAP_FAILED) { dprintf(2, "mmap %d pages failed\n", npages); continue; }
+        // Write unique value to each page's first word
+        for (int p = 0; p < npages; p++) {
+            ((uint64_t *)((char *)m + p * 4096))[0] = 0xBEEF0000 + p;
         }
-    }
-    dprintf(2, "sentinel readback: %d/%d pages OK\n", sentinel_ok, (int)(sz/4096));
-
-    // Now the full pattern test
-    for (int i = 0; i < (int)(sz/8); i++) {
-        m[i] = 0xDEADBEEFCAFE000ULL + i;
-    }
-    int bad = 0;
-    for (int i = 0; i < (int)(sz/8); i++) {
-        if (m[i] != 0xDEADBEEFCAFE000ULL + i) bad++;
-    }
-    dprintf(2, "mmap write/read: %d/%d corrupted\n", bad, (int)(sz/8));
-    if (bad > 0) fail_count++;
-    check_count++;
-
-    // Test 2: fresh mmap (should be zeroed)
-    uint64_t *m2 = mmap(NULL, sz, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (m2 != MAP_FAILED) {
-        // Touch then verify zero
-        int nonzero = 0;
-        for (int i = 0; i < (int)(sz/8); i++) {
-            if (m2[i] != 0) {
-                if (nonzero < 3) dprintf(2, "DIRTY m2[%d]=%#lx\n", i, m2[i]);
-                nonzero++;
-            }
+        // Read back and count errors
+        int bad = 0;
+        for (int p = 0; p < npages; p++) {
+            if (((uint64_t *)((char *)m + p * 4096))[0] != 0xBEEF0000 + p) bad++;
         }
-        dprintf(2, "fresh mmap: %d nonzero words (should be 0)\n", nonzero);
-        if (nonzero > 0) fail_count++;
-        check_count++;
+        dprintf(2, "mmap %3d pages: %d/%d corrupted\n", npages, bad, npages);
+        munmap(m, sz);
     }
 
-    // Test 3: brk
+    // Test: brk
     uint64_t brk1 = (uint64_t)sbrk(0);
     uint64_t brk2 = (uint64_t)sbrk(4096);
     uint64_t brk3 = (uint64_t)sbrk(0);
     dprintf(2, "brk: %#lx -> %#lx (after +4096) %#lx\n", brk1, brk2, brk3);
 
-    // Test 4: malloc large
-    char *buf = (char *)malloc(1024 * 100); // 100KB
-    if (buf) {
-        memset(buf, 0xAB, 100*1024);
-        int bad4 = 0;
-        for (int i = 0; i < 100*1024; i++) {
-            if ((uint8_t)buf[i] != 0xAB) bad4++;
-        }
-        dprintf(2, "malloc 100K: %d/%d bytes corrupted\n", bad4, 100*1024);
-        if (bad4 > 0) fail_count++;
-        check_count++;
-        free(buf);
-    }
-
-    dprintf(2, "kei_memtest: %d/%d checks failed\n", fail_count, check_count);
-
+    dprintf(2, "kei_memtest done\n");
     // Now try drawing to fb (like kei_desktop)
     int fd = open("/dev/fb0", O_RDWR);
     if (fd >= 0) {

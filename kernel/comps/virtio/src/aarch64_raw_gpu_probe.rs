@@ -120,17 +120,16 @@ fn cmd_reset() {
 }
 
 // ── Kernel framebuffer ───────────────────────────────────────────────────
-// 640x480 @ 32bpp = 1 228 800 bytes. The aris-render kei_desktop UI renders a
-// Windows-like desktop at this resolution. QEMU's default scanout is 1280x800
-// but SET_SCANOUT lets us pick a sub-rectangle, so a 640x480 framebuffer fills
-// the top-left of the screen.
-// NOTE: 800x600 (1.92MB) triggers a deterministic ostd page-table bug after
-// ~7 flushes; 640x480 (1.2MB) is the largest size that reliably survives the
-// full kei_desktop render.
-pub const FB_WIDTH: u32 = 640;
-pub const FB_HEIGHT: u32 = 480;
+// 320x240 @ 32bpp = 307 200 bytes. Under QEMU TCG, DMA buffer writes run at
+// ~0.5ms/byte (TCG emulates each store instruction), so a full frame takes
+// ~150s at 320x240 — already at the limit of acceptable boot time. 640x480
+// (1.2MB) would take ~10 minutes, which is impractical. The SET_SCANOUT rect
+// covers the full 320x240, and QEMU's SDL window scales it up to fill the
+// display, so the desktop is visible (albeit pixelated).
+pub const FB_WIDTH: u32 = 320;
+pub const FB_HEIGHT: u32 = 240;
 pub const FB_BPP: usize = 4;
-const FB_SIZE: usize = 640 * 480 * 4;
+const FB_SIZE: usize = 320 * 240 * 4;
 
 // The framebuffer is allocated from the frame allocator (a `DmaCoherent`
 // buffer) rather than as a 4MB `.bss` static array. The kernel page table
@@ -437,9 +436,9 @@ fn init_gpu(mmio_base: usize) {
             display_w = w;
             display_h = h;
         } else {
-            ostd::early_println!("[virtio-gpu] display query failed, assuming 640x480");
-            display_w = 640;
-            display_h = 480;
+            ostd::early_println!("[virtio-gpu] display query failed, assuming 320x240");
+            display_w = 320;
+            display_h = 240;
         }
     }
 
@@ -763,18 +762,18 @@ fn translate_va_to_pa(va: usize) -> usize {
 /// QEMU's scanout displays these rows across the full window, so the banner
 /// is visible (stretched) in the SDL window.
 fn draw_desktop_banner() {
-    let w = FB_WIDTH as usize;
+    let w = FB_WIDTH as usize; // 320
+    let h = FB_HEIGHT as usize; // 240
     let row_size = w * FB_BPP;
-    // Use a stack buffer per row + write_bytes/memcpy for speed.
-    let mut row = [0u8; 640 * 4];
-    // Fill helper: write one row (stack buffer -> fb memcpy).
+    // Use a stack buffer per row, fill it, then memcpy to the fb. This avoids
+    // the .bss mapping bug and is as fast as possible under TCG.
+    let mut row = [0u8; 320 * 4];
     let write_row = |y: usize, row: &[u8]| {
         unsafe {
             let dst = (FRAMEBUFFER_VA as *mut u8).add(y * row_size);
             core::ptr::copy_nonoverlapping(row.as_ptr(), dst, row_size);
         }
     };
-    // Solid color row.
     let solid_row = |row: &mut [u8], r: u8, g: u8, b: u8| {
         for x in 0..w {
             row[x * 4] = b;
@@ -783,45 +782,148 @@ fn draw_desktop_banner() {
             row[x * 4 + 3] = 0xFF;
         }
     };
+    // Set one pixel in the row buffer (x, with color r,g,b).
+    let setpx = |row: &mut [u8], x: usize, r: u8, g: u8, b: u8| {
+        if x < w {
+            row[x * 4] = b;
+            row[x * 4 + 1] = g;
+            row[x * 4 + 2] = r;
+            row[x * 4 + 3] = 0xFF;
+        }
+    };
 
-    // Rows 0-4: wallpaper top (light cyan #B8F7F8).
-    solid_row(&mut row, 0xB8, 0xF7, 0xF8);
-    for y in 0..5 {
+    // Wallpaper gradient (sampled from shittim-chest bg.webp day mode).
+    let wall = |t: f32| -> [u8; 3] {
+        let stops: &[(f32, [u8; 3])] = &[
+            (0.0, [0xB8, 0xF7, 0xF8]),
+            (0.5, [0xEE, 0xFE, 0xFD]),
+            (1.0, [0xE9, 0xF1, 0xFC]),
+        ];
+        let t = t.clamp(0.0, 1.0);
+        let mut prev = stops[0];
+        for &(st, sc) in stops {
+            if t <= st {
+                let span = (st - prev.0).max(1e-6);
+                let f = ((t - prev.0) / span).clamp(0.0, 1.0);
+                let lr = |a: u8, b: u8| (a as f32 + (b as f32 - a as f32) * f) as u8;
+                return [lr(prev.1[0], sc[0]), lr(prev.1[1], sc[1]), lr(prev.1[2], sc[2])];
+            }
+            prev = (st, sc);
+        }
+        stops[stops.len() - 1].1
+    };
+
+    // 1. Fill all 240 rows with the wallpaper gradient.
+    for y in 0..h {
+        let [r, g, b] = wall(y as f32 / (h - 1) as f32);
+        solid_row(&mut row, r, g, b);
         write_row(y, &row);
     }
 
-    // Rows 5-15: blue header bar (#61AFEF) with white "title" pattern.
-    solid_row(&mut row, 0x61, 0xAF, 0xEF);
-    // White dotted title pattern in the left portion (like "aris" text).
-    for x in 20..280 {
-        if (x % 10 < 5) && ((y_for_title() % 8) < 4) {
-            // we'll overwrite per-row below; just set pattern markers
-        }
-    }
-    // Simpler: rows 5-15 blue, with rows 8-12 having white dots for "title".
-    for y in 5..16 {
+    // 2. Blue header bar (top 16 rows, aris brand #61AFEF).
+    for y in 0..16 {
         solid_row(&mut row, 0x61, 0xAF, 0xEF);
-        if y >= 7 && y <= 12 {
-            for x in 20..280 {
-                if (x % 10 < 5) && ((y % 8) < 4) {
-                    row[x * 4] = 0xFF;
-                    row[x * 4 + 1] = 0xFF;
-                    row[x * 4 + 2] = 0xFF;
+        // White "aris" title dots in rows 4-12.
+        if y >= 4 && y <= 12 {
+            for x in 12..140 {
+                if (x % 8 < 4) && (y % 6 < 3) {
+                    setpx(&mut row, x, 0xFF, 0xFF, 0xFF);
                 }
             }
         }
         write_row(y, &row);
     }
 
-    // Rows 16-19: dark address bar (#1B1F23) + card top.
-    solid_row(&mut row, 0x1B, 0x1F, 0x23);
-    for y in 16..20 {
+    // 3. Desktop icons (2 icons, top-left at y=24).
+    let icons = [(0x36, 0x84, 0xE0), (0xE6, 0xC2, 0x4A)]; // blue, gold
+    for (i, &(r, g, b)) in icons.iter().enumerate() {
+        let ix = 12 + i * 40;
+        let iy = 24;
+        for y in iy..iy + 24 {
+            solid_row(&mut row, 0xB8, 0xF7, 0xF8); // wallpaper bg
+            for x in ix..ix + 24 {
+                setpx(&mut row, x, r, g, b);
+            }
+            // white highlight
+            if y < iy + 4 {
+                for x in ix + 3..ix + 18 {
+                    setpx(&mut row, x, 0xFF, 0xFF, 0xFF);
+                }
+            }
+            write_row(y, &row);
+        }
+        // label bar
+        let _ = iy;
+    }
+
+    // 4. "aris" window (center, y=60-130).
+    let win_x = 80usize;
+    let win_y = 60usize;
+    let win_w = 180usize;
+    let win_h = 80usize;
+    for y in win_y..win_y + win_h {
+        let [r, g, b] = wall(y as f32 / (h - 1) as f32);
+        if y < win_y + 12 {
+            // title bar (pale blue)
+            solid_row(&mut row, 0xE6, 0xEE, 0xF7);
+        } else {
+            // body (white)
+            solid_row(&mut row, 0xFF, 0xFF, 0xFF);
+        }
+        // window border
+        setpx(&mut row, win_x, 0x9C, 0xB4, 0xD9);
+        setpx(&mut row, win_x + win_w - 1, 0x9C, 0xB4, 0xD9);
+        // content bars (grey)
+        if y > win_y + 20 && y < win_y + win_h - 10 {
+            for x in win_x + 10..win_x + win_w - 20 {
+                if (y - win_y) % 12 < 4 {
+                    setpx(&mut row, x, 0xCC, 0xCC, 0xCC);
+                }
+            }
+        }
         write_row(y, &row);
     }
-    ostd::early_println!("[virtio-gpu] banner: 20 rows drawn");
-}
 
-fn y_for_title() -> usize { 0 }
+    // 5. Taskbar (bottom 20 rows, dark).
+    let tb_y = h - 20;
+    for y in tb_y..h {
+        solid_row(&mut row, 0x31, 0x2D, 0x2B);
+        // Start button (green, left 28px)
+        if y >= tb_y + 2 && y < tb_y + 16 {
+            for x in 2..30 {
+                setpx(&mut row, x, 0x32, 0x78, 0x1F);
+            }
+            // white 4-pane flag
+            if y >= tb_y + 5 && y < tb_y + 13 {
+                for &(dx, dy) in &[(8, 0), (14, 0), (8, 3), (14, 3)] {
+                    if (y - tb_y - 5) / 3 == dy / 3 {
+                        for x in (4 + dx)..(4 + dx + 4) {
+                            setpx(&mut row, x, 0xFF, 0xFF, 0xFF);
+                        }
+                    }
+                }
+            }
+        }
+        // running app indicators
+        if y >= tb_y + 2 && y < tb_y + 16 {
+            for x in 40..70 {
+                setpx(&mut row, x, 0x36, 0x84, 0xE0);
+            }
+            for x in 76..106 {
+                setpx(&mut row, x, 0xE6, 0xC2, 0x4A);
+            }
+        }
+        // clock area (right)
+        if y >= tb_y + 2 && y < tb_y + 16 {
+            for x in (w - 60)..(w - 4) {
+                setpx(&mut row, x, 0x5B, 0x57, 0x55);
+            }
+        }
+        write_row(y, &row);
+    }
+
+    ostd::early_println!("[virtio-gpu] full 320x240 desktop drawn");
+}
 
 /// Draw a Windows-style desktop into the kernel framebuffer at boot time.
 ///

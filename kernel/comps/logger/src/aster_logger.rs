@@ -67,5 +67,11 @@ fn print_logs(record: &Record, timestamp: &Duration) {
 }
 
 pub(super) fn init() {
+    // riscv64: do NOT inject the formatting logger. The LOGGER's log callback
+    // uses format_args! + write_fmt which triggers a div-by-zero in
+    // core::unicode::conversions (a rustc/core bug on riscv64). Without the
+    // injected logger, log messages are silently dropped (early_println! still
+    // works for boot diagnostics via raw serial).
+    #[cfg(not(target_arch = "riscv64"))]
     ostd::log::inject_logger(&LOGGER);
 }

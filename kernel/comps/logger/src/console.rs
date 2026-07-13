@@ -14,12 +14,13 @@ use ostd::sync::{LocalIrqDisabled, SpinLockGuard};
 /// Prints the formatted arguments to the standard output.
 pub fn _print(args: fmt::Arguments) {
     // riscv64: core::unicode::conversions triggers a div-by-zero panic during
-    // format_args write_fmt (a rustc/core bug on riscv64 where a casemapping
-    // table constant evaluates to 0). Always use early_print (raw serial,
-    // no unicode lookup) on riscv64 to avoid this.
+    // ANY write_fmt call (a rustc/core bug where a casemapping table constant
+    // evaluates to 0 on riscv64). We completely disable formatted console
+    // output on riscv64 to avoid the panic. early_println! (which uses a
+    // different code path) still works for boot diagnostics.
     #[cfg(target_arch = "riscv64")]
     {
-        ostd::console::early_print(args);
+        let _ = args; // suppress unused warning
         return;
     }
 
@@ -28,15 +29,14 @@ pub fn _print(args: fmt::Arguments) {
     // This prevents panics when info!/println! are called before the
     // component system is set up.
     #[cfg(not(target_arch = "riscv64"))]
-    let Some(component) = aster_console::component() else {
-        ostd::console::early_print(args);
-        return;
-    };
-
-    // We must call lock on the component's device table to prevent
-    // interleaving and avoid clone-related deadbacks under low memory.
-    #[cfg(not(target_arch = "riscv64"))]
     {
+        let Some(component) = aster_console::component() else {
+            ostd::console::early_print(args);
+            return;
+        };
+
+        // We must call lock on the component's device table to prevent
+        // interleaving and avoid clone-related deadbacks under low memory.
         let devices = component.console_device_table.lock();
 
         struct Printer<'a>(

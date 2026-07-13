@@ -2,7 +2,7 @@
 
 <h1 align="center">KEI</h1>
 
-<p align="center"><strong>Núcleo OS Rust para IoT industrial — derivado de Asterinas, con biblioteca no_std para nodos sensores.</strong></p>
+<p align="center"><strong>Un núcleo de SO en Rust para dispositivos edge de IoT industrial.</strong></p>
 
 <div align="center">
 
@@ -45,10 +45,6 @@ KEI deriva de [Asterinas](https://github.com/asterinas/asterinas), un framekerne
 just build        # Compilar para placa por defecto
 just test-all     # Prueba de arranque QEMU
 ```
-
-## Ecosistema
-
-- **[aris](https://github.com/celestia-island/aris)** — motor de navegador derivado de servo
 
 ## Licencia
 

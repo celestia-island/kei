@@ -2,7 +2,7 @@
 
 <h1 align="center">KEI</h1>
 
-<p align="center"><strong>産業用 IoT 向け Rust OS カーネル — Asterinas 由来、組み込みセンサーノード向け no_std ライブラリ付き。</strong></p>
+<p align="center"><strong>産業用 IoT エッジデバイス向けの Rust OS カーネル。</strong></p>
 
 <div align="center">
 
@@ -45,10 +45,6 @@ KEI は [Asterinas](https://github.com/asterinas/asterinas) から派生した R
 just build        # デフォルトボード向けビルド
 just test-all     # QEMU ブートテスト
 ```
-
-## エコシステム
-
-- **[aris](https://github.com/celestia-island/aris)** — servo 派生のブラウザエンジン
 
 ## ライセンス
 

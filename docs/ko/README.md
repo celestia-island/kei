@@ -2,7 +2,7 @@
 
 <h1 align="center">KEI</h1>
 
-<p align="center"><strong>산업용 IoT를 위한 Rust OS 커널 — Asterinas에서 파생, 임베디드 센서 노드용 no_std 라이브러리 포함.</strong></p>
+<p align="center"><strong>산업용 IoT 엣지 디바이스를 위한 Rust OS 커널.</strong></p>
 
 <div align="center">
 
@@ -45,10 +45,6 @@ KEI는 [Asterinas](https://github.com/asterinas/asterinas)에서 파생된 Rust 
 just build        # 기본 보드 빌드
 just test-all     # QEMU 부트 테스트
 ```
-
-## 생태계
-
-- **[aris](https://github.com/celestia-island/aris)** — servo에서 파생된 브라우저 엔진
 
 ## 라이선스
 

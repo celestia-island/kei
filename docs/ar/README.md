@@ -2,7 +2,7 @@
 
 <h1 align="center">KEI</h1>
 
-<p align="center"><strong>نواة نظام تشغيل بـ Rust لإنترنت الأشياء الصناعي — مشتقة من Asterinas، مع مكتبة no_std لعقد المستشعرات.</strong></p>
+<p align="center"><strong>نواة نظام تشغيل بـ Rust لأجهزة حافة إنترنت الأشياء الصناعي.</strong></p>
 
 <div align="center">
 
@@ -45,10 +45,6 @@ KEI مشتق من [Asterinas](https://github.com/asterinas/asterinas)، نواة
 just build        # بناء للوحة الافتراضية
 just test-all     # اختبار إقلاع QEMU
 ```
-
-## النظام البيئي
-
-- **[aris](https://github.com/celestia-island/aris)** — محرك متصفح مشتق من servo
 
 ## الترخيص
 

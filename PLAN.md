@@ -1,29 +1,44 @@
 # kei — 项目状态与计划 (PLAN)
 
-> 本文件于 **2026-07-04** 更新，记录项目当前状态、近期进展与后续计划。
-> 原有详细计划已保留于文末「既有详细计划（存档）」。
+> 本文件于 **2026-07-14** 更新，记录项目当前状态、近期进展与后续计划。
 
-## 1. 项目概述
+## 0. 当前架构：网关模式（2026-07-14 最新）
 
-- **名称**：`kei`
-- **简介**：面向工业物联网的 Rust OS 内核 —— 源自 Asterinas（星绽）。ARM64/RISC-V，RTOS 级实时性，完整 Linux syscall ABI 兼容。
-- **远程仓库**：本地仓库（无 origin）
-- **技术栈**：Rust / just / OSDK
-- **类别**：os-kernel
+### 架构转变
 
-## 2. 当前状态
+之前的"桌面 UI"路线（aris-render 预渲染桌面 → /dev/fb0 → QEMU SDL）存在根本性问题：
+1. **Vello CPU 光栅化质量无法接受**：软件光栅化的文字在所有分辨率下都偏糊，非 GPU 硬件渲染瓶颈
+2. **QEMU TCG 性能限制**：fb 写入极慢（~0.5ms/byte），实时交互不可行
+3. **复杂度与价值不匹配**：桌面 UI 的 tairitsu 组件 + Blitz/Vello 渲染管道极其复杂（24MB 字体、WASM SSR），但产出只是"看起来像桌面"的静态像素
 
-- **当前分支**：`dev`
-- **工作区**：干净
-- **最近提交时间**：2026-07-04
-- **最近提交**：test: add kei+evernight E2E QEMU ignition test script
-- **initramfs**：已构建（`test/initramfs/build/initramfs.cpio.gz`，aarch64 busybox + init）
+**新方向：网关模式**
+- kei 作为路由器/网关运行，提供 WS JSON-RPC 服务端口（8423）供 webui 连入
+- HMI 显示由远程 webui 承担（kei.celestia.world），kei 本机只显示简单的 aris-rendered vtty 终端（状态信息）
+- 鼠标/键盘交互暂不处理（待机状态），焦点在 WS JSON-RPC 协议和网络连通性
 
-## 3. 未提交改动
+### 已完成
 
-无。
+| 项目 | 状态 |
+|------|------|
+| **aarch64 内核启动** | ✅ 完整启动到用户空间 |
+| **virtio-gpu 硬件光标** | ✅ 内核层实现（CMD_UPDATE_CURSOR + CMD_MOVE_CURSOR），但 QEMU monitor mouse_button 不生成 EV_KEY |
+| **WS JSON-RPC 服务器** | ✅ 端口 8423 监听，WebSocket 握手 + JSON-RPC 2.0 协议，Kei.Ping/Kei.Status/Kei.InputEvent 方法 |
+| **aris-rendered vtty 显示** | ⚠️ 背景色渲染正常，**文字不渲染**（fontique/parley 字体注册问题） |
+| **主 poll 循环** | ✅ 多路复用 mouse_fd + ws_listen + ws_clients |
+| **IoMem 线性映射修复** | ✅ aarch64 virtio-mmio 设备探测和写入可用 |
 
-## 4. 近期进展
+### 当前阻塞
+
+1. **vtty 文字渲染**：`render_html_with_font` 可渲染 CSS 颜色/背景，但文字节点无输出。`render_html`（catch_unwind 版本）触发 fontique panic 后降级到 fill_fallback 像素画。根因：(a) 24MB 全字体过大导致 parley::fontique 注册失败，(b) 86KB 子集字体注册成功但 paint_scene 不渲染文字节点。
+2. **riscv64 内核**：`core::unicode::conversions` 除零 panic（rustc 在 riscv64imac-unknown-none-elf 上的已知 bug）
+3. **x86_64 内核**：64-bit multiboot1 ELF 无法用 QEMU -kernel 加载
+
+### 后续计划
+
+1. **vtty 文字渲染修复**：调查 `render_html` vs `render_html_with_font` 文字渲染差异。可能从 Blitz DOM 切换到更简单的渲染方式，或使用预渲染文字位图。
+2. **webui 集成**：kei.celestia.world 托管 webui 前端页面，通过 WS JSON-RPC 连接 kei 网关。页面加载后自动握手。
+3. **HMI 远期**：aris 嵌入 webui，通过 WebRTC 推流 aris-render 输出到浏览器。HMI 由 webui 控制打开。
+4. **riscv64 + x86_64**：kernel 侧 bug 需工具链/内核修复，短期无法解决。先聚焦 aarch64。
 
 ### WSL2 QEMU 全流程打通：启动→aris-render→scanout 像素上屏（2026-07-12）🎉
 

@@ -284,7 +284,12 @@ fn init_in_first_kthread(path_resolver: &PathResolver) {
         let _ = aster_softirq::init_component_fn();
         let _ = aster_console::init_component_fn();
         let _ = aster_framebuffer::init_component_fn();
+        // Initialize the input core first (creates InputCore singleton),
+        // then register the evdev handler class (so it connects to devices
+        // when they're probed), then probe virtio devices.
         let _ = aster_input::init_component_fn();
+        ostd::early_println!("[kthread] evdev handler init (before virtio probe)");
+        crate::device::evdev::init_in_first_kthread();
         let _ = aster_network::init_component_fn();
         // virtio component init probes devices (needs FDT, which is available)
         let _ = aster_virtio::virtio_component_init_pub();
@@ -297,6 +302,9 @@ fn init_in_first_kthread(path_resolver: &PathResolver) {
             ostd::info!("framebuffer published OK");
             crate::device::fb::register_late();
             ostd::info!("/dev/fb0 registered");
+            // Initialize the hardware cursor after the framebuffer is published.
+            ostd::early_println!("[kthread] init hardware cursor");
+            aster_virtio::aarch64_raw_gpu_probe::init_cursor();
         } else {
             ostd::info!("WARNING: framebuffer not published");
         }

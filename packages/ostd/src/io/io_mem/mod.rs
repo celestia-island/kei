@@ -108,7 +108,7 @@ impl<SecuritySensitivity> IoMem<SecuritySensitivity> {
             //  - The range `first_page_start..last_page_end` is always page aligned.
             //  - FIXME: We currently do not limit the I/O memory allocator with the maximum GPA,
             //    so the address range may not fall in the GPA limit.
-            //  - The caller guarantees that operations on the I/O memory do not have any side
+            //  - The caller of `IoMem::new()` ensures that operations on the I/O memory do not have any side
             //    effects that may cause soundness problems, so the pages can safely be viewed as
             //    untyped memory.
             unsafe { unprotect_gpa_tdvm_call(first_page_start, area_size).unwrap() };
@@ -126,6 +126,40 @@ impl<SecuritySensitivity> IoMem<SecuritySensitivity> {
             priv_flags,
         };
 
+        // On aarch64 QEMU TCG, the VMALLOC mapping created by KVirtArea
+        // works for reads but silently drops writes (the virtio device
+        // never sees DRIVER_OK etc.). The linear mapping (LINEAR_BASE + PA)
+        // works for both reads and writes. Use it instead of creating a
+        // new VMALLOC mapping.
+        #[cfg(target_arch = "aarch64")]
+        {
+            const LINEAR_BASE: usize = 0xffff_8000_0000_0000;
+            let kva = unsafe {
+                KVirtArea::map_untracked_frames(area_size, 0, frames_range.clone(), prop)
+            };
+            // Override: use linear mapping address as the base
+            let linear_va = LINEAR_BASE + first_page_start;
+            // We can't easily change KVirtArea's start(), so we store the
+            // linear VA in a way that base() returns it. Since base() returns
+            // kvirt_area.start() + offset, we need kvirt_area.start() to be
+            // linear_va. But KVirtArea manages its own VA range.
+            // Instead, we'll use a simpler approach: set offset to make
+            // base() = linear_va. base() = kvirt_area.start() + offset.
+            // So offset = linear_va - kvirt_area.start() + (range.start - first_page_start).
+            let real_offset = range.start - first_page_start;
+            let linear_offset = linear_va.wrapping_sub(kva.start()) + real_offset;
+
+            return Self {
+                kvirt_area: Arc::new(kva),
+                offset: linear_offset,
+                limit: range.len(),
+                pa: range.start,
+                cache_policy: cache,
+                phantom: PhantomData,
+            };
+        }
+
+        #[cfg(not(target_arch = "aarch64"))]
         let kva = {
             // SAFETY: The caller of `IoMem::new()` ensures that the given
             // physical address range is I/O memory, so it is safe to map.
@@ -140,14 +174,15 @@ impl<SecuritySensitivity> IoMem<SecuritySensitivity> {
             kva
         };
 
-        Self {
+        #[cfg(not(target_arch = "aarch64"))]
+        return Self {
             kvirt_area: Arc::new(kva),
             offset: range.start - first_page_start,
             limit: range.len(),
             pa: range.start,
             cache_policy: cache,
             phantom: PhantomData,
-        }
+        };
     }
 
     /// Returns the cache policy of this `IoMem`.

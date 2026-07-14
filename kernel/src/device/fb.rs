@@ -646,6 +646,17 @@ impl PerOpenFileOps for FbHandle {
                 // crash under repeated flushes). kei_desktop calls this once
                 // after writing the full frame to make all pixels visible in a
                 // single virtio-gpu TRANSFER_TO_HOST_2D + RESOURCE_FLUSH.
+                //
+                // If arg != 0, also move the hardware cursor: high16=y, low16=x.
+                if raw_ioctl.arg() != 0 {
+                    #[cfg(target_arch = "aarch64")]
+                    {
+                        let pos = raw_ioctl.arg() as usize;
+                        let x = (pos & 0xFFFF) as u32;
+                        let y = ((pos >> 16) & 0xFFFF) as u32;
+                        aster_virtio::aarch64_raw_gpu_probe::move_cursor_hw(x, y);
+                    }
+                }
                 self.framebuffer.flush_all();
                 Ok(0)
             }
@@ -657,6 +668,18 @@ impl PerOpenFileOps for FbHandle {
                 )
             }
             _ => {
+                // Custom ioctl: move hardware cursor (cmd=0x4607).
+                // User passes x,y packed as u32 (high16=y, low16=x) in arg.
+                if raw_ioctl.cmd() == 0x4607 {
+                    #[cfg(target_arch = "aarch64")]
+                    {
+                        let pos = raw_ioctl.arg() as usize;
+                        let x = (pos & 0xFFFF) as u32;
+                        let y = ((pos >> 16) & 0xFFFF) as u32;
+                        aster_virtio::aarch64_raw_gpu_probe::move_cursor_hw(x, y);
+                    }
+                    return Ok(0);
+                }
                 ostd::debug!(
                     "the ioctl command {:#x} is unknown for framebuffer devices",
                     raw_ioctl.cmd()

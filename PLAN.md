@@ -2,6 +2,17 @@
 
 > 本文件于 **2026-07-14** 更新，记录项目当前状态、近期进展与后续计划。
 
+## Refresh log 2026-07-14
+
+- **当前分支**：`dev` · 领先 `origin/dev` 0 commits · 工作区干净
+- **最近提交**：`🔧 Gateway mode: aris vtty + WS JSON-RPC server.` (`0f42289`)
+- **未提交改动**：无
+- **后续动作**：
+  1. 验证网关模式：aris vtty + WS JSON-RPC 在工业 IoT 边缘硬件（aarch64）上端到端联通。
+  2. 固化 `kou` vtty 协议到 kei 的 init shell，作为终端接入面。
+  3. 跨仓 `[patch]` 收敛到 `~/.cargo/config.toml`（aster 派生链共用）。
+- **跨仓依赖**：vtty 协议与 `kou` 对接；浏览器 UI 复用 `aris`；内核 fork 自 aster（见顶层 `patches/` 长期方案）。
+
 ## 0. 当前架构：网关模式（2026-07-14 最新）
 
 ### 架构转变

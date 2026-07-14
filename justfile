@@ -619,7 +619,7 @@ test BOARD="nanopi-r3s":
     {{python_cmd}} scripts/test.py {{BOARD}}
 
 test-bsp:
-    cd bsp && cargo test
+    cargo test -p bsp-rk3566 -p bsp-bcm2711 -p bsp-jh7110
 
 # ── Utilities ──────────────────────────────────────────────
 

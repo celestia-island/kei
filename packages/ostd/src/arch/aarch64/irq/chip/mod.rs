@@ -16,6 +16,24 @@ use crate::{Result, io::IoMemAllocatorBuilder, irq::IrqLine, mm::paddr_to_vaddr,
 /// Max number of GIC INTIDs we support for mapping.
 const MAX_INTIDS: usize = 1024;
 
+/// GICR_STRIDE: distance between consecutive redistributor frames.
+/// QEMU virt default. On real silicon this must be read from GICD_TYPER.
+const GICR_STRIDE: usize = 0x20000;
+
+/// Default GIC priority for SPIs/PPIs (Linux: 0xa0).
+const GIC_DEFAULT_PRIORITY: u8 = 0xa8;
+
+/// Stride-repeated priority value for 4-byte aligned writes.
+const GIC_PRIORITY_STRIDE4: u32 = 0xa8a8a8a8;
+
+/// Helper: validates INTID is within the mapping array bounds.
+fn check_intid(intid: u32) -> Result<()> {
+    if (intid as usize) >= MAX_INTIDS {
+        return_errno_with_message!(Errno::EINVAL, "GIC INTID out of range: {}", intid);
+    }
+    Ok(())
+}
+
 /// Maps GIC INTID → allocated software IRQ number.
 /// Stored inside `IrqChip` (like RISC-V PLIC's `interrupt_number_mappings`),
 /// populated by `map_fdt_pin_to`, read by `claim_interrupt()`.
@@ -58,6 +76,7 @@ impl IrqChip {
 
         // Store INTID → irq_num forward mapping inside IrqChip
         {
+            check_intid(intid)?;
             let mut map = self.intid_to_irq_num.lock();
             if map[intid as usize].is_some() {
                 return Err(crate::Error::AccessDenied);
@@ -72,7 +91,7 @@ impl IrqChip {
         unsafe {
             // GICD_IPRIORITYR: offset 0x400, 1 byte per INTID.
             let prio_off = 0x400 + (intid as usize);
-            core::ptr::write_volatile((gicd_va + prio_off) as *mut u8, 0xa8);
+            core::ptr::write_volatile((gicd_va + prio_off) as *mut u8, GIC_DEFAULT_PRIORITY);
 
             // GICD_ISENABLERn: offset 0x100, 1 bit per INTID.
             let group_idx = intid / 32;
@@ -366,15 +385,15 @@ pub(crate) unsafe fn init_on_bsp(_io_mem_builder: &IoMemAllocatorBuilder) {
         core::ptr::write_volatile((gicr_sgi_va + 0x80) as *mut u32, !0u32);
 
         // GICR_IPRIORITYR0 (SGI base + 0x400): set priority for all SGIs/PPIs.
-        // Linux gic_cpu_config writes dist_prio_irq (0xa8) to all SGI/PPI priorities.
         for i in (0..32usize).step_by(4) {
-            core::ptr::write_volatile((gicr_sgi_va + 0x400 + i) as *mut u32, 0xa8a8a8a8u32);
+            core::ptr::write_volatile((gicr_sgi_va + 0x400 + i) as *mut u32, GIC_PRIORITY_STRIDE4);
         }
 
-        // GICR_ISENABLER0 (SGI base + 0x100): enable PPI 30 (CNTPIRQ).
-        // ISENABLER0 uses full INTID numbering (0-31), NOT PPI-relative.
-        // PPI 30 = INTID 30 = bit 30.
-        core::ptr::write_volatile((gicr_sgi_va + 0x100) as *mut u32, 1u32 << 30);
+        // GICR_ISENABLER0 (SGI base + 0x100): enable timer PPI.
+        core::ptr::write_volatile(
+            (gicr_sgi_va + 0x100) as *mut u32,
+            1u32 << crate::arch::timer::TIMER_PPI_INTID,
+        );
 
         // Configure SPIs (INTID 32..MAX), following Linux gic_dist_init:
         //   - GICD_IGROUPRn: ~0  (all SPIs to Group-1)
@@ -389,11 +408,10 @@ pub(crate) unsafe fn init_on_bsp(_io_mem_builder: &IoMemAllocatorBuilder) {
             core::ptr::write_volatile((gicd_va + 0x0180 + off) as *mut u32, !0u32); // ICENABLERn
             core::ptr::write_volatile((gicd_va + 0x0380 + off) as *mut u32, !0u32); // ICACTIVERn
         }
-        // Set SPI priorities (Linux gic_dist_config: dist_prio_irq = 0xa8).
-        // GICD_IPRIORITYR: skip first 32 bytes (SGIs/PPIs), write 0xa8 per byte.
+        // Set SPI priorities.
         let num_spis = num_spi_groups * 32;
         for i in (0..num_spis).step_by(4) {
-            core::ptr::write_volatile((gicd_va + 0x0400 + 32 + i) as *mut u32, 0xa8a8a8a8u32);
+            core::ptr::write_volatile((gicd_va + 0x0400 + 32 + i) as *mut u32, GIC_PRIORITY_STRIDE4);
         }
     }
 
@@ -425,14 +443,11 @@ pub(crate) unsafe fn init_on_ap() {
     let (_, gicr_base) = GIC_BASES.get().expect("GIC bases not initialized");
 
     // Read MPIDR_EL1 to determine which redistributor belongs to this CPU.
-    // For QEMU virt, MPIDR Aff0 gives the sequential CPU index
-    // and GICR_STRIDE is 0x20000 (128 KiB).
     let mpidr: u64;
     unsafe { core::arch::asm!("mrs {0}, mpidr_el1", out(reg) mpidr, options(nomem, nostack)) };
-    let cpu_idx = (mpidr & 0xff) as usize; // MPIDR Aff0
+    let cpu_idx = (mpidr & 0xff) as usize;
 
-    let stride = 0x20000usize; // GICR_STRIDE (QEMU virt default)
-    let this_gicr = (gicr_base as usize + cpu_idx * stride) as usize;
+    let this_gicr = (*gicr_base as usize + cpu_idx * GICR_STRIDE) as usize;
     let this_gicr_va = paddr_to_vaddr(this_gicr);
 
     unsafe {
@@ -455,11 +470,14 @@ pub(crate) unsafe fn init_on_ap() {
 
         // GICR_IPRIORITYR0 (SGI base + 0x400): set priority for all SGIs/PPIs.
         for i in (0..32usize).step_by(4) {
-            core::ptr::write_volatile((gicr_sgi_va + 0x400 + i) as *mut u32, 0xa8a8a8a8u32);
+            core::ptr::write_volatile((gicr_sgi_va + 0x400 + i) as *mut u32, GIC_PRIORITY_STRIDE4);
         }
 
-        // GICR_ISENABLER0 (SGI base + 0x100): enable PPI 30 (CNTPIRQ / physical timer).
-        core::ptr::write_volatile((gicr_sgi_va + 0x100) as *mut u32, 1u32 << 30);
+        // GICR_ISENABLER0 (SGI base + 0x100): enable timer PPI.
+        core::ptr::write_volatile(
+            (gicr_sgi_va + 0x100) as *mut u32,
+            1u32 << crate::arch::timer::TIMER_PPI_INTID,
+        );
     }
 
     // Enable Group 1 at CPU interface last.

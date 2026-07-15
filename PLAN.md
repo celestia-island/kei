@@ -2,6 +2,15 @@
 
 > 本文件于 **2026-07-15** 更新，记录项目当前状态、近期进展与后续计划。
 
+## Refresh log 2026-07-15 #5 (TLS trait 抽象 + busybox TLS 修复)
+
+- **TLS 初始化重构**：将 `kernel/src/process/program_loader/elf/load_elf.rs` 中 145 行 `#[cfg(target_arch = "aarch64")]` 的单体 `setup_tls()` 提取为架构无关的 trait 抽象：
+  - **新增** `kernel/src/process/program_loader/elf/tls.rs`：定义 `TlsLayout` trait（`pthread_size()` / `gap_above_tp()` / `init_tcb()` / `total_alloc()` / `compute_tp()`），封装 musl TLS_ABOVE_TP 布局的架构差异。
+  - **实现**：`TlsLayoutAarch64`（pthread=0xc8） / `TlsLayoutRiscv64`（pthread=0xc0） / `TlsLayoutX8664`（pthread=0xc8），均含完整 TCB 初始化（self/dtvc/locale）。
+  - **泛型 `setup_tls::<L: TlsLayout>()`**：接受 `load_bias` 参数，正确计算 PIE 二进制的 TLS 模板重定位地址（修复 `tls_phdr_vaddr` 无 load bias 的 bug）。
+  - `load_elf.rs` 调用处按 `#[cfg(target_arch)]` 选择对应 layout，非三大架构返回 `None`。
+  - 旧 non-aarch64 分支（仅分配 2 页、无 TCB 初始化）已移除 — riscv64/x86_64 现在与 aarch64 共享相同的 musl TCB 初始化逻辑。
+
 ## Refresh log 2026-07-15 #4 (riscv64 + x86_64 修复)
 
 - **riscv64 内核启动修复**：

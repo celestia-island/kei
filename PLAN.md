@@ -2,6 +2,14 @@
 
 > 本文件于 **2026-07-15** 更新，记录项目当前状态、近期进展与后续计划。
 
+## Refresh log 2026-07-15 #2 (dropbear host key 修复)
+
+- **修复**：dropbear SSH host key 缺失（QEMU 2222 端口可连接但无 SSH banner）。
+  - `tests/initramfs/build_aarch64_rootfs.sh`（line 30-43）：构建时通过 qemu-aarch64-static → dropbearkey → ssh-keygen 三级 fallback 生成 ed25519 host key。
+  - `tests/initramfs/src/init_aarch64`（line 11-14）：启动时 fallback — 若 host key 不存在则用 `/sbin/dropbearkey` 生成。
+  - 顺便修复：`build_aarch64_rootfs.sh` 中 `test/initramfs/` → `tests/initramfs/` 路径 typo（之前脚本因路径错误无法找到 busybox/init）。
+- **未提交**：`packages/bsp/jh7110/src/lib.rs`（kei-echo agent 改动）仍在 working tree。
+
 ## Refresh log 2026-07-15 (vtable 修复 + 收尾清点)
 
 - **当前分支**：`dev` · **领先 `origin/dev` 1 commit**（vtable 修复）· 工作区仅剩 kei-echo agent 的 `packages/bsp/jh7110/src/lib.rs`

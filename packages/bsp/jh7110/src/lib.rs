@@ -12,21 +12,25 @@
 //! this BSP may be buildable before ARM64 is merged.
 //!
 //! See `packages/bsp/README.md` for the BSP completion matrix.
+//!
+//! The `init` function is intentionally a no-op placeholder. Linking this crate
+//! into a kernel build will produce a deprecation warning at compile time so the
+//! choice is never silent.
 
 #![no_std]
 
-// Fail loudly if this skeleton BSP ever gets linked into a real kernel build.
-// Remove this guard once the first driver (GPIO recommended) lands.
-#[cfg(any(feature = "jh7110-bsp", feature = "enable-jh7110", doc))]
-const _DOC_GATE: () = ();
-
-#[cfg(all(not(doc), not(feature = "jh7110-bsp"), not(feature = "enable-jh7110"),))]
-compile_error!(
-    "bsp-jh7110 is a skeleton (no drivers yet). Linking it into a kei kernel will \
-     produce a non-functional system. Either implement the first driver (start with GPIO) \
-     and remove this `compile_error!`, or do not select this BSP in your board config. \
-     See packages/bsp/README.md for the current completion matrix."
-);
-
-/// Placeholder init. Never reachable while the `compile_error!` above is in effect.
+/// Placeholder init. **Does nothing** — this BSP has no drivers.
+///
+/// Calling this from a real board is a configuration error: the kernel will boot
+/// but no jh7110 hardware will be initialised. Either implement the first driver
+/// (start with GPIO) or do not select `bsp-jh7110` in your board config.
+///
+/// A deprecation warning is emitted on use so the link is never silent. The
+/// warning is the canonical "this BSP is not ready" signal — see
+/// `packages/bsp/README.md` for the completion matrix.
+#[deprecated(
+    since = "0.1.0",
+    note = "bsp-jh7110 is a skeleton (no drivers). Implement GPIO/etc. before \
+            linking. See packages/bsp/README.md."
+)]
 pub fn init() {}

@@ -1,4 +1,4 @@
-<p align="center"><img src="./docs/logo.webp" alt="KEI" width="240" /></p>
+<p align="center"><img src="https://docs.celestia.world/res/logo/kei.webp" alt="KEI" width="240" /></p>
 
 <h1 align="center">KEI</h1>
 

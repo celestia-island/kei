@@ -43,7 +43,7 @@ pub trait TlsLayout: Sized {
         let tls_data_aligned = (tls_data_size + tls_align.max(16) - 1) & !(tls_align.max(16) - 1);
         let dtv_bytes = Self::dtv_entry_count() * core::mem::size_of::<u64>();
         let needed = tls_data_aligned + Self::gap_above_tp() + Self::pthread_size() + dtv_bytes;
-        needed.align_up(crate::vm::PAGE_SIZE)
+        needed.align_up(ostd::mm::PAGE_SIZE)
     }
 
     /// Computes the thread-pointer value from the layout bases.
@@ -189,7 +189,7 @@ pub fn setup_tls<L: TlsLayout>(
         // No PT_TLS: still allocate a minimal block for the TCB so that
         // musl's __pthread_self() doesn't dereference NULL.
         let min_tcb = L::pthread_size() + L::gap_above_tp() + L::dtv_entry_count() * 8;
-        min_tcb.align_up(crate::vm::PAGE_SIZE)
+        min_tcb.align_up(ostd::mm::PAGE_SIZE)
     };
 
     let tls_base = vmar

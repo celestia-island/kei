@@ -88,7 +88,7 @@ pub(crate) unsafe fn bringup_all_aps(
         );
 
         // SAFETY: Each MPIDR is unique and the entry point is valid.
-        let result = unsafe { psci_cpu_on(*mpidr, entry_paddr, cpu_id as u64) };
+        let result = unsafe { psci_cpu_on(*mpidr, entry_paddr as u64, cpu_id as u64) };
 
         if result == 0 {
             crate::debug!("PSCI CPU_ON success for CPU {}", cpu_id);
@@ -194,8 +194,13 @@ unsafe fn fill_boot_page_table_ptr(pt_ptr: Paddr) {
 }
 
 fn get_ap_boot_start_addr() -> Paddr {
-    // Use inline assembly to get the linker symbol's runtime address.
-    // The symbol is defined in ap_boot.S and placed in the `.ap_boot` section.
+    // The kernel is linked at a high virtual address. The boot page table
+    // maps PA 0x40000000..0x50000000 at VA 0xffffffff40000000..0xffffffff50000000
+    // (L1 entry 509, 1 GiB block). The .ap_boot section lives inside this range.
+    // Convert the runtime VA (returned by adrp) to PA by subtracting the VA base
+    // and adding the PA base.
+    const KERNEL_VA_BASE: u64 = 0xffff_ffff_4000_0000;
+    const KERNEL_PA_BASE: u64 = 0x4000_0000;
     let addr: u64;
     unsafe {
         core::arch::asm!(
@@ -205,8 +210,7 @@ fn get_ap_boot_start_addr() -> Paddr {
             options(pure, nomem, nostack),
         );
     }
-    // ap_boot_start is linked at a kernel virtual address. Convert to physical.
-    addr as Paddr - crate::mm::KERNEL_VMA
+    (addr - KERNEL_VA_BASE + KERNEL_PA_BASE) as Paddr
 }
 
 // ---------------------------------------------------------------------------

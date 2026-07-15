@@ -126,26 +126,14 @@ impl<SecuritySensitivity> IoMem<SecuritySensitivity> {
             priv_flags,
         };
 
-/// On aarch64 QEMU TCG, the VMALLOC-based mapping created by KVirtArea
-/// works for reads but silently drops writes (the virtio device never sees
-/// DRIVER_OK etc.). The boot page table's linear mapping (L0 entry 256,
-/// 1 GiB block descriptors covering PA range 0x0..0x1_0000_0000 at
-/// VA 0xffff_8000_0000_0000 via the identity L1 table) works for both
-/// reads and writes. We use this linear mapping instead of creating a
-/// new VMALLOC mapping until the kernel page table cursor bug is fixed
-/// (see PLAN.md § "virtio-gpu 黑屏根因修正").
-///
-/// The `wrapping_*` arithmetic in `base()` / `read_once()` / `write_once()`
-/// pairs with the offset calculation below — both the KVirtArea start VA
-/// and the linear-mapping VA live in the kernel half (top bit set), so
-/// direct `+` would overflow `usize` in debug builds.
+
         #[cfg(target_arch = "aarch64")]
         {
+            const DEVICE_LINEAR_BASE: usize = 0xffff_8000_0000_0000;
+
             let kva = unsafe {
                 KVirtArea::map_untracked_frames(area_size, 0, frames_range.clone(), prop)
             };
-            // Override: use boot page table's linear mapping instead of
-            // KVirtArea's VMALLOC mapping (see DEVICE_LINEAR_BASE doc).
             let linear_va = DEVICE_LINEAR_BASE + first_page_start;
             let real_offset = range.start - first_page_start;
             let linear_offset = linear_va.wrapping_sub(kva.start()) + real_offset;
@@ -193,9 +181,9 @@ impl<SecuritySensitivity> IoMem<SecuritySensitivity> {
 
     /// Returns the base virtual address of the MMIO range.
     ///
-    /// On aarch64, [`Self::new`] computes `offset` such that the boot page
-    /// table's linear-mapping VA is recovered: `linear_va = kva.start()
-    /// .wrapping_add(offset)`. See [`DEVICE_LINEAR_BASE`] for rationale.
+    /// The `wrapping_*` arithmetic is intentional — on aarch64 the boot page
+    /// table's linear-mapping VA is recovered via offset arithmetic that may
+    /// traverse the kernel-half address boundary.
     fn base(&self) -> usize {
         self.kvirt_area.deref().start().wrapping_add(self.offset)
     }

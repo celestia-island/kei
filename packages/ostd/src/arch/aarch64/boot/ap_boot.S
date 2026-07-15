@@ -21,10 +21,7 @@ TCR_EPD0                = (1 << 7)      // Disable TTBR0 walks (kernel only)
 TCR_A1                  = (0 << 22)     // Use TTBR0_EL1 for ASID
 TCR_IPS_48BIT           = (5 << 32)     // IPA size = 48 bits
 
-TCR_VALUE               = TCR_T0SZ | TCR_T1SZ | TCR_IRGN0_WBWA | TCR_ORGN0_WBWA \
-                        | TCR_SH0_INNER | TCR_IRGN1_WBWA | TCR_ORGN1_WBWA \
-                        | TCR_SH1_INNER | TCR_TG0_4K | TCR_TG1_4K \
-                        | TCR_EPD0 | TCR_A1 | TCR_IPS_48BIT
+TCR_VALUE               = TCR_T0SZ | TCR_T1SZ | TCR_IRGN0_WBWA | TCR_ORGN0_WBWA | TCR_SH0_INNER | TCR_IRGN1_WBWA | TCR_ORGN1_WBWA | TCR_SH1_INNER | TCR_TG0_4K | TCR_TG1_4K | TCR_EPD0 | TCR_A1 | TCR_IPS_48BIT
 
 MAIR_VALUE              = (0x44 << 0) | (0xff << 8)  // Normal WriteBack / Normal
 

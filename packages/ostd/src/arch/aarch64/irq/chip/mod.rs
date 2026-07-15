@@ -27,11 +27,12 @@ const GIC_DEFAULT_PRIORITY: u8 = 0xa8;
 const GIC_PRIORITY_STRIDE4: u32 = 0xa8a8a8a8;
 
 /// Helper: validates INTID is within the mapping array bounds.
-fn check_intid(intid: u32) -> Result<()> {
+/// Returns `None` if the INTID exceeds the maximum supported value.
+fn check_intid(intid: u32) -> Option<()> {
     if (intid as usize) >= MAX_INTIDS {
-        return_errno_with_message!(Errno::EINVAL, "GIC INTID out of range: {}", intid);
+        return None;
     }
-    Ok(())
+    Some(())
 }
 
 /// Maps GIC INTID → allocated software IRQ number.
@@ -76,7 +77,7 @@ impl IrqChip {
 
         // Store INTID → irq_num forward mapping inside IrqChip
         {
-            check_intid(intid)?;
+            check_intid(intid).ok_or(crate::Error::AccessDenied)?;
             let mut map = self.intid_to_irq_num.lock();
             if map[intid as usize].is_some() {
                 return Err(crate::Error::AccessDenied);

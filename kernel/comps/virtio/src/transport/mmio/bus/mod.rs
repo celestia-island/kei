@@ -72,7 +72,11 @@ where
         if device_id == 0 {
             return Err(MmioRegisterError::NoDevice);
         }
-        ostd::early_println!("[virtio-mmio] device ID = {} at {:#x} (linear mapping)", device_id, start_addr);
+        ostd::early_println!(
+            "[virtio-mmio] device ID = {} at {:#x} (linear mapping)",
+            device_id,
+            start_addr
+        );
     }
 
     #[cfg(not(target_arch = "aarch64"))]

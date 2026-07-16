@@ -328,7 +328,9 @@ fn init_in_first_kthread(path_resolver: &PathResolver) {
     }
     ostd::early_println!("[kthread] before net::init_in_first_kthread");
     crate::net::init_in_first_kthread();
-    ostd::early_println!("[kthread] after net::init_in_first_kthread, before fs::init_in_first_kthread");
+    ostd::early_println!(
+        "[kthread] after net::init_in_first_kthread, before fs::init_in_first_kthread"
+    );
     crate::fs::init_in_first_kthread(path_resolver);
     ostd::early_println!("[kthread] after fs::init_in_first_kthread (rootfs ready)");
     #[cfg(any(target_arch = "x86_64", target_arch = "riscv64"))]
@@ -361,7 +363,8 @@ fn print_sixel_test_image() {
     // Simplified: draw 3 colored blocks side by side in one sixel row.
     // Each block = select color + 8 data chars of '~' (0x7e = all 6 bits set).
     // Use byte array to avoid Rust line-continuation whitespace issues.
-    let sixel_bytes: &[u8] = b"\x1bPq#1;2;100;0;0#1~~~~~~~~#2;2;0;100;0#2~~~~~~~~#3;2;0;0;100#3~~~~~~~~\x1b\\";
+    let sixel_bytes: &[u8] =
+        b"\x1bPq#1;2;100;0;0#1~~~~~~~~#2;2;0;100;0#2~~~~~~~~#3;2;0;0;100#3~~~~~~~~\x1b\\";
     ostd::info!("sending {} bytes to fb_console", sixel_bytes.len());
 
     // Send the Sixel sequence directly through the boot console (fb_console),
@@ -462,8 +465,9 @@ fn open_initial_console(ctx: &Context) {
     // VT framebuffer still renders independently via FramebufferConsole.
     #[cfg(target_arch = "aarch64")]
     {
-        let console: Arc<dyn FileLike> =
-            Arc::new(crate::serial_console::SerialConsole::new(AccessMode::O_RDWR));
+        let console: Arc<dyn FileLike> = Arc::new(crate::serial_console::SerialConsole::new(
+            AccessMode::O_RDWR,
+        ));
         let file_table = ctx.thread_local.borrow_file_table();
         let mut ft = file_table.unwrap().write();
         let _ = ft.insert(console.clone(), FdFlags::empty()); // fd 0 = stdin
@@ -475,41 +479,41 @@ fn open_initial_console(ctx: &Context) {
 
     #[cfg(not(target_arch = "aarch64"))]
     {
-    // Try /dev/console first (or /dev/tty0). On aarch64, if the TTY/VT
-    // subsystem initialized successfully, /dev/console will be the VT
-    // framebuffer terminal — giving us keyboard input + ANSI display.
-    let console_paths = ["/dev/console", "/dev/tty0", "/dev/ttyS0"];
-    let fs_info = ctx.thread_local.borrow_fs();
-    let resolver = fs_info.resolver();
-    let resolver_guard = resolver.read();
+        // Try /dev/console first (or /dev/tty0). On aarch64, if the TTY/VT
+        // subsystem initialized successfully, /dev/console will be the VT
+        // framebuffer terminal — giving us keyboard input + ANSI display.
+        let console_paths = ["/dev/console", "/dev/tty0", "/dev/ttyS0"];
+        let fs_info = ctx.thread_local.borrow_fs();
+        let resolver = fs_info.resolver();
+        let resolver_guard = resolver.read();
 
-    let path = console_paths.iter().find_map(|p| {
-        FsPath::try_from(*p)
-            .ok()
-            .and_then(|fp| resolver_guard.lookup(&fp).ok().map(|path| (*p, path)))
-    });
-    drop(resolver_guard);
+        let path = console_paths.iter().find_map(|p| {
+            FsPath::try_from(*p)
+                .ok()
+                .and_then(|fp| resolver_guard.lookup(&fp).ok().map(|path| (*p, path)))
+        });
+        drop(resolver_guard);
 
-    let file: Arc<dyn FileLike> = if let Some((found, path)) = path {
-        match InodeHandle::new(path, AccessMode::O_RDWR, StatusFlags::empty()) {
-            Ok(f) => {
-                ostd::info!("console opened: {}", found);
-                Arc::new(f)
+        let file: Arc<dyn FileLike> = if let Some((found, path)) = path {
+            match InodeHandle::new(path, AccessMode::O_RDWR, StatusFlags::empty()) {
+                Ok(f) => {
+                    ostd::info!("console opened: {}", found);
+                    Arc::new(f)
+                }
+                Err(e) => {
+                    ostd::info!("console open failed: {:?}, falling back", e);
+                    return;
+                }
             }
-            Err(e) => {
-                ostd::info!("console open failed: {:?}, falling back", e);
-                return;
-            }
-        }
-    } else {
-        return;
-    };
+        } else {
+            return;
+        };
 
-    let file_table = ctx.thread_local.borrow_file_table();
-    let mut ft = file_table.unwrap().write();
-    let _ = ft.insert(file.clone(), FdFlags::empty()); // fd 0 = stdin
-    let _ = ft.insert(file.clone(), FdFlags::empty()); // fd 1 = stdout
-    let _ = ft.insert(file.clone(), FdFlags::empty()); // fd 2 = stderr
+        let file_table = ctx.thread_local.borrow_file_table();
+        let mut ft = file_table.unwrap().write();
+        let _ = ft.insert(file.clone(), FdFlags::empty()); // fd 0 = stdin
+        let _ = ft.insert(file.clone(), FdFlags::empty()); // fd 1 = stdout
+        let _ = ft.insert(file.clone(), FdFlags::empty()); // fd 2 = stderr
     } // end #[cfg(not(target_arch = "aarch64"))]
 }
 

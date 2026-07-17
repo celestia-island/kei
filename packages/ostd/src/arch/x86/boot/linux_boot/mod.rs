@@ -217,7 +217,10 @@ fn parse_memory_regions(boot_params: &BootParams) -> MemoryRegionArray {
 // SAFETY: The name does not collide with other symbols.
 #[unsafe(no_mangle)]
 unsafe extern "sysv64" fn __linux_boot(params_ptr: *const BootParams) -> ! {
-    crate::early_println!("[kei-boot] __linux_boot entered (params_ptr={:#x})", params_ptr as usize);
+    crate::early_println!(
+        "[kei-boot] __linux_boot entered (params_ptr={:#x})",
+        params_ptr as usize
+    );
     let params = unsafe { &*params_ptr };
     crate::early_println!("[kei-boot] params read ok, checking header magic");
     assert_eq!({ params.hdr.header }, LINUX_BOOT_HEADER_MAGIC);

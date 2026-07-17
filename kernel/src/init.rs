@@ -57,7 +57,8 @@ pub(super) fn main() {
         for c in &comps {
             ostd::early_println!("[comp]   info: {:?}", c);
         }
-        let registries: Vec<_> = component::inventory::iter::<component::ComponentRegistry>().collect();
+        let registries: Vec<_> =
+            component::inventory::iter::<component::ComponentRegistry>().collect();
         ostd::early_println!("[comp] {} ComponentRegistry entries:", registries.len());
         for r in registries {
             ostd::early_println!("[comp]   registry: {:?}", r);

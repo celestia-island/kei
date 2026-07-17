@@ -13,8 +13,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       # Keep in sync with rust-toolchain.toml (nightly-2026-05-01).
-      - uses: dtolnay/rust-toolchain@nightly-2026-05-01
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: nightly-2026-05-01
           components: rust-src, rustc-dev, llvm-tools-preview
           targets: aarch64-unknown-none
       - uses: Swatinem/rust-cache@v2
@@ -27,7 +28,7 @@ jobs:
       # cargo osdk is required by scripts/test_all_arch.py; built from the
       # vendored source at osdk/.
       - name: Install cargo-osdk
-        run: cargo install --path osdk --force
+        run: cargo install --path packages/osdk --force
       - name: Boot test aarch64
         run: |
           chmod +x scripts/*.sh 2>/dev/null; true
@@ -39,8 +40,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       # Keep in sync with rust-toolchain.toml (nightly-2026-05-01).
-      - uses: dtolnay/rust-toolchain@nightly-2026-05-01
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: nightly-2026-05-01
           components: rust-src, rustc-dev, llvm-tools-preview
           targets: x86_64-unknown-none
       - uses: Swatinem/rust-cache@v2
@@ -49,7 +51,7 @@ jobs:
       - name: Install celestia-devtools
         run: pip install git+https://github.com/celestia-island/celestia-devtools.git
       - name: Install cargo-osdk
-        run: cargo install --path osdk --force
+        run: cargo install --path packages/osdk --force
       - name: Boot test x86_64
         run: |
           chmod +x scripts/*.sh 2>/dev/null; true
@@ -62,8 +64,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       # Keep in sync with rust-toolchain.toml (nightly-2026-05-01).
-      - uses: dtolnay/rust-toolchain@nightly-2026-05-01
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: nightly-2026-05-01
           components: rust-src, rustc-dev, llvm-tools-preview
           targets: riscv64imac-unknown-none-elf
       - uses: Swatinem/rust-cache@v2
@@ -72,7 +75,7 @@ jobs:
       - name: Install celestia-devtools
         run: pip install git+https://github.com/celestia-island/celestia-devtools.git
       - name: Install cargo-osdk
-        run: cargo install --path osdk --force
+        run: cargo install --path packages/osdk --force
       - name: Boot test riscv64
         run: |
           chmod +x scripts/*.sh 2>/dev/null; true

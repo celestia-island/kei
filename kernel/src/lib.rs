@@ -59,7 +59,7 @@ mod prelude;
 mod process;
 mod sched;
 mod security;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "riscv64"))]
 mod serial_console;
 mod syscall;
 mod thread;

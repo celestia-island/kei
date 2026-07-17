@@ -79,22 +79,6 @@ where
         );
     }
 
-    #[cfg(not(target_arch = "aarch64"))]
-    {
-        let Ok(io_mem) = IoMem::acquire(mmio_range) else {
-            return Err(MmioRegisterError::MmioUnavailable);
-        };
-        if !mmio_check_magic(&io_mem) {
-            return Err(MmioRegisterError::MagicMismatch);
-        }
-        match mmio_read_device_id(&io_mem) {
-            Err(_) | Ok(0) => return Err(MmioRegisterError::NoDevice),
-            Ok(id) => {
-                ostd::early_println!("[virtio-mmio] device ID = {} at {:#x}", id, start_addr);
-            }
-        }
-    }
-
     // Create IoMem for device operations. On aarch64 use Writeback to match
     // the linear mapping cache attributes (works on QEMU TCG).
     #[cfg(target_arch = "aarch64")]
@@ -105,8 +89,20 @@ where
     };
     #[cfg(not(target_arch = "aarch64"))]
     let io_mem = {
-        // Re-acquire for the device (the earlier one was in a different scope)
-        IoMem::acquire(mmio_range).map_err(|_| MmioRegisterError::MmioUnavailable)?
+        // Acquire once and reuse: the region can only be acquired a single
+        // time, and `mmio_range` is moved by `IoMem::acquire`.
+        let io_mem =
+            IoMem::acquire(mmio_range).map_err(|_| MmioRegisterError::MmioUnavailable)?;
+        if !mmio_check_magic(&io_mem) {
+            return Err(MmioRegisterError::MagicMismatch);
+        }
+        match mmio_read_device_id(&io_mem) {
+            Err(_) | Ok(0) => return Err(MmioRegisterError::NoDevice),
+            Ok(id) => {
+                ostd::early_println!("[virtio-mmio] device ID = {} at {:#x}", id, start_addr);
+            }
+        }
+        io_mem
     };
 
     ostd::early_println!("[virtio-mmio] allocating IRQ line...");

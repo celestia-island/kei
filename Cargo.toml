@@ -307,9 +307,7 @@ ostd-test = { path = "packages/ostd/libs/ostd-test" }
 # either. Vendor 0.15.5 locally and strip the six offending impls (see
 # packages/patches/strip_step_overflowing.py).
 x86_64 = { path = "packages/patches/x86_64" }
-# unwinding 0.2.10 treats `core::intrinsics::catch_unwind`'s return value as
-# `bool`, which only holds on nightlies newer than the pinned
-# nightly-2026-05-01 (there it returns `i32`, 0 == no unwind), so the crate
-# fails with E0308. Vendor 0.2.10 locally and compare the return value
-# against 0 explicitly (see packages/patches/unwinding/src/panicking.rs).
-unwinding = { path = "packages/patches/unwinding" }
+# NOTE: unwinding is intentionally NOT patched here. All architectures use
+# the `=0.2.8` pin from packages/ostd/Cargo.toml, which builds on the pinned
+# nightly-2026-05-01 toolchain (the 0.2.10 vendored crate was dropped in
+# favor of the pin shared with the riscv64 boot work).

@@ -29,7 +29,6 @@ osdk-heap-allocator = { path = "packages/osdk/deps/heap-allocator" }
 # newer nightly than the pinned one, so use the locally vendored crate with
 # the Step::forward/backward_overflowing impls stripped.
 x86_64 = { path = "packages/patches/x86_64" }
-# See the matching entry in the root Cargo.toml: unwinding 0.2.10 assumes a
-# `bool`-returning catch_unwind intrinsic from a newer nightly; use the
-# locally vendored crate with the `!= 0` fix in src/panicking.rs.
-unwinding = { path = "packages/patches/unwinding" }
+# NOTE: unwinding is intentionally NOT patched here — see the matching note
+# in the root Cargo.toml (the `=0.2.8` pin in packages/ostd/Cargo.toml is
+# used for every architecture).

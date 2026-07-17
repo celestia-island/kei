@@ -91,8 +91,7 @@ where
     let io_mem = {
         // Acquire once and reuse: the region can only be acquired a single
         // time, and `mmio_range` is moved by `IoMem::acquire`.
-        let io_mem =
-            IoMem::acquire(mmio_range).map_err(|_| MmioRegisterError::MmioUnavailable)?;
+        let io_mem = IoMem::acquire(mmio_range).map_err(|_| MmioRegisterError::MmioUnavailable)?;
         if !mmio_check_magic(&io_mem) {
             return Err(MmioRegisterError::MagicMismatch);
         }

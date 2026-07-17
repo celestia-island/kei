@@ -26,5 +26,10 @@ ostd-test = { path = "packages/ostd/libs/ostd-test" }
 osdk-frame-allocator = { path = "packages/osdk/deps/frame-allocator" }
 osdk-heap-allocator = { path = "packages/osdk/deps/heap-allocator" }
 # See the matching entry in the root Cargo.toml: x86_64 0.15.5 requires a
-# newer nightly than the pinned one, so pin to the v0.15.4 tag.
-x86_64 = { git = "https://github.com/rust-osdev/x86_64", rev = "e18cb35fb5" }
+# newer nightly than the pinned one, so use the locally vendored crate with
+# the Step::forward/backward_overflowing impls stripped.
+x86_64 = { path = "packages/patches/x86_64" }
+# See the matching entry in the root Cargo.toml: unwinding 0.2.10 assumes a
+# `bool`-returning catch_unwind intrinsic from a newer nightly; use the
+# locally vendored crate with the `!= 0` fix in src/panicking.rs.
+unwinding = { path = "packages/patches/unwinding" }

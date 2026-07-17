@@ -46,7 +46,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-kei = { git = "https://github.com/celestia-island/kei.git", branch = "dev", default-features = false, features = ["wire", "manifest", "hal"] }
+kei = { git = "https://github.com/celestia-island/kei.git", branch = "master", default-features = false, features = ["wire", "manifest", "hal"] }
 ```
 
 Implement `Transport` for your UART, then use `Node`:

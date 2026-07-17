@@ -30,9 +30,6 @@ jobs:
   test-x86_64:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # TODO: drop continue-on-error once the x86_64 grub/ISO boot chain lands
-    # on feat/next-milestone (currently on agent/boot-x86_64).
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@nightly

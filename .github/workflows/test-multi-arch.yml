@@ -37,6 +37,8 @@ jobs:
   test-x86_64:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      VDSO_LIBRARY_DIR: ${{ github.workspace }}/tests/vdso
     steps:
       - uses: actions/checkout@v7
       # Keep in sync with rust-toolchain.toml (nightly-2026-05-01).
@@ -61,6 +63,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     continue-on-error: true
+    env:
+      VDSO_LIBRARY_DIR: ${{ github.workspace }}/tests/vdso
     steps:
       - uses: actions/checkout@v7
       # Keep in sync with rust-toolchain.toml (nightly-2026-05-01).

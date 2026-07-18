@@ -107,7 +107,7 @@ def test_arch(arch: str, output_dir: Path) -> str:
         # print its tail instead of swallowing it.
         raw = (build_result.stdout or b"") + (build_result.stderr or b"")
         tail = raw if isinstance(raw, str) else raw.decode("utf-8", "replace")
-        print(tail[-6000:])
+        print(tail[-60000:])
         return "FAIL"
 
     # Locate kernel binary — OSDK outputs under target/osdk/

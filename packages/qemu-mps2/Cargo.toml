@@ -10,6 +10,7 @@ publish = false
 workspace = "../kei"
 
 [dependencies]
+
 # kei wire protocol library (sibling package in the kei sub-workspace).
 # qemu-mps2 and the kei wire library are co-located in a [workspace] rooted at
 # `packages/kei/Cargo.toml`. Earlier this dep read `path = "../.."` which
@@ -21,9 +22,8 @@ kei = { path = "../kei", default-features = false, features = [
 ] }
 
 # Heap allocator for `alloc` (kei's wire protocol uses Vec<u8> for frames).
-linked_list_allocator = "0.10"
 
-# Cortex-M runtime — only for the firmware binary (no_std target).
+linked_list_allocator = "0.10"
 [target.'cfg(target_os = "none")'.dependencies]
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7"

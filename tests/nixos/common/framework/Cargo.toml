@@ -9,6 +9,7 @@ edition.workspace = true
 workspace = true
 
 [dependencies]
+
 inventory.workspace = true
 nixos-test-macro.workspace = true
 rexpect.workspace = true

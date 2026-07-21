@@ -16,6 +16,7 @@ default-target = "x86_64-unknown-none"
 targets = ["x86_64-unknown-none"]
 
 [dependencies]
+
 align_ext.workspace = true
 bit_field.workspace = true
 bitflags.workspace = true
@@ -31,22 +32,12 @@ log.workspace = true
 minicov = { workspace = true, optional = true }
 num-traits.workspace = true
 ostd-macros.workspace = true
-ostd-test.workspace = true
 ostd-pod.workspace = true
-spin.workspace = true
+ostd-test.workspace = true
 smallvec.workspace = true
+spin.workspace = true
 volatile.workspace = true
 zerocopy.workspace = true
-
-# The targets are chosen to prevent the generated machine code from using any
-# vector or floating-point registers.
-#
-# - `x86_64-unknown-none` satisfies this property, as explained by [the
-#   official documentation](https://doc.rust-lang.org/rustc/platform-support/x86_64-unknown-none.html).
-# - `riscv64imac-unknown-none-elf` denotes a RISC-V ISA with only basic
-#   extensions (`imac`) and no floating-point-related extensions.
-# - `loongarch64-unknown-none-softfloat` is rather self-explaining.
-
 [target.x86_64-unknown-none.dependencies]
 x86_64.workspace = true
 x86 = "^0.52"

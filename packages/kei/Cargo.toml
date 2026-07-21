@@ -39,21 +39,20 @@ hal = []
 std = ["serde?/std", "postcard?/use-std"]
 
 [dependencies]
-# serde with alloc (no_std). The "derive" feature gives Serialize/Deserialize.
-serde = { version = "1", default-features = false, features = ["derive", "alloc"], optional = true }
 
 # postcard: compact binary serde format for wire payloads.
 # Works on no_std (designed for embedded). "alloc" enables to_allocvec.
 postcard = { version = "1", default-features = false, features = ["alloc"], optional = true }
-
+# serde with alloc (no_std). The "derive" feature gives Serialize/Deserialize.
+serde = { version = "1", default-features = false, features = ["derive", "alloc"], optional = true }
 [dev-dependencies]
-# For host-side tests only (cargo test). Does NOT affect no_std consumers.
-serde_json = "1"
+
 # Benchmark framework (cargo bench). Host-only.
 criterion = { version = "0.5", default-features = false, features = ["plotters", "cargo_bench_support"] }
 # Math functions for benchmark data generation (NTC simulation).
 libm = "0.2"
-
+# For host-side tests only (cargo test). Does NOT affect no_std consumers.
+serde_json = "1"
 [[bench]]
 name = "wire_bench"
 harness = false

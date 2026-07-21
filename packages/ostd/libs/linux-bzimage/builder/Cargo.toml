@@ -9,6 +9,7 @@ edition.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+
 align_ext.workspace = true
 bitflags.workspace = true
 libflate = { workspace = true, features = [ "std" ] }
@@ -16,6 +17,5 @@ ostd-pod.workspace = true
 serde.workspace = true
 xmas-elf.workspace = true
 zerocopy.workspace = true
-
 [lints]
 workspace = true

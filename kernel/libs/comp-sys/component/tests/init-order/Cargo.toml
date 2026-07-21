@@ -6,12 +6,12 @@ edition = "2024"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+
 component = {path="../../../component"}
 first-init = {path="first-init"}
+log = "0.4"
 second-init = {path="second-init"}
 simple_logger = "4.0.0"
-log = "0.4"
-
 [workspace]
 members = [
     "first-init",

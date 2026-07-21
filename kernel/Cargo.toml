@@ -6,6 +6,7 @@ edition.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+
 align_ext.workspace = true
 aster-bigtcp.workspace = true
 aster-block.workspace = true
@@ -19,8 +20,8 @@ aster-logger.workspace = true
 aster-mlsdisk.workspace = true
 aster-network.workspace = true
 aster-nvme.workspace = true
-aster-rights.workspace = true
 aster-rights-proc.workspace = true
+aster-rights.workspace = true
 aster-softirq.workspace = true
 aster-systree.workspace = true
 aster-time.workspace = true
@@ -40,8 +41,8 @@ getset.workspace = true
 hashbrown.workspace = true
 id-alloc.workspace = true
 inherit-methods-macro.workspace = true
-intrusive-collections.workspace = true
 int-to-c-enum.workspace = true
+intrusive-collections.workspace = true
 io-util.workspace = true
 jhash.workspace = true
 keyable-arc.workspace = true
@@ -51,8 +52,8 @@ lru.workspace = true
 no_std_io2.workspace = true
 osdk-frame-allocator.workspace = true
 osdk-heap-allocator.workspace = true
-ostd.workspace = true
 ostd-pod.workspace = true
+ostd.workspace = true
 paste.workspace = true
 rand = { workspace = true, features = [
     "small_rng",
@@ -63,13 +64,12 @@ smallvec.workspace = true
 spin.workspace = true
 takeable.workspace = true
 time.workspace = true
-typeflags.workspace = true
 typeflags-util.workspace = true
+typeflags.workspace = true
 xarray.workspace = true
 xmas-elf.workspace = true
 zerocopy.workspace = true
 zune-inflate.workspace = true
-
 [target.x86_64-unknown-none.dependencies]
 tdx-guest = { version = "^0.3", optional = true }
 x86_64.workspace = true

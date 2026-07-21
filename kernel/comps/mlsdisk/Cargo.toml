@@ -6,6 +6,7 @@ edition.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+
 aes-gcm.workspace = true
 aster-block.workspace = true
 bittle.workspace = true
@@ -16,11 +17,10 @@ hashbrown.workspace = true
 inherit-methods-macro.workspace = true
 lending-iterator.workspace = true
 lru.workspace = true
-ostd.workspace = true
 ostd-pod.workspace = true
+ostd.workspace = true
 postcard.workspace = true
 serde.workspace = true
 zerocopy.workspace = true
-
 [lints]
 workspace = true

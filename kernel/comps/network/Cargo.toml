@@ -6,14 +6,14 @@ edition.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+
 aster-bigtcp.workspace = true
 aster-softirq.workspace = true
 bitvec.workspace = true
 component.workspace = true
-ostd.workspace = true
 ostd-pod.workspace = true
+ostd.workspace = true
 spin.workspace = true
 zerocopy.workspace = true
-
 [lints]
 workspace = true

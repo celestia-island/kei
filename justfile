@@ -293,6 +293,7 @@ _build-aarch64:
 
 # Format Rust + Markdown docs
 fmt:
+    just fmt-toml
     cargo fmt --all
     just fmt-markdown
 

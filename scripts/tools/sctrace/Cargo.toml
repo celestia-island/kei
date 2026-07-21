@@ -12,7 +12,8 @@ name = "sctrace"
 path = "src/lib.rs"
 
 [dependencies]
+
 clap = { version = "4.5.47", features = ["derive"] }
-regex = "1.11.2"
-nom = "7"
 nix = { version = "0.27", features = ["process"] }
+nom = "7"
+regex = "1.11.2"

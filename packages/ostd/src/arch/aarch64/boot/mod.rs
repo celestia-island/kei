@@ -10,6 +10,7 @@ use fdt::Fdt;
 use spin::Once;
 
 use crate::{
+    arch::serial::{UartKind, UartProbe},
     boot::{
         BootloaderAcpiArg, BootloaderFramebufferArg,
         memory_region::{MemoryRegion, MemoryRegionArray, MemoryRegionType},
@@ -47,6 +48,107 @@ fn parse_initramfs() -> Option<&'static [u8]> {
 
 fn parse_acpi_arg() -> BootloaderAcpiArg {
     BootloaderAcpiArg::NotProvided
+}
+
+/// Probe the UART from the FDT.
+/// Called early in boot to replace the QEMU PL011 default with the
+/// correct hardware UART (e.g., DW 8250 on Rockchip/Broadcom/Allwinner).
+fn probe_uart_from_fdt(devicetree: &Fdt) -> UartProbe {
+    // Strategy: find the first UART node by compatible string,
+    // preferring the /chosen stdout-path alias.
+
+    // 1. Check /chosen stdout-path for a serial alias (e.g. "serial2:1500000n8")
+    if let Some(chosen) = devicetree.find_node("/chosen") {
+        if let Some(stdout) = chosen.property("stdout-path") {
+            if let Ok(path_str) = core::str::from_utf8(stdout.value) {
+                // Extract the alias part (before ':')
+                let alias = path_str.split(':').next().unwrap_or(path_str);
+                // Resolve the alias: e.g., "serial2" → look up "/aliases/serial2"
+                if let Some(aliases) = devicetree.find_node("/aliases") {
+                    if let Some(alias_prop) = aliases.property(alias) {
+                        if let Ok(alias_path) = core::str::from_utf8(alias_prop.value) {
+                            if let Some(node) = devicetree.find_node(alias_path.trim_end_matches('\0')) {
+                                if let Some(probe) = parse_uart_node(node) {
+                                    return probe;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Search by compatible strings in order of preference:
+    // Standard 8250-compatible, then Rockchip-specific, then PL011 (QEMU fallback)
+    let compat_lists: &[&[&str]] = &[
+        &["snps,dw-apb-uart"],       // Synopsys DesignWare 8250
+        &["ns16550a", "ns16550"],    // Standard 8250/16550
+        &["arm,pl011"],              // ARM PL011 (QEMU)
+    ];
+
+    for compat_list in compat_lists {
+        if let Some(node) = devicetree.find_compatible(compat_list) {
+            if let Some(probe) = parse_uart_node(node) {
+                return probe;
+            }
+        }
+    }
+
+    // 3. Fallback: PL011 at QEMU default address
+    UartProbe::default_qemu()
+}
+
+/// Parse a UART device tree node into a UartProbe.
+fn parse_uart_node(node: fdt::node::FdtNode) -> Option<UartProbe> {
+    let reg = node.property("reg")?.value;
+    if reg.len() < 8 {
+        return None;
+    }
+    // FDT reg is two u32 cells (address_high, address_low) or two u64 cells
+    let base = if reg.len() >= 16 {
+        u64::from_be_bytes(reg[0..8].try_into().ok()?) as usize
+    } else {
+        // Two u32 cells
+        let high = u32::from_be_bytes(reg[0..4].try_into().ok()?) as u64;
+        let low = u32::from_be_bytes(reg[4..8].try_into().ok()?) as u64;
+        ((high << 32) | low) as usize
+    };
+
+    let compat = node.property("compatible")?.value;
+    let kind = if has_compat(compat, b"arm,pl011") {
+        UartKind::Pl011
+    } else {
+        let reg_shift_raw = node.property("reg-shift").and_then(|s| s.as_usize()).unwrap_or(0);
+        let io_width_raw = node.property("reg-io-width").and_then(|w| w.as_usize()).unwrap_or(1);
+        UartKind::Dw8250 {
+            reg_shift: reg_shift_raw as u32,
+            io_width: io_width_raw as u32,
+        }
+    };
+
+    Some(UartProbe { base, kind })
+}
+
+/// Check if a compatible bytes string contains the given exact match.
+fn has_compat(compat_bytes: &[u8], target: &[u8]) -> bool {
+    let s = compat_bytes;
+    let t = target;
+    if s.len() < t.len() {
+        return false;
+    }
+    // Simple substring search for null-terminated compatible strings
+    for start in 0..s.len() - t.len() {
+        if &s[start..start + t.len()] == t {
+            // Check word boundary
+            let before_ok = start == 0 || s[start - 1] == 0;
+            let after_ok = start + t.len() >= s.len() || s[start + t.len()] == 0;
+            if before_ok && after_ok {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 fn parse_framebuffer_info() -> Option<BootloaderFramebufferArg> {
@@ -254,6 +356,15 @@ unsafe extern "C" fn aarch64_boot(fdt_paddr: usize) -> ! {
 
     let fdt = unsafe { Fdt::from_ptr(fdt_ptr).unwrap() };
     crate::early_println!("[kei] FDT parsed successfully, size={}", fdt.total_size());
+
+    // Re-probe the UART from the FDT. On real hardware this detects
+    // the correct UART type and address (e.g., DW 8250 on RK3566).
+    // On QEMU virt, this falls back to PL011 at 0x09000000.
+    let uart = probe_uart_from_fdt(&fdt);
+    let uart_base = uart.base;
+    crate::arch::serial::init_with_probe(uart);
+    crate::early_println!("[kei] UART re-initialized (type={:?}, base={:#x})",
+        crate::arch::serial::uart_kind(), uart_base);
 
     // Save FDT physical address and size for memory reservation.
     FDT_PHYS.call_once(|| (fdt_paddr, fdt.total_size()));

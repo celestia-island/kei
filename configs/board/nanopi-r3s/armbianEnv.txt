@@ -1,0 +1,6 @@
+verbosity=7
+console=serial
+bootlogo=false
+extraargs=kei.console=ttyS2,1500000
+overlay_prefix=rk35xx
+rootfstype=ext4

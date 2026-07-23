@@ -17,6 +17,10 @@ use crate::{
     mm::paddr_to_vaddr,
 };
 
+fn align_up(val: usize, align: usize) -> usize {
+    (val + align - 1) & !(align - 1)
+}
+
 global_asm!(include_str!("bsp_boot.S"));
 
 /// The Flattened Device Tree of the platform.
@@ -46,7 +50,73 @@ fn parse_acpi_arg() -> BootloaderAcpiArg {
 }
 
 fn parse_framebuffer_info() -> Option<BootloaderFramebufferArg> {
+    let devicetree = DEVICE_TREE.get().unwrap();
+
+    // Try the standard simple-framebuffer node.
+    if let Some(node) = devicetree.find_node("/reserved-memory/framebuffer")
+        .or_else(|| devicetree.find_node("/framebuffer"))
+        .or_else(|| devicetree.find_node("/simple-framebuffer"))
+    {
+        if let Some(fb_info) = parse_simplefb_node(node) {
+            crate::early_println!("[kei] framebuffer from FDT: {}x{} bpp={} @ {:#x}",
+                fb_info.width, fb_info.height, fb_info.bpp, fb_info.address);
+            return Some(fb_info);
+        }
+    }
+
+    // Bootloader may inject framebuffer info into /chosen node.
+    if let Some(chosen) = devicetree.find_node("/chosen") {
+        if let Some(fb_info) = parse_simplefb_node(chosen) {
+            crate::early_println!("[kei] framebuffer from /chosen: {}x{} bpp={} @ {:#x}",
+                fb_info.width, fb_info.height, fb_info.bpp, fb_info.address);
+            return Some(fb_info);
+        }
+    }
+
     None
+}
+
+/// Parse a `simple-framebuffer` compatible node from the FDT.
+fn parse_simplefb_node(node: fdt::node::FdtNode) -> Option<BootloaderFramebufferArg> {
+    let reg = node.property("reg")?.value;
+    if reg.len() < 8 {
+        return None;
+    }
+    // reg is typically two u32 pairs (address, size) for 32-bit or two u64 for 64-bit.
+    // U-Boot on aarch64 typically uses 64-bit values.
+    let address = if reg.len() >= 16 {
+        u64::from_be_bytes(reg[0..8].try_into().ok()?) as usize
+    } else {
+        u32::from_be_bytes(reg[0..4].try_into().ok()?) as usize
+    };
+
+    let width = node.property("width")?.as_usize()?;
+    let height = node.property("height")?.as_usize()?;
+    let stride = node.property("stride").and_then(|s| s.as_usize());
+
+    let format = node
+        .property("format")
+        .and_then(|s| core::str::from_utf8(s.value).ok());
+    let bpp = match format {
+        Some("a8r8g8b8") | Some("x8r8g8b8") => 32,
+        Some("r5g6b5") => 16,
+        Some("a8b8g8r8") | Some("x8b8g8r8") => 32,
+        _ => {
+            // Fall back to stride-based BPP guess.
+            if let Some(stride) = stride {
+                if width > 0 { (stride / width) * 8 } else { 32 }
+            } else {
+                32 // Default to 32bpp (most HDMI framebuffers)
+            }
+        }
+    };
+
+    Some(BootloaderFramebufferArg {
+        address,
+        width,
+        height,
+        bpp,
+    })
 }
 
 fn parse_memory_regions() -> MemoryRegionArray {
@@ -86,6 +156,19 @@ fn parse_memory_regions() -> MemoryRegionArray {
             .push(MemoryRegion::new(
                 *fdt_paddr,
                 *fdt_size,
+                MemoryRegionType::Reserved,
+            ))
+            .unwrap();
+    }
+
+    // Reserve framebuffer region so the frame allocator doesn't reclaim the
+    // buffer set up by the bootloader (U-Boot simple-framebuffer).
+    if let Some(fb) = parse_framebuffer_info() {
+        let fb_size = align_up(fb.width * fb.height * fb.bpp / 8, 4096);
+        regions
+            .push(MemoryRegion::new(
+                fb.address,
+                fb_size,
                 MemoryRegionType::Reserved,
             ))
             .unwrap();

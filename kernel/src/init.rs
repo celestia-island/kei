@@ -307,7 +307,10 @@ fn init_in_first_kthread(path_resolver: &PathResolver) {
     #[cfg(target_arch = "aarch64")]
     {
         ostd::info!("explicit component init for net stack");
-        let _ = aster_softirq::init_component_fn();
+        // softirq is already initialized during component::init_all(Bootstrap)
+        // on aarch64. Calling init_component_fn() a second time panics with
+        // "assertion failed: !self.is_enabled()".
+        // let _ = aster_softirq::init_component_fn();
         let _ = aster_console::init_component_fn();
         let _ = aster_framebuffer::init_component_fn();
         // Initialize the input core first (creates InputCore singleton),

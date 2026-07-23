@@ -213,7 +213,7 @@ bittle = "^0.6"
 bitvec = { version = "^1.0", default-features = false, features = ["alloc"] }
 cfg-if = "^1.0"
 const_format = "^0.2"
-ctr = "^0.8"
+ctr = "^0.10"
 font8x8 = { version = "^0.2", default-features = false, features = [ "unicode" ] }
 getset = "^0.1"
 gimli = { version = "^0.34", default-features = false, features = ["read-core"] }

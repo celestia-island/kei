@@ -285,9 +285,11 @@ boot_l0_pt:
 .balign 4096
 boot_l1_pt_identity:
     // L1 table for identity mapping (512 entries, each covers 1GB)
-    // Entry 0: PA 0x00000000 -> VA 0x00000000 (device)
-    // Covers UART at 0x09000000, GIC, etc.
-    .quad 0x00000701
+    // Entry 0: PA 0x00000000 -> VA 0x00000000 (normal)
+    // On QEMU virt, RAM starts at 0x40000000 (UART at 0x09000000 works
+    // fine with normal attributes in QEMU). On real HW (RK3566 etc.),
+    // RAM starts at 0x00200000 — normal is required for code execution.
+    .quad 0x00000709
     // Entry 1: PA 0x40000000 -> VA 0x40000000 (normal)
     // Kernel RAM region - MUST use normal memory for code execution
     // New KERNEL_LMA: 0x40080000 (still within this 1GB block)

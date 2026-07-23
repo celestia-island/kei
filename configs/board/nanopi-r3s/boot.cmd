@@ -35,21 +35,6 @@ load ${devtype} ${devnum}:${distro_bootpart} ${ramdisk_addr_r} /boot/initramfs.c
 
 fdt addr ${fdt_addr_r}
 
-# Patch framebuffer address into DTB if U-Boot set up video.
-# Armbian U-Boot sets ${fb_base} after HDMI init (console=display/both).
-if test -n "${fb_base}"; then
-    echo "Framebuffer at ${fb_base} ${fb_width}x${fb_height} bpp=${fb_bpp}"
-    fdt set /framebuffer reg "<0x0 ${fb_base} 0x0 0x800000>"
-    fdt set /framebuffer width "<${fb_width}>"
-    fdt set /framebuffer height "<${fb_height}>"
-    fdt set /framebuffer stride "<${fb_line_length}>"
-    if test ${fb_bpp} -eq 16; then
-        fdt set /framebuffer format "r5g6b5"
-    else
-        fdt set /framebuffer format "a8r8g8b8"
-    fi
-fi
-
 booti ${kernel_addr_r} ${ramdisk_addr_r} ${fdt_addr_r}
 
 # Recompile with:

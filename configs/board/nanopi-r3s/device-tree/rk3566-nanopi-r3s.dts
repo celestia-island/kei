@@ -17,16 +17,6 @@
 		stdout-path = "serial2:1500000n8";
 	};
 
-	framebuffer: framebuffer {
-		compatible = "simple-framebuffer";
-		reg = <0x0 0x00000000 0x0 0x800000>;
-		width = <1920>;
-		height = <1080>;
-		stride = <7680>;
-		format = "a8r8g8b8";
-		status = "okay";
-	};
-
 	memory@a00000 {
 		device_type = "memory";
 		reg = <0x0 0x00200000 0x0 0x7ee00000>;

@@ -215,23 +215,6 @@ fn parse_framebuffer_info() -> Option<BootloaderFramebufferArg> {
         }
     }
 
-    // Hardcoded fallback: U-Boot didn't patch the FDT, try known
-    // framebuffer addresses per SoC. Only compiled on non-QEMU targets.
-    #[cfg(not(feature = "cvm_guest"))]
-    {
-        const FB_FALLBACKS: &[(usize, usize, usize, usize)] = &[
-            (0xED800000, 1920, 1080, 32),
-            (0x7D000000, 1920, 1080, 32),
-        ];
-        for &(addr, w, h, bpp) in FB_FALLBACKS {
-            if addr != 0 {
-                return Some(BootloaderFramebufferArg {
-                    address: addr, width: w, height: h, bpp,
-                });
-            }
-        }
-    }
-
     None
 }
 

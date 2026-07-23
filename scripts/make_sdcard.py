@@ -216,13 +216,16 @@ def make_image(board: str, armbian_img: Path) -> Path | None:
     subprocess.run(["truncate", "-s", str(total_size), str(sdcard)], check=True)
 
     # Copy Armbian sectors 0-32767 (U-Boot + env + GPT header)
+    # KEEP the Armbian GPT intact — DO NOT overwrite it. Armbian U-Boot
+    # expects the exact GPT it was built with. Creating a new GPT breaks
+    # U-Boot's ability to find the boot partition (same lesson as evernight).
     with open(sdcard, "r+b") as img:
         img.seek(0)
         with open(armbian_img, "rb") as src:
             chunk = src.read(armbian_head)
             img.write(chunk)
 
-        # Write boot partition
+        # Write boot partition at LBA 32768 (same as Armbian's partition start)
         img.seek(BOOT_PART_LBA * SECTOR)
         with open(ext4, "rb") as src:
             while True:
@@ -231,11 +234,11 @@ def make_image(board: str, armbian_img: Path) -> Path | None:
                     break
                 img.write(chunk)
 
-    cf.step("[4/4] Fixing GPT partition table")
-    total_sectors = sdcard.stat().st_size // SECTOR
-    end_lba = total_sectors - 34
-    write_gpt(sdcard, BOOT_PART_LBA, end_lba)
-    cf.ok(f"  GPT: 1 partition (LBA {BOOT_PART_LBA}–{end_lba})")
+    # The Armbian GPT already describes the partition at LBA 32768.
+    # We preserve it unchanged. The GPT says the partition is larger than
+    # our actual content — this is fine; U-Boot only reads the first few MB.
+    cf.step("[4/4] Preserving Armbian GPT (no rewrite)")
+    cf.ok("  GPT kept from Armbian reference image")
 
     ext4.unlink(missing_ok=True)
     shutil.rmtree(output_dir / "boot-staging", ignore_errors=True)

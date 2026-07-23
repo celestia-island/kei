@@ -22,6 +22,32 @@ fn align_up(val: usize, align: usize) -> usize {
     (val + align - 1) & !(align - 1)
 }
 
+/// Blink the power LED on NanoPi R3S (RK3566) to prove the kernel entered
+/// Rust code. Writes directly to GPIO registers via identity-mapped PA.
+/// GPIO0 base = 0xFDD60000, power LED = PB7 (bit 15).
+#[cfg(not(feature = "cvm_guest"))]
+fn blink_led_rk3566() {
+    const GPIO0_BASE: usize = 0xFDD6_0000;
+    const GPIO_SWPORT_DR: usize = 0x0000;
+    const GPIO_SWPORT_DDR: usize = 0x0004;
+    const PB7_BIT: u32 = 1 << 15;
+
+    let base = paddr_to_vaddr(GPIO0_BASE);
+
+    // Set PB7 as output
+    unsafe { core::ptr::write_volatile((base + GPIO_SWPORT_DDR) as *mut u32, PB7_BIT); }
+
+    // Blink 3 times
+    for _ in 0..3 {
+        // Turn ON
+        unsafe { core::ptr::write_volatile((base + GPIO_SWPORT_DR) as *mut u32, PB7_BIT); }
+        for _ in 0..1_000_000 { core::hint::spin_loop(); }
+        // Turn OFF
+        unsafe { core::ptr::write_volatile((base + GPIO_SWPORT_DR) as *mut u32, 0); }
+        for _ in 0..1_000_000 { core::hint::spin_loop(); }
+    }
+}
+
 global_asm!(include_str!("bsp_boot.S"));
 
 /// The Flattened Device Tree of the platform.
@@ -294,6 +320,13 @@ fn parse_initramfs_range() -> Option<(usize, usize)> {
 /// - The caller must follow C calling conventions and put the right arguments in registers.
 #[unsafe(no_mangle)]
 unsafe extern "C" fn aarch64_boot(fdt_paddr: usize) -> ! {
+    // Blink the power LED BEFORE any serial init, so we have proof of life
+    // even if UART/display never work. On NanoPi R3S (RK3566):
+    //   GPIO0 base = 0xFDD60000, power LED = GPIO0_PB7 (bit 15).
+    // Uses the boot page table identity mapping (PA 0xC0000000-0xFFFFFFFF).
+    #[cfg(not(feature = "cvm_guest"))]
+    blink_led_rk3566();
+
     // Initialize early serial console FIRST, before any output.
     crate::arch::serial::init();
 

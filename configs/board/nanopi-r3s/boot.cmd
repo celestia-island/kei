@@ -19,7 +19,7 @@ if test -e ${devtype} ${devnum}:${distro_bootpart} /boot/armbianEnv.txt; then
     env import -t ${load_addr} ${filesize}
 fi
 
-setenv bootargs "console=ttyS2,1500000n8 earlycon"
+setenv bootargs "console=ttyS2,1500000n8 earlycon init=/bin/sh"
 
 load ${devtype} ${devnum}:${distro_bootpart} ${kernel_addr_r} /boot/kei-kernel.bin
 load ${devtype} ${devnum}:${distro_bootpart} ${fdt_addr_r} /boot/board.dtb

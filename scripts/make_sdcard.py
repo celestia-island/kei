@@ -57,24 +57,30 @@ def create_boot_ext4(board: str) -> Path | None:
         shutil.rmtree(boot_dir)
     boot_dir.mkdir(parents=True)
 
-    artifacts = [
-        "kei-kernel.bin",
-        "board.dtb",
-        "boot.scr",
-        "armbianEnv.txt",
-    ]
+    # Put boot files in /boot/ subdirectory (matches Armbian U-Boot layout).
+    # Armbian U-Boot's distro_bootcmd searches /boot/ for boot.scr and
+    # armbianEnv.txt first. Files at root level are silently ignored.
+    boot_sub = boot_dir / "boot"
+    boot_sub.mkdir()
+
+    artifacts = ["kei-kernel.bin", "board.dtb", "boot.scr", "armbianEnv.txt"]
     for name in artifacts:
         src = output_dir / name
         if src.exists():
-            shutil.copy2(src, boot_dir / name)
+            shutil.copy2(src, boot_sub / name)
         else:
             cf.warn(f"  {name} not found — skipping")
 
     initramfs = PROJECT_ROOT / "tests" / "initramfs" / "build" / "initramfs.cpio.gz"
     if initramfs.exists():
-        shutil.copy2(initramfs, boot_dir / "initramfs.cpio.gz")
+        shutil.copy2(initramfs, boot_sub / "initramfs.cpio.gz")
     else:
-        cf.warn("  initramfs.cpio.gz not found — run 'just build' first")
+        # Try aarch64-specific name
+        initramfs_alt = PROJECT_ROOT / "tests" / "initramfs" / "build" / "initramfs_aarch64.cpio.gz"
+        if initramfs_alt.exists():
+            shutil.copy2(initramfs_alt, boot_sub / "initramfs.cpio.gz")
+        else:
+            cf.warn("  initramfs.cpio.gz not found — run 'just build' first")
 
     ext4 = output_dir / "boot.ext4"
     if ext4.exists():

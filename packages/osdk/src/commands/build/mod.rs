@@ -228,6 +228,7 @@ fn build_kernel_elf(
         "-C force-unwind-tables=yes",
         // This is to let rustc know that "cfg(ktest)" is our well-known configuration.
         // See the [Rust Blog](https://blog.rust-lang.org/2024/05/06/check-cfg.html) for details.
+        "--check-cfg cfg(ktest)",        // See the [Rust Blog](https://blog.rust-lang.org/2024/05/06/check-cfg.html) for details.
         "--check-cfg cfg(ktest)",
         // The red zone is a small area below the stack pointer for optimization, primarily in
         // user-space applications. This optimization can be problematic in the kernel, as the CPU

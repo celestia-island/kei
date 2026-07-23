@@ -104,3 +104,13 @@ smp = 4
 [output]
 kernel_image = "kei-kernel.bin"
 dtb_image = "rk3566-nanopi-r3s.dtb"
+
+# ── IOMUX / Pinmux ─────────────────────────────────────────────────────
+
+[iomux.grfs]
+# GRF (General Register File) base addresses for pinmux control
+SYS_GRF = "0xFDC60000"
+GRF_GPIO3A = "0xFE760000"  # GPIO3A IOMUX (PC2=LAN, PC3=WAN)
+
+# Pinmux register offsets and bit fields within GRF
+# Each pin takes 2 bits: 00=GPIO, 01-11=alternate functions

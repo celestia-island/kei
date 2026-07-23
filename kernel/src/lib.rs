@@ -80,8 +80,8 @@ pub mod fb_gpu {
 
     pub fn framebuffer_info() -> Option<(usize, u32, u32, u32)> {
         // Check virtio-gpu first (QEMU).
-        if let Some(info) = aarch64_raw_gpu_probe::framebuffer_info() {
-            return Some(info);
+        if let Some((ptr, w, h, stride)) = aarch64_raw_gpu_probe::framebuffer_info() {
+            return Some((ptr as usize, w, h, stride as u32));
         }
 
         // Fallback to the published framebuffer component (simplefb / ARMBian U-Boot).

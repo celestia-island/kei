@@ -212,7 +212,11 @@ fn build_kernel_elf(
     rustflags: &[&str],
 ) -> AsterBin {
     let target_os_string = OsString::from(&arch.triple());
-    let rustc_linker_script_arg = format!("-C link-arg=-T{}.ld", arch);
+    let ld_script_name = format!("{}.ld", arch);
+    let ld_script_path = std::env::current_dir()
+        .unwrap_or_default()
+        .join(&ld_script_name);
+    let rustc_linker_script_arg = format!("-C link-arg=-T{}", ld_script_path.display());
 
     let mut rustflags = Vec::from(rustflags);
     // Asterinas does not support PIC yet.

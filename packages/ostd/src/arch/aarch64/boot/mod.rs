@@ -22,29 +22,43 @@ fn align_up(val: usize, align: usize) -> usize {
     (val + align - 1) & !(align - 1)
 }
 
-/// Blink the power LED on NanoPi R3S (RK3566) to prove the kernel entered
-/// Rust code. Writes directly to GPIO registers via identity-mapped PA.
-/// GPIO0 base = 0xFDD60000, power LED = PB7 (bit 15).
+/// Blink all three LEDs on NanoPi R3S (RK3566) to prove the kernel entered
+/// Rust code. GPIO addresses are from the board TOML config, compiled in
+/// via build.rs → board_config.rs.
 #[cfg(not(feature = "cvm_guest"))]
 fn blink_led_rk3566() {
-    const GPIO0_BASE: usize = 0xFDD6_0000;
-    const GPIO_SWPORT_DR: usize = 0x0000;
-    const GPIO_SWPORT_DDR: usize = 0x0004;
-    const PB7_BIT: u32 = 1 << 15;
+    include!("board_config.rs");
 
-    let base = paddr_to_vaddr(GPIO0_BASE);
+    let get_gpio_base = |name: &str| -> usize {
+        match name {
+            "GPIO0" => gpio::GPIO0,
+            "GPIO1" => gpio::GPIO1,
+            "GPIO2" => gpio::GPIO2,
+            "GPIO3" => gpio::GPIO3,
+            "GPIO4" => gpio::GPIO4,
+            _ => gpio::GPIO0,
+        }
+    };
 
-    // Set PB7 as output
-    unsafe { core::ptr::write_volatile((base + GPIO_SWPORT_DDR) as *mut u32, PB7_BIT); }
+    let ddr = gpio_reg::SWPORT_DDR;
+    let dr = gpio_reg::SWPORT_DR;
+    const DELAY: usize = 2_000_000;
 
-    // Blink 3 times
-    for _ in 0..3 {
-        // Turn ON
-        unsafe { core::ptr::write_volatile((base + GPIO_SWPORT_DR) as *mut u32, PB7_BIT); }
-        for _ in 0..1_000_000 { core::hint::spin_loop(); }
-        // Turn OFF
-        unsafe { core::ptr::write_volatile((base + GPIO_SWPORT_DR) as *mut u32, 0); }
-        for _ in 0..1_000_000 { core::hint::spin_loop(); }
+    // Set all LEDs as outputs
+    for led in LEDS {
+        let base = paddr_to_vaddr(get_gpio_base(led.ctrl));
+        let bit = 1u32 << led.pin;
+        unsafe { core::ptr::write_volatile((base + ddr) as *mut u32, bit); }
+    }
+
+    // Blink each LED once
+    for led in LEDS {
+        let base = paddr_to_vaddr(get_gpio_base(led.ctrl));
+        let bit = 1u32 << led.pin;
+        unsafe { core::ptr::write_volatile((base + dr) as *mut u32, bit); }
+        for _ in 0..DELAY { core::hint::spin_loop(); }
+        unsafe { core::ptr::write_volatile((base + dr) as *mut u32, 0); }
+        for _ in 0..DELAY { core::hint::spin_loop(); }
     }
 }
 

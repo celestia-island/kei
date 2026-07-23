@@ -123,6 +123,11 @@ def main() -> int:
     cf.info(f"  Target: {rust_target}")
     cf.info(f"  Arch:   {arch}")
 
+    # Generate board_config.rs from TOML (GPIO, LEDs, serial, framebuffer)
+    gen_script = PROJECT_ROOT / "scripts" / "gen_board_config.py"
+    if gen_script.exists():
+        subprocess.run([sys.executable, str(gen_script)], cwd=PROJECT_ROOT, capture_output=True)
+
     # Ensure initramfs exists (cargo osdk build requires it)
     cf.blank()
     cf.step("[2/5] Preparing initramfs")

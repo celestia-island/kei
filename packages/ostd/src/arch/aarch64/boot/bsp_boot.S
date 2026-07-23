@@ -61,8 +61,10 @@ actual_entry:
     and     x1, x1, #0xC           // Extract EL bits
     cmp     x1, #0x8               // EL2?
     b.eq    el2_setup
+    cmp     x1, #0x4               // EL1?
+    b.eq    el1_entry              // EL1: skip EL2 setup, go direct
 
-    // If not EL2, hang (we only support EL2 boot)
+    // If not EL2 or EL1, hang
 el_hang:
     wfi
     b       el_hang
@@ -126,6 +128,15 @@ el2_setup:
     mov     sp, x2
 
     eret                             // Transition to EL1, execution continues at el1_setup
+
+el1_entry:
+    // Entered at EL1 directly (some U-Boot / firmware configs do this).
+    // Set up the boot stack (identity-mapped, physical address).
+    // x0 still holds FDT address, preserved from bootloader.
+    adrp    x2, boot_stack_top
+    add     x2, x2, #:lo12:boot_stack_top
+    mov     sp, x2
+    // Fall through to el1_setup
 
 el1_setup:
     // Enable FP/SIMD access at EL1 (CPACR_EL1.FPEN = 0b11, bits 21:20)

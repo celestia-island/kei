@@ -24,14 +24,14 @@ defaults:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, local]
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --all-features --tests
 
   no_std-check:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, local]
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -40,7 +40,7 @@ jobs:
       - run: cargo check --target thumbv7em-none-eabi --no-default-features --features "wire,manifest,codec,hal"
 
   no_std-riscv:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, local]
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -49,7 +49,7 @@ jobs:
       - run: cargo check --target riscv32imc-unknown-none-elf --no-default-features --features "wire,manifest"
 
   fmt:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, local]
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -58,7 +58,7 @@ jobs:
       - run: cargo fmt --all -- --check
 
   clippy:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, local]
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -67,7 +67,7 @@ jobs:
       - run: cargo clippy --all-features -- -D warnings
 
   bench-check:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, local]
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable

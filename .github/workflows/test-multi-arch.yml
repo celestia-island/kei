@@ -8,7 +8,7 @@ on:
 
 jobs:
   test-aarch64:
-    runs-on: ubuntu-24.04-arm64
+    runs-on: [self-hosted, linux, x64, local]
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
@@ -35,7 +35,7 @@ jobs:
           python3 scripts/test_all_arch.py aarch64
 
   test-x86_64:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, local]
     timeout-minutes: 25
     env:
       VDSO_LIBRARY_DIR: ${{ github.workspace }}/tests/vdso
@@ -60,7 +60,7 @@ jobs:
           python3 scripts/test_all_arch.py x86_64
 
   test-riscv64:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, local]
     timeout-minutes: 25
     continue-on-error: true
     env:

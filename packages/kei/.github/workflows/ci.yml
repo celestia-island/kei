@@ -1,5 +1,6 @@
 name: CI
 on:
+  workflow_dispatch:
   push:
     branches: [dev, main]
   pull_request:
@@ -11,7 +12,7 @@ env:
 jobs:
   # ── Host tests (std target) ──────────────────────────────────────────────-
   test:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, local]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -19,7 +20,7 @@ jobs:
 
   # ── no_std check on ARM Cortex-M (the primary embassy target) ────────────-
   no_std-check:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, local]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -30,7 +31,7 @@ jobs:
 
   # ── no_std check on RISC-V (secondary target) ────────────────────────────-
   no_std-riscv:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, local]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -40,7 +41,7 @@ jobs:
 
   # ── Formatting ────────────────────────────────────────────────────────────-
   fmt:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, local]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -50,7 +51,7 @@ jobs:
 
   # ── Clippy (on host, all features) ────────────────────────────────────────-
   clippy:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, local]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

@@ -1,5 +1,6 @@
 name: CI
 on:
+  workflow_dispatch:
   push:
     branches: [master, dev, main]
   pull_request:
@@ -9,14 +10,14 @@ jobs:
   commit-msg-lint:
     uses: celestia-island/celestia-devtools/.github/workflows/commit-msg-lint.yml@master
   check-bsp:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, local]
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@nightly
       - run: cd packages/kei && cargo check
 
   check-vendored-versions:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, local]
     steps:
       - uses: actions/checkout@v7
       - name: Show vendored upstream versions
@@ -28,7 +29,7 @@ jobs:
           cat .vendored-arm64 2>/dev/null || echo "  (not pulled yet)"
 
   fmt:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, local]
     env:
       # Override rust-toolchain.toml so fmt uses stable (nightly's rustfmt
       # is not always available for pinned toolchains).

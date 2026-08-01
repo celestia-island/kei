@@ -54,7 +54,7 @@ unwinding = { version = "=0.2.8", default-features = false, features = ["fde-gnu
 [target.aarch64-unknown-none.dependencies]
 fdt = { version = "^0.1", features = ["pretty-printing"] }
 unwinding = { version = "=0.2.8", default-features = false, features = ["fde-static", "hide-trace", "panic", "personality", "unwinder"] }
-tock-registers = "^0.9"
+tock-registers = "^0.10"
 arm-gic = "^0.8"
 
 # cargo-osdk builds aarch64 with the -softfloat target variant
@@ -64,7 +64,7 @@ arm-gic = "^0.8"
 [target.aarch64-unknown-none-softfloat.dependencies]
 fdt = { version = "^0.1", features = ["pretty-printing"] }
 unwinding = { version = "=0.2.8", default-features = false, features = ["fde-static", "hide-trace", "panic", "personality", "unwinder"] }
-tock-registers = "^0.9"
+tock-registers = "^0.10"
 arm-gic = "^0.8"
 
 [target.riscv64imac-unknown-none-elf.dependencies]

@@ -42,7 +42,7 @@ zerocopy.workspace = true
 x86_64.workspace = true
 x86 = "^0.52"
 acpi = "^5.2" # This upstream often bump minor versions with API changes
-multiboot2 = "^0.24"
+multiboot2 = "^0.25"
 iced-x86 = { version = "^1.21", default-features = false, features = [
     "no_std",
     "decoder",

@@ -119,8 +119,21 @@ pub static DEVICE_TREE: Once<Fdt> = Once::new();
 /// FDT physical address and size, saved for reserving its memory region.
 pub static FDT_PHYS: Once<(usize, usize)> = Once::new();
 
+/// Identify the boot environment from the FDT root model string instead of
+/// assuming QEMU. Called after DEVICE_TREE is initialized.
 fn parse_bootloader_name() -> &'static str {
-    "QEMU virt"
+    let Some(fdt) = DEVICE_TREE.get() else {
+        return "unknown";
+    };
+    let model = fdt.root().model();
+    // QEMU virt machines report model "linux,dummy-virt".
+    if model.contains("QEMU") || model.contains("dummy-virt") {
+        "QEMU virt"
+    } else if model.contains("NanoPi R3S") {
+        "U-Boot (NanoPi R3S)"
+    } else {
+        "U-Boot"
+    }
 }
 
 fn parse_kernel_commandline() -> &'static str {

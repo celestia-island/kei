@@ -253,6 +253,9 @@ def make_image(board: str, armbian_img: Path) -> Path | None:
     cf.blank()
     cf.ok(f"SD card image: {sdcard} ({size_mb}MB)")
     cf.info(f"  Flash: dd if={sdcard.name} of=/dev/sdX bs=4M conv=fsync")
+    cf.info("  Later iterations need NO reflashing:")
+    cf.info("    - TFTP netboot (kei_netboot=1): scripts/push_netboot.sh")
+    cf.info(f"    - In-place card update:       scripts/update_sdcard_kernel.sh --image {sdcard.name}")
     return sdcard
 
 

@@ -4,3 +4,6 @@ bootlogo=false
 extraargs=cma=256M
 overlay_prefix=rk35xx
 rootfstype=ext4
+kei_netboot=1
+kei_tftp_prefix=kei
+serverip=192.168.2.74

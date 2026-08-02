@@ -21,21 +21,22 @@ jobs:
           set -euo pipefail
           VERSION="${NOA_VERSION:-latest}"
           if [ "$VERSION" = "latest" ]; then
-            URL="https://github.com/celestia-island/noa/releases/latest/download/noa-x86_64-unknown-linux-gnu"
+            URL="https://github.com/celestia-island/noa/releases/latest/download/noa-linux-x86_64.tar.gz"
           else
-            URL="https://github.com/celestia-island/noa/releases/download/${VERSION}/noa-x86_64-unknown-linux-gnu"
+            URL="https://github.com/celestia-island/noa/releases/download/${VERSION}/noa-linux-x86_64.tar.gz"
           fi
           # Skip only when the release genuinely does not exist (HTTP 404).
           # Transient network errors get 3 attempts, then fail the job so
           # invalid titles cannot merge undetected.
           code=""
           for attempt in 1 2 3; do
-            code=$(curl -sSL -w '%{http_code}' -o /usr/local/bin/noa "$URL" || echo "000")
+            code=$(curl -sSL -w '%{http_code}' -o /tmp/noa.tar.gz "$URL" || echo "000")
             [ "$code" = "200" ] || [ "$code" = "404" ] && break
             echo "attempt $attempt failed (HTTP $code), retrying..."
             sleep 5
           done
           if [ "$code" = "200" ]; then
+            tar -xzf /tmp/noa.tar.gz -C /usr/local/bin noa
             chmod +x /usr/local/bin/noa
             echo "installed=true" >> "$GITHUB_OUTPUT"
           elif [ "$code" = "404" ]; then

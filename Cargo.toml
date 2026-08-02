@@ -204,7 +204,7 @@ xarray = { path = "kernel/libs/xarray" }
 # i.e. `-Ctarget-cpu=sandybridge -Ctarget-feature=+aes,+sse2,+sse4.1,+ssse3`.
 # This suggests that `Asterinas` should support saving and restoring the `FPU` state within the kernel context,
 # a capability it currently lacks.
-aes-gcm = { version = "^0.9", features = ["force-soft"] }
+aes-gcm = { version = "^0.11", features = ["force-soft"] }
 # External dependencies only for unsafe crates (i.e., crates under ostd directory)
 bit_field = "^0.10"
 # External dependencies for both safe and unsafe crates

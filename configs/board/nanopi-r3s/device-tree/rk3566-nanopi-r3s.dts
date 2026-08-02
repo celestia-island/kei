@@ -12,12 +12,17 @@
 	#size-cells = <2>;
 	model = "FriendlyElec NanoPi R3S";
 	compatible = "friendlyarm,nanopi-r3s", "rockchip,rk3566";
+
+	aliases {
+		serial2 = &uart2;
+	};
+
 	chosen {
 		bootargs = "console=ttyS2,1500000n8 earlycon";
 		stdout-path = "serial2:1500000n8";
 	};
 
-	memory@a00000 {
+	memory@200000 {
 		device_type = "memory";
 		reg = <0x0 0x00200000 0x0 0x7ee00000>;
 	};

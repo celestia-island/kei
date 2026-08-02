@@ -20,6 +20,9 @@ jobs:
       - name: Amend squash message
         run: |
           set -euo pipefail
+          # The checkout has no committer identity on ephemeral runners.
+          git config user.name "celestia-island-bot"
+          git config user.email "ci@celestia.world"
           BODY_LINES=$(git log -1 --format='%B' | wc -l)
           if [ "$BODY_LINES" -le 1 ]; then
             echo "Commit body is already clean (${BODY_LINES} lines), skipping."

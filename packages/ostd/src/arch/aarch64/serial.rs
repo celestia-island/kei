@@ -58,8 +58,8 @@ const PL011_UARTFR_RXFE: u32 = 1 << 4;
 /// ── DW 8250 UART register indices ─────────────────────────────────
 /// Register offsets = (index << reg_shift). Multiply by io_width for byte offset.
 
-const DW_LSR: u32 = 5;   // Line Status Register (THRE=bit5, DR=bit0)
-const DW_DATA: u32 = 0;  // THR (write) / RBR (read)
+const DW_LSR: u32 = 5; // Line Status Register (THRE=bit5, DR=bit0)
+const DW_DATA: u32 = 0; // THR (write) / RBR (read)
 const DW_LSR_THRE: u32 = 1 << 5;
 const DW_LSR_DR: u32 = 1;
 
@@ -82,9 +82,10 @@ static SERIAL_LOCK: SpinLock<(), LocalIrqDisabled> = SpinLock::new(());
 pub(crate) fn init_with_probe(probe: UartProbe) {
     let kind_code: usize = match probe.kind {
         UartKind::Pl011 => 1,
-        UartKind::Dw8250 { reg_shift, io_width } => {
-            2 | ((reg_shift as usize) << 8) | ((io_width as usize) << 16)
-        }
+        UartKind::Dw8250 {
+            reg_shift,
+            io_width,
+        } => 2 | ((reg_shift as usize) << 8) | ((io_width as usize) << 16),
     };
     UART_KIND.store(kind_code, Ordering::Relaxed);
     UART_VADDR.store(probe.base, Ordering::Relaxed);
@@ -117,7 +118,10 @@ pub fn uart_kind() -> Option<UartKind> {
         code => {
             let reg_shift = ((code >> 8) & 0xFF) as u32;
             let io_width = ((code >> 16) & 0xFF) as u32;
-            Some(UartKind::Dw8250 { reg_shift, io_width })
+            Some(UartKind::Dw8250 {
+                reg_shift,
+                io_width,
+            })
         }
     }
 }
@@ -132,7 +136,10 @@ fn write_byte_raw(kind: UartKind, base: usize, byte: u8) {
             while unsafe { core::ptr::read_volatile(fr as *const u32) } & PL011_UARTFR_TXFF != 0 {}
             unsafe { core::ptr::write_volatile(dr as *mut u32, byte as u32) };
         }
-        UartKind::Dw8250 { reg_shift, io_width: _ } => {
+        UartKind::Dw8250 {
+            reg_shift,
+            io_width: _,
+        } => {
             let lsr_off = (DW_LSR << reg_shift) as usize;
             let data_off = (DW_DATA << reg_shift) as usize;
             let lsr = base + lsr_off;
@@ -153,7 +160,10 @@ fn recv_byte_raw(kind: UartKind, base: usize) -> Option<u8> {
             }
             Some(unsafe { core::ptr::read_volatile(dr as *const u32) as u8 })
         }
-        UartKind::Dw8250 { reg_shift, io_width: _ } => {
+        UartKind::Dw8250 {
+            reg_shift,
+            io_width: _,
+        } => {
             let lsr_off = (DW_LSR << reg_shift) as usize;
             let data_off = (DW_DATA << reg_shift) as usize;
             let lsr = base + lsr_off;

@@ -59,6 +59,36 @@ impl SensorUnit {
             Self::Dimensionless => "",
         }
     }
+
+    /// Parse a canonical unit string (the inverse of [`Self::as_str`]).
+    ///
+    /// External consumers of the wire protocol (e.g. the evernight gateway)
+    /// cannot construct a [`SensorUnit`] variant directly because the enum is
+    /// `#[non_exhaustive]`; this is the sanctioned construction path.
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "MPa" => Some(Self::MPa),
+            "bar" => Some(Self::Bar),
+            "°C" => Some(Self::Celsius),
+            "ppm" => Some(Self::Ppm),
+            "%" => Some(Self::Percent),
+            "%LEL" => Some(Self::PercentLEL),
+            "kg" => Some(Self::Kg),
+            "g" => Some(Self::Grams),
+            "V" => Some(Self::Volts),
+            "A" => Some(Self::Amps),
+            "W" => Some(Self::Watts),
+            "kW" => Some(Self::Kw),
+            "Nm³/h" => Some(Self::Nm3PerHour),
+            "L/min" => Some(Self::LitersPerMin),
+            "mL/min" => Some(Self::MLitersPerMin),
+            "µS/cm" => Some(Self::MicroSiemensPerCm),
+            "hours" => Some(Self::Hours),
+            "min" => Some(Self::Minutes),
+            "" => Some(Self::Dimensionless),
+            _ => None,
+        }
+    }
 }
 
 /// Alarm severity level (ISA-18.2 inspired).
@@ -125,5 +155,44 @@ impl RawValue {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sensor_unit_from_str_round_trips() {
+        for unit in [
+            SensorUnit::MPa,
+            SensorUnit::Bar,
+            SensorUnit::Celsius,
+            SensorUnit::Ppm,
+            SensorUnit::Percent,
+            SensorUnit::PercentLEL,
+            SensorUnit::Kg,
+            SensorUnit::Grams,
+            SensorUnit::Volts,
+            SensorUnit::Amps,
+            SensorUnit::Watts,
+            SensorUnit::Kw,
+            SensorUnit::Nm3PerHour,
+            SensorUnit::LitersPerMin,
+            SensorUnit::MLitersPerMin,
+            SensorUnit::MicroSiemensPerCm,
+            SensorUnit::Hours,
+            SensorUnit::Minutes,
+            SensorUnit::Dimensionless,
+        ] {
+            let s = unit.as_str();
+            assert_eq!(SensorUnit::from_str(s), Some(unit), "round-trip {s:?}");
+        }
+    }
+
+    #[test]
+    fn sensor_unit_from_str_rejects_unknown() {
+        assert_eq!(SensorUnit::from_str("KPa"), None);
+        assert_eq!(SensorUnit::from_str("℃"), None);
     }
 }

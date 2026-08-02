@@ -78,6 +78,29 @@ pub struct Nack {
     pub message: String,
 }
 
+/// Register kind of a batch reading — whether the address lives in the
+/// coil space (`C:`) or the holding space (`HR:`). Batches are
+/// gateway-enriched, so the kind travels with the reading.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub enum RegisterKind {
+    /// Holding register (or input register).
+    #[default]
+    Holding,
+    /// Coil (or discrete input).
+    Coil,
+}
+
+impl RegisterKind {
+    /// Canonical addressing prefix (matches the gateway telemetry style:
+    /// `HR:{addr}` / `C:{addr}`).
+    pub fn prefix(self) -> &'static str {
+        match self {
+            Self::Holding => "HR",
+            Self::Coil => "C",
+        }
+    }
+}
+
 /// One reading inside a [`TelemetryBatch`].
 ///
 /// Unlike the node-originated [`Telemetry`] frame (register + value only,
@@ -87,6 +110,11 @@ pub struct Nack {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BatchReading {
     pub register: Register,
+    /// Address space of `register`. Batch payloads are positional (postcard),
+    /// so a producer/consumer pair must be upgraded together when this field
+    /// changes; the `#[serde(default)]` covers JSON/self-describing formats.
+    #[serde(default)]
+    pub register_kind: RegisterKind,
     /// Semantic point name from the gateway's manifest (e.g. "pressure_1").
     pub name: String,
     /// Raw producer value (as f64 to cover u16/i16/f32/bool uniformly).

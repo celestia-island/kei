@@ -343,8 +343,8 @@ fn node_ignores_frames_for_other_stations() {
 // ── TelemetryBatch (gateway → service, B2) ───────────────────────────────
 
 use kei::wire::{
-    decode_frame_with_limit, encode_frame_with_limit, BatchReading, Quality, TelemetryBatch,
-    MAX_BATCH_PAYLOAD_LEN,
+    decode_frame_with_limit, encode_frame_with_limit, BatchReading, Quality, RegisterKind,
+    TelemetryBatch, MAX_BATCH_PAYLOAD_LEN,
 };
 
 fn sample_batch(readings: usize) -> TelemetryBatch {
@@ -354,6 +354,7 @@ fn sample_batch(readings: usize) -> TelemetryBatch {
         readings: (0..readings)
             .map(|i| BatchReading {
                 register: 0x10 + i as u16,
+                register_kind: RegisterKind::Holding,
                 name: format!("pressure_{i}"),
                 raw: 40.0 + i as f64,
                 value: 4.0 + i as f64 * 0.1,
@@ -387,6 +388,22 @@ fn telemetry_batch_round_trip() {
     assert!((back.readings[2].value - 4.2).abs() < 1e-9);
     assert_eq!(back.readings[0].quality, Quality::Good);
     assert_eq!(back.readings[0].unit, SensorUnit::MPa);
+    assert_eq!(back.readings[0].register_kind, RegisterKind::Holding);
+}
+
+#[test]
+fn register_kind_round_trips_and_defaults() {
+    // Coil reading round-trips with its kind.
+    let mut batch = sample_batch(1);
+    batch.readings[0].register_kind = RegisterKind::Coil;
+    batch.readings[0].register = 0;
+    let frame = Frame::telemetry_batch(&batch).unwrap();
+    let wire = frame.encode_with_limit(MAX_BATCH_PAYLOAD_LEN).unwrap();
+    let back: TelemetryBatch = decode_frame_with_limit(&wire, MAX_BATCH_PAYLOAD_LEN)
+        .unwrap()
+        .as_telemetry_batch()
+        .unwrap();
+    assert_eq!(back.readings[0].register_kind, RegisterKind::Coil);
 }
 
 #[test]

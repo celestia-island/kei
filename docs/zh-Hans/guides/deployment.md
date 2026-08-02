@@ -127,12 +127,66 @@ flowchart TB
 ### 烧录到 SD 卡
 
 ```bash
-# Build the complete firmware image (includes kei-kernel.bin)
-just build-board nanopi-r3s
+# 构建完整固件镜像（包含 kei-kernel.bin）
+just build board nanopi-r3s
 
-# Flash to SD card
-sudo dd if=output/nanopi-r3s/image.img of=/dev/sdX bs=4M status=progress
+# 组装 SD 卡镜像（从 Armbian 参考镜像借用 U-Boot 与 GPT）
+just image ARMBIAN_IMG=/path/to/armbian.img
+
+# 烧录到 SD 卡
+sudo dd if=target/output/nanopi-r3s/sdcard.img of=/dev/sdX bs=4M status=progress
 sync
+```
+
+### 免烧卡迭代
+
+上面的首次烧录是**最后一次**整卡烧录。随镜像分发的 `boot.scr` 支持两种
+不再触碰 GPT 与 U-Boot 区域的迭代方式：
+
+#### TFTP 网络启动（实验台推荐）
+
+当 `kei_netboot=1`（`armbianEnv.txt` 默认）时，U-Boot 经 TFTP 拉取内核、
+DTB 与 initramfs；服务器不可达时自动回退到 SD 卡副本。
+
+构建机上的一次性配置：
+
+```bash
+# 以 tftpd-hpa 为例提供 /srv/tftp：
+sudo apt install tftpd-hpa
+sudo install -d -o "$USER" /srv/tftp/kei
+```
+
+开发板侧设置（`configs/board/nanopi-r3s/armbianEnv.txt` 已默认携带）：
+
+```
+kei_netboot=1
+kei_tftp_prefix=kei
+serverip=192.168.2.74   # 运行 TFTP 服务的构建机 —— 按你的局域网调整
+```
+
+迭代循环：
+
+```bash
+python3 scripts/build.py nanopi-r3s   # 重新构建内核 + DTB
+scripts/push_netboot.sh               # 把产物复制进 TFTP 根目录
+# 复位开发板 —— U-Boot 经 TFTP 拉取 kei
+```
+
+推送到远端 TFTP 服务器（而非本机目录）：
+
+```bash
+KEI_TFTP_DEST=user@host:/srv/tftp scripts/push_netboot.sh
+```
+
+#### 卡内原地更新（离线场景）
+
+当开发板不在构建局域网内时，原地刷新已有 SD 卡（或镜像文件）——
+只替换 `/boot/` 下的文件：
+
+```bash
+scripts/update_sdcard_kernel.sh --image target/output/nanopi-r3s/sdcard.img
+# 或者 SD 卡插在本机读卡器上：
+sudo scripts/update_sdcard_kernel.sh --device /dev/sdX
 ```
 
 ### 启动验证
@@ -178,3 +232,6 @@ flowchart TB
 | SMP 失败 | DTB 中缺少 PSCI | 检查设备树中的 `/cpus` 节点 |
 | Kernel panic | 架构层代码缺陷 | 审计 `ostd/src/arch/aarch64/` |
 | U-Boot 找不到内核 | 分区偏移错误 | 检查 `boot.scr` 中的偏移量 |
+| TFTP 超时、回退 SD 启动 | `serverip` 错误或服务未运行 | 检查 `armbianEnv.txt` 中 `kei_netboot`/`serverip`；确认 tftpd 服务 `kei/` 前缀 |
+| netboot 已开但启动的是旧内核 | TFTP 拉取静默失败 | 观察串口是否出现 `[kei] netboot:` 行；检查 TFTP 服务日志 |
+| 启动时 `env import` 报错 | `armbianEnv.txt` 损坏 | 用 `update_sdcard_kernel.sh` 从 `configs/board/nanopi-r3s/armbianEnv.txt` 恢复 |

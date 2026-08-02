@@ -128,11 +128,68 @@ flowchart TB
 
 ```bash
 # Build the complete firmware image (includes kei-kernel.bin)
-just build-board nanopi-r3s
+just build board nanopi-r3s
+
+# Assemble the SD card image (borrows U-Boot + GPT from an Armbian reference)
+just image ARMBIAN_IMG=/path/to/armbian.img
 
 # Flash to SD card
-sudo dd if=output/nanopi-r3s/image.img of=/dev/sdX bs=4M status=progress
+sudo dd if=target/output/nanopi-r3s/sdcard.img of=/dev/sdX bs=4M status=progress
 sync
+```
+
+### No-Reflash Iteration
+
+The one-time flash above is the **last** full flash required. The shipped
+`boot.scr` supports two iteration workflows that never touch the GPT or the
+U-Boot area:
+
+#### TFTP netboot (recommended for bench work)
+
+With `kei_netboot=1` (default in `armbianEnv.txt`), U-Boot fetches the
+kernel, DTB and initramfs over TFTP and falls back to the SD copy when the
+server is unreachable.
+
+One-time setup on the build host:
+
+```bash
+# Serve /srv/tftp, e.g. with tftpd-hpa:
+sudo apt install tftpd-hpa
+sudo install -d -o "$USER" /srv/tftp/kei
+```
+
+Board-side settings (shipped as defaults in
+`configs/board/nanopi-r3s/armbianEnv.txt`):
+
+```
+kei_netboot=1
+kei_tftp_prefix=kei
+serverip=192.168.2.74   # build host running the TFTP server — adjust to your LAN
+```
+
+Iteration loop:
+
+```bash
+python3 scripts/build.py nanopi-r3s   # rebuild kernel + DTB
+scripts/push_netboot.sh               # copy artifacts into the TFTP root
+# reset the board — U-Boot fetches kei over TFTP
+```
+
+To push to a remote TFTP server instead of a local directory:
+
+```bash
+KEI_TFTP_DEST=user@host:/srv/tftp scripts/push_netboot.sh
+```
+
+#### In-place SD card update (offline)
+
+When the board is not on the build LAN, refresh an existing card (or image)
+in place — only files under `/boot/` are replaced:
+
+```bash
+scripts/update_sdcard_kernel.sh --image target/output/nanopi-r3s/sdcard.img
+# or, with the card in a reader on this host:
+sudo scripts/update_sdcard_kernel.sh --device /dev/sdX
 ```
 
 ### Boot Verification
@@ -179,3 +236,6 @@ flowchart TB
 | SMP failed | Missing PSCI in DTB | Check `/cpus` node in device tree |
 | Kernel panic | Code bug in arch layer | Audit `ostd/src/arch/aarch64/` |
 | U-Boot can't find kernel | Wrong partition offset | Verify offset in `boot.scr` |
+| TFTP times out, SD fallback boots | `serverip` wrong or server down | Check `kei_netboot`/`serverip` in `armbianEnv.txt`; verify tftpd serves the `kei/` prefix |
+| Old kernel boots despite netboot | TFTP fetch failed silently | Watch for `[kei] netboot:` lines on serial; check TFTP server logs |
+| `env import` errors at boot | Corrupt `armbianEnv.txt` | Restore from `configs/board/nanopi-r3s/armbianEnv.txt` via `update_sdcard_kernel.sh` |

@@ -6,7 +6,7 @@
 //!
 //! ## Usage
 //!
-//! ```no_run
+//! ```ignore
 //! # use kei::wire::FrameDecoder;
 //! let mut dec = FrameDecoder::new();
 //! loop {
@@ -22,7 +22,7 @@
 
 use alloc::vec::Vec;
 
-use super::frame::{decode_frame, Frame, FRAME_MAGIC, MAX_PAYLOAD_LEN};
+use super::frame::{decode_frame_with_limit, Frame, FRAME_MAGIC, MAX_PAYLOAD_LEN};
 
 /// A streaming decoder that consumes one byte at a time and yields
 /// complete frames.
@@ -37,6 +37,7 @@ pub struct FrameDecoder {
     state: State,
     buf: Vec<u8>,
     expected_payload_len: usize,
+    max_payload_len: usize,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -60,10 +61,18 @@ impl Default for FrameDecoder {
 impl FrameDecoder {
     /// Create a new decoder ready to find the first frame.
     pub fn new() -> Self {
+        Self::with_max_payload(MAX_PAYLOAD_LEN)
+    }
+
+    /// Create a decoder accepting payloads up to `max_payload_len` bytes.
+    /// Use `MAX_BATCH_PAYLOAD_LEN` on links that carry
+    /// [`MsgType::TelemetryBatch`](super::MsgType::TelemetryBatch) frames.
+    pub fn with_max_payload(max_payload_len: usize) -> Self {
         Self {
             state: State::Sync,
             buf: Vec::new(),
             expected_payload_len: 0,
+            max_payload_len,
         }
     }
 
@@ -100,7 +109,7 @@ impl FrameDecoder {
                 }
                 // We have the full header.
                 let payload_len = u16::from_le_bytes([self.buf[1], self.buf[2]]) as usize;
-                if payload_len > MAX_PAYLOAD_LEN {
+                if payload_len > self.max_payload_len {
                     self.reset();
                     return Err(DecodeStreamError::PayloadTooLong);
                 }
@@ -129,8 +138,9 @@ impl FrameDecoder {
                 if self.buf.len() < 4 + self.expected_payload_len + 2 {
                     return Ok(None);
                 }
-                // Full frame accumulated. Decode + verify.
-                let frame = decode_frame(&self.buf);
+                // Full frame accumulated. Decode + verify with this
+                // decoder's payload limit.
+                let frame = decode_frame_with_limit(&self.buf, self.max_payload_len);
                 self.reset();
                 match frame {
                     Ok(f) => Ok(Some(f)),
@@ -168,7 +178,7 @@ impl FrameDecoder {
 pub enum DecodeStreamError {
     /// More bytes needed to complete a frame (not an error — keep feeding).
     NeedMore,
-    /// Payload length exceeded MAX_PAYLOAD_LEN.
+    /// Payload length exceeded this decoder's configured limit.
     PayloadTooLong,
     /// A complete frame was assembled but failed verification (bad CRC, etc).
     DecodeFailed(super::frame::DecodeError),

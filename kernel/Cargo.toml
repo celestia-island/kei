@@ -71,7 +71,7 @@ xmas-elf.workspace = true
 zerocopy.workspace = true
 zune-inflate.workspace = true
 [target.x86_64-unknown-none.dependencies]
-tdx-guest = { version = "^0.3", optional = true }
+tdx-guest = { version = "^0.4", optional = true }
 x86_64.workspace = true
 
 [target.riscv64imac-unknown-none-elf.dependencies]

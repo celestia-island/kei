@@ -24,7 +24,7 @@ jobs:
       # scripts/test_all_arch.py -> scripts/utils/build_env.py hard-depends on
       # the external celestia_devtools package; install it explicitly.
       - name: Install celestia-devtools
-        run: pip install git+https://github.com/celestia-island/celestia-devtools.git
+        run: pip install --break-system-packages git+https://github.com/celestia-island/celestia-devtools.git
       # cargo osdk is required by scripts/test_all_arch.py; built from the
       # vendored source at osdk/.
       - name: Install cargo-osdk
@@ -51,7 +51,7 @@ jobs:
       - name: Install QEMU and build tools
         run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 xorriso mtools
       - name: Install celestia-devtools
-        run: pip install git+https://github.com/celestia-island/celestia-devtools.git
+        run: pip install --break-system-packages git+https://github.com/celestia-island/celestia-devtools.git
       - name: Install cargo-osdk
         run: cargo install --path packages/osdk --force
       - name: Boot test x86_64
@@ -77,7 +77,7 @@ jobs:
       - name: Install QEMU
         run: sudo apt-get update && sudo apt-get install -y qemu-system-misc
       - name: Install celestia-devtools
-        run: pip install git+https://github.com/celestia-island/celestia-devtools.git
+        run: pip install --break-system-packages git+https://github.com/celestia-island/celestia-devtools.git
       - name: Install cargo-osdk
         run: cargo install --path packages/osdk --force
       - name: Boot test riscv64

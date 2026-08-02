@@ -190,7 +190,9 @@ unsafe fn fill_boot_info_ptr(info_ptr: *const PerApRawInfo) {
         );
     }
     let ptr = ptr_addr as *mut *const PerApRawInfo;
-    unsafe { *ptr = info_ptr; }
+    unsafe {
+        *ptr = info_ptr;
+    }
 }
 
 unsafe fn fill_boot_page_table_ptr(pt_ptr: Paddr) {
@@ -207,7 +209,9 @@ unsafe fn fill_boot_page_table_ptr(pt_ptr: Paddr) {
         );
     }
     let ptr = ptr_addr as *mut Paddr;
-    unsafe { *ptr = pt_ptr; }
+    unsafe {
+        *ptr = pt_ptr;
+    }
 }
 
 fn get_ap_boot_start_addr() -> Paddr {

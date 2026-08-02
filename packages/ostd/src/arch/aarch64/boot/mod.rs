@@ -49,16 +49,26 @@ fn blink_led_rk3566() {
     for led in LEDS {
         let base = paddr_to_vaddr(get_gpio_base(led.ctrl));
         let bit = 1u32 << led.pin;
-        unsafe { core::ptr::write_volatile((base + ddr) as *mut u32, bit); }
+        unsafe {
+            core::ptr::write_volatile((base + ddr) as *mut u32, bit);
+        }
     }
 
     for led in LEDS {
         let base = paddr_to_vaddr(get_gpio_base(led.ctrl));
         let bit = 1u32 << led.pin;
-        unsafe { core::ptr::write_volatile((base + dr) as *mut u32, bit); }
-        for _ in 0..DELAY { core::hint::spin_loop(); }
-        unsafe { core::ptr::write_volatile((base + dr) as *mut u32, 0); }
-        for _ in 0..DELAY { core::hint::spin_loop(); }
+        unsafe {
+            core::ptr::write_volatile((base + dr) as *mut u32, bit);
+        }
+        for _ in 0..DELAY {
+            core::hint::spin_loop();
+        }
+        unsafe {
+            core::ptr::write_volatile((base + dr) as *mut u32, 0);
+        }
+        for _ in 0..DELAY {
+            core::hint::spin_loop();
+        }
     }
 }
 
@@ -68,44 +78,91 @@ fn blink_led_rk3566() {
 pub fn led_debug(code: u32) {
     include!("board_config.rs");
     let get_base = |name: &str| -> usize {
-        match name { "GPIO0" => gpio::GPIO0, "GPIO3" => gpio::GPIO3, _ => gpio::GPIO0 }
+        match name {
+            "GPIO0" => gpio::GPIO0,
+            "GPIO3" => gpio::GPIO3,
+            _ => gpio::GPIO0,
+        }
     };
     let ddr = gpio_reg::SWPORT_DDR;
     let dr = gpio_reg::SWPORT_DR;
     const D: usize = 400_000;
-    let wan = LEDS.iter().find(|l| l.name == "wan").map(|l| (get_base(l.ctrl), 1u32 << l.pin));
-    let lan = LEDS.iter().find(|l| l.name == "lan").map(|l| (get_base(l.ctrl), 1u32 << l.pin));
+    let wan = LEDS
+        .iter()
+        .find(|l| l.name == "wan")
+        .map(|l| (get_base(l.ctrl), 1u32 << l.pin));
+    let lan = LEDS
+        .iter()
+        .find(|l| l.name == "lan")
+        .map(|l| (get_base(l.ctrl), 1u32 << l.pin));
     // Separator
     for led in LEDS {
         let (b, m) = (get_base(led.ctrl), 1u32 << led.pin);
-        unsafe { core::ptr::write_volatile((b + ddr) as *mut u32, m); }
-        unsafe { core::ptr::write_volatile((b + dr) as *mut u32, m); }
-        for _ in 0..D { core::hint::spin_loop(); }
-        unsafe { core::ptr::write_volatile((b + dr) as *mut u32, 0); }
-        for _ in 0..D { core::hint::spin_loop(); }
+        unsafe {
+            core::ptr::write_volatile((b + ddr) as *mut u32, m);
+        }
+        unsafe {
+            core::ptr::write_volatile((b + dr) as *mut u32, m);
+        }
+        for _ in 0..D {
+            core::hint::spin_loop();
+        }
+        unsafe {
+            core::ptr::write_volatile((b + dr) as *mut u32, 0);
+        }
+        for _ in 0..D {
+            core::hint::spin_loop();
+        }
     }
-    for _ in 0..D*3 { core::hint::spin_loop(); }
-    let tens = code / 10; let ones = code % 10;
+    for _ in 0..D * 3 {
+        core::hint::spin_loop();
+    }
+    let tens = code / 10;
+    let ones = code % 10;
     if let Some((b, m)) = wan {
-        unsafe { core::ptr::write_volatile((b + ddr) as *mut u32, m); }
+        unsafe {
+            core::ptr::write_volatile((b + ddr) as *mut u32, m);
+        }
         for _ in 0..tens {
-            unsafe { core::ptr::write_volatile((b + dr) as *mut u32, m); }
-            for _ in 0..D { core::hint::spin_loop(); }
-            unsafe { core::ptr::write_volatile((b + dr) as *mut u32, 0); }
-            for _ in 0..D/2 { core::hint::spin_loop(); }
+            unsafe {
+                core::ptr::write_volatile((b + dr) as *mut u32, m);
+            }
+            for _ in 0..D {
+                core::hint::spin_loop();
+            }
+            unsafe {
+                core::ptr::write_volatile((b + dr) as *mut u32, 0);
+            }
+            for _ in 0..D / 2 {
+                core::hint::spin_loop();
+            }
         }
     }
-    for _ in 0..D { core::hint::spin_loop(); }
+    for _ in 0..D {
+        core::hint::spin_loop();
+    }
     if let Some((b, m)) = lan {
-        unsafe { core::ptr::write_volatile((b + ddr) as *mut u32, m); }
+        unsafe {
+            core::ptr::write_volatile((b + ddr) as *mut u32, m);
+        }
         for _ in 0..ones {
-            unsafe { core::ptr::write_volatile((b + dr) as *mut u32, m); }
-            for _ in 0..D { core::hint::spin_loop(); }
-            unsafe { core::ptr::write_volatile((b + dr) as *mut u32, 0); }
-            for _ in 0..D/2 { core::hint::spin_loop(); }
+            unsafe {
+                core::ptr::write_volatile((b + dr) as *mut u32, m);
+            }
+            for _ in 0..D {
+                core::hint::spin_loop();
+            }
+            unsafe {
+                core::ptr::write_volatile((b + dr) as *mut u32, 0);
+            }
+            for _ in 0..D / 2 {
+                core::hint::spin_loop();
+            }
         }
     }
-    for _ in 0..D*3 { core::hint::spin_loop(); }
+    for _ in 0..D * 3 {
+        core::hint::spin_loop();
+    }
 }
 
 #[cfg(feature = "cvm_guest")]
@@ -169,7 +226,9 @@ fn probe_uart_from_fdt(devicetree: &Fdt) -> UartProbe {
                 if let Some(aliases) = devicetree.find_node("/aliases") {
                     if let Some(alias_prop) = aliases.property(alias) {
                         if let Ok(alias_path) = core::str::from_utf8(alias_prop.value) {
-                            if let Some(node) = devicetree.find_node(alias_path.trim_end_matches('\0')) {
+                            if let Some(node) =
+                                devicetree.find_node(alias_path.trim_end_matches('\0'))
+                            {
                                 if let Some(probe) = parse_uart_node(node) {
                                     return probe;
                                 }
@@ -184,9 +243,9 @@ fn probe_uart_from_fdt(devicetree: &Fdt) -> UartProbe {
     // 2. Search by compatible strings in order of preference:
     // Standard 8250-compatible, then Rockchip-specific, then PL011 (QEMU fallback)
     let compat_lists: &[&[&str]] = &[
-        &["snps,dw-apb-uart"],       // Synopsys DesignWare 8250
-        &["ns16550a", "ns16550"],    // Standard 8250/16550
-        &["arm,pl011"],              // ARM PL011 (QEMU)
+        &["snps,dw-apb-uart"],    // Synopsys DesignWare 8250
+        &["ns16550a", "ns16550"], // Standard 8250/16550
+        &["arm,pl011"],           // ARM PL011 (QEMU)
     ];
 
     for compat_list in compat_lists {
@@ -221,8 +280,14 @@ fn parse_uart_node(node: fdt::node::FdtNode) -> Option<UartProbe> {
     let kind = if has_compat(compat, b"arm,pl011") {
         UartKind::Pl011
     } else {
-        let reg_shift_raw = node.property("reg-shift").and_then(|s| s.as_usize()).unwrap_or(0);
-        let io_width_raw = node.property("reg-io-width").and_then(|w| w.as_usize()).unwrap_or(1);
+        let reg_shift_raw = node
+            .property("reg-shift")
+            .and_then(|s| s.as_usize())
+            .unwrap_or(0);
+        let io_width_raw = node
+            .property("reg-io-width")
+            .and_then(|w| w.as_usize())
+            .unwrap_or(1);
         UartKind::Dw8250 {
             reg_shift: reg_shift_raw as u32,
             io_width: io_width_raw as u32,
@@ -257,13 +322,19 @@ fn parse_framebuffer_info() -> Option<BootloaderFramebufferArg> {
     let devicetree = DEVICE_TREE.get().unwrap();
 
     // Try the standard simple-framebuffer node.
-    if let Some(node) = devicetree.find_node("/reserved-memory/framebuffer")
+    if let Some(node) = devicetree
+        .find_node("/reserved-memory/framebuffer")
         .or_else(|| devicetree.find_node("/framebuffer"))
         .or_else(|| devicetree.find_node("/simple-framebuffer"))
     {
         if let Some(fb_info) = parse_simplefb_node(node) {
-            crate::early_println!("[kei] framebuffer from FDT: {}x{} bpp={} @ {:#x}",
-                fb_info.width, fb_info.height, fb_info.bpp, fb_info.address);
+            crate::early_println!(
+                "[kei] framebuffer from FDT: {}x{} bpp={} @ {:#x}",
+                fb_info.width,
+                fb_info.height,
+                fb_info.bpp,
+                fb_info.address
+            );
             return Some(fb_info);
         }
     }
@@ -271,8 +342,13 @@ fn parse_framebuffer_info() -> Option<BootloaderFramebufferArg> {
     // Bootloader may inject framebuffer info into /chosen node.
     if let Some(chosen) = devicetree.find_node("/chosen") {
         if let Some(fb_info) = parse_simplefb_node(chosen) {
-            crate::early_println!("[kei] framebuffer from /chosen: {}x{} bpp={} @ {:#x}",
-                fb_info.width, fb_info.height, fb_info.bpp, fb_info.address);
+            crate::early_println!(
+                "[kei] framebuffer from /chosen: {}x{} bpp={} @ {:#x}",
+                fb_info.width,
+                fb_info.height,
+                fb_info.bpp,
+                fb_info.address
+            );
             return Some(fb_info);
         }
     }
@@ -472,8 +548,11 @@ unsafe extern "C" fn aarch64_boot(fdt_paddr: usize) -> ! {
     let uart = probe_uart_from_fdt(&fdt);
     let uart_base = uart.base;
     crate::arch::serial::init_with_probe(uart);
-    crate::early_println!("[kei] UART re-initialized (type={:?}, base={:#x})",
-        crate::arch::serial::uart_kind(), uart_base);
+    crate::early_println!(
+        "[kei] UART re-initialized (type={:?}, base={:#x})",
+        crate::arch::serial::uart_kind(),
+        uart_base
+    );
 
     // Save FDT physical address and size for memory reservation.
     FDT_PHYS.call_once(|| (fdt_paddr, fdt.total_size()));

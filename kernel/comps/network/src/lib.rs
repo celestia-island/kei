@@ -168,7 +168,8 @@ pub fn all_devices() -> Vec<(String, NetworkDeviceRef)> {
 }
 
 static COMPONENT: Once<Component> = Once::new();
-static NETWORK_INIT_DONE: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+static NETWORK_INIT_DONE: core::sync::atomic::AtomicBool =
+    core::sync::atomic::AtomicBool::new(false);
 
 #[init_component]
 fn init() -> Result<(), ComponentInitError> {

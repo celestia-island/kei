@@ -1,10 +1,11 @@
 //! Node → gateway response / unsolicited messages.
 
 use alloc::string::String;
+use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
 
 use super::{Register, StationId};
-use crate::manifest::{AlarmLevel, SensorUnit};
+use crate::manifest::{AlarmLevel, Quality, SensorUnit};
 
 /// A node reports a telemetry value. Payload of [`MsgType::Telemetry`].
 ///
@@ -75,4 +76,42 @@ pub struct Nack {
     /// Gateway-defined error code (0 = generic).
     pub error_code: u16,
     pub message: String,
+}
+
+/// One reading inside a [`TelemetryBatch`].
+///
+/// Unlike the node-originated [`Telemetry`] frame (register + value only,
+/// sized for RAM-constrained MCUs), batch readings are gateway-enriched with
+/// the semantic name, raw value, and data quality. Batches flow
+/// gateway → service, never to MCU nodes.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BatchReading {
+    pub register: Register,
+    /// Semantic point name from the gateway's manifest (e.g. "pressure_1").
+    pub name: String,
+    /// Raw producer value (as f64 to cover u16/i16/f32/bool uniformly).
+    pub raw: f64,
+    /// Scaled engineering value.
+    pub value: f64,
+    pub unit: SensorUnit,
+    /// Data quality of this reading.
+    pub quality: Quality,
+    /// Epoch milliseconds (Unix).
+    pub timestamp_ms: u64,
+}
+
+/// A station's enriched telemetry batch. Payload of
+/// [`MsgType::TelemetryBatch`].
+///
+/// Produced by gateways (e.g. evernight) for service consumers (e.g.
+/// entelecheia). A full-station batch can exceed the MCU-oriented
+/// [`MAX_PAYLOAD_LEN`](super::frame::MAX_PAYLOAD_LEN); links carrying batches
+/// should encode/decode with
+/// [`MAX_BATCH_PAYLOAD_LEN`](super::frame::MAX_BATCH_PAYLOAD_LEN) headroom.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TelemetryBatch {
+    pub station_id: StationId,
+    /// Epoch milliseconds (Unix) — batch capture time.
+    pub timestamp_ms: u64,
+    pub readings: Vec<BatchReading>,
 }

@@ -339,3 +339,151 @@ fn node_ignores_frames_for_other_stations() {
         other => panic!("expected ReadRegister, got {:?}", other),
     }
 }
+
+// ── TelemetryBatch (gateway → service, B2) ───────────────────────────────
+
+use kei::wire::{
+    decode_frame_with_limit, encode_frame_with_limit, BatchReading, Quality, TelemetryBatch,
+    MAX_BATCH_PAYLOAD_LEN,
+};
+
+fn sample_batch(readings: usize) -> TelemetryBatch {
+    TelemetryBatch {
+        station_id: 19,
+        timestamp_ms: 1_790_000_000_000,
+        readings: (0..readings)
+            .map(|i| BatchReading {
+                register: 0x10 + i as u16,
+                name: format!("pressure_{i}"),
+                raw: 40.0 + i as f64,
+                value: 4.0 + i as f64 * 0.1,
+                unit: SensorUnit::MPa,
+                quality: Quality::Good,
+                timestamp_ms: 1_790_000_000_000 + i as u64,
+            })
+            .collect(),
+    }
+}
+
+#[test]
+fn telemetry_batch_round_trip() {
+    let batch = sample_batch(3);
+    let frame = Frame::telemetry_batch(&batch).expect("build batch frame");
+    assert_eq!(frame.msg_type, MsgType::TelemetryBatch);
+
+    let wire_bytes = frame
+        .encode_with_limit(MAX_BATCH_PAYLOAD_LEN)
+        .expect("encode within batch limit");
+    assert_eq!(wire_bytes[0], 0xCE);
+
+    let decoded =
+        decode_frame_with_limit(&wire_bytes, MAX_BATCH_PAYLOAD_LEN).expect("decode batch frame");
+    let back: TelemetryBatch = decoded.as_telemetry_batch().expect("payload decode");
+
+    assert_eq!(back.station_id, 19);
+    assert_eq!(back.readings.len(), 3);
+    assert_eq!(back.readings[0].name, "pressure_0");
+    assert_eq!(back.readings[1].register, 0x11);
+    assert!((back.readings[2].value - 4.2).abs() < 1e-9);
+    assert_eq!(back.readings[0].quality, Quality::Good);
+    assert_eq!(back.readings[0].unit, SensorUnit::MPa);
+}
+
+#[test]
+fn batch_exceeding_batch_limit_fails_loudly() {
+    // Grow the batch until it genuinely exceeds the 4 KiB batch budget —
+    // postcard is compact, so assert the precondition instead of guessing.
+    let mut batch = sample_batch(40);
+    for (i, r) in batch.readings.iter_mut().enumerate() {
+        r.name = format!("a_very_long_semantic_point_name_for_reading_number_{i}_with_some_extra_padding_to_make_it_big");
+    }
+    let payload = postcard::to_allocvec(&batch).unwrap();
+    assert!(
+        payload.len() > MAX_BATCH_PAYLOAD_LEN,
+        "test batch must exceed the batch limit, got {}",
+        payload.len()
+    );
+
+    assert!(Frame::telemetry_batch(&batch).is_err());
+    assert!(
+        encode_frame_with_limit(MsgType::TelemetryBatch, &payload, MAX_BATCH_PAYLOAD_LEN).is_err()
+    );
+}
+
+#[test]
+fn default_decode_limit_still_rejects_batch_frames() {
+    // A batch whose payload sits between the node-grade 1 KiB default and the
+    // 4 KiB batch limit must be rejected by the legacy decoder and accepted
+    // by the batch-aware one.
+    let batch = sample_batch(40); // ~1.5 KiB encoded
+    let frame = Frame::telemetry_batch(&batch).unwrap();
+    let payload_len = frame.payload.len();
+    assert!(
+        payload_len > kei::wire::MAX_PAYLOAD_LEN && payload_len <= MAX_BATCH_PAYLOAD_LEN,
+        "test batch must sit between the two limits, got {payload_len}"
+    );
+
+    let wire_bytes = frame.encode_with_limit(MAX_BATCH_PAYLOAD_LEN).unwrap();
+    assert!(decode_frame(&wire_bytes).is_err());
+    assert!(decode_frame_with_limit(&wire_bytes, MAX_BATCH_PAYLOAD_LEN).is_ok());
+}
+
+#[test]
+fn streaming_decoder_with_raised_limit_accepts_batch() {
+    let batch = sample_batch(40); // >1 KiB, <4 KiB
+    let frame = Frame::telemetry_batch(&batch).unwrap();
+    assert!(
+        frame.payload.len() > kei::wire::MAX_PAYLOAD_LEN,
+        "test batch must exceed the default limit, got {}",
+        frame.payload.len()
+    );
+    let wire_bytes = frame.encode_with_limit(MAX_BATCH_PAYLOAD_LEN).unwrap();
+
+    let mut dec = FrameDecoder::with_max_payload(MAX_BATCH_PAYLOAD_LEN);
+    let mut got = None;
+    for &byte in &wire_bytes {
+        match dec.push(byte) {
+            Ok(f) => {
+                got = Some(f);
+                break;
+            }
+            Err(kei::wire::decode::DecodeStreamError::NeedMore) => continue,
+            Err(e) => panic!("unexpected decode error: {e:?}"),
+        }
+    }
+    let f = got.expect("a complete frame");
+    assert_eq!(f.msg_type, MsgType::TelemetryBatch);
+    let back: TelemetryBatch = f.as_telemetry_batch().unwrap();
+    assert_eq!(back.readings.len(), 40);
+}
+
+#[test]
+fn batch_frame_crc_corruption_detected() {
+    let batch = sample_batch(2);
+    let frame = Frame::telemetry_batch(&batch).unwrap();
+    let mut wire_bytes = frame.encode_with_limit(MAX_BATCH_PAYLOAD_LEN).unwrap();
+
+    // Flip a payload byte.
+    let mid = wire_bytes.len() / 2;
+    wire_bytes[mid] ^= 0xFF;
+    assert!(decode_frame_with_limit(&wire_bytes, MAX_BATCH_PAYLOAD_LEN).is_err());
+}
+
+#[test]
+fn msg_type_batch_mapping_is_stable() {
+    assert_eq!(MsgType::from_u8(0x14), Some(MsgType::TelemetryBatch));
+    assert_eq!(MsgType::TelemetryBatch as u8, 0x14);
+}
+
+#[test]
+fn empty_batch_round_trip() {
+    // evernight produces empty batches when a station read fails entirely —
+    // they must survive the wire.
+    let batch = sample_batch(0);
+    let frame = Frame::telemetry_batch(&batch).unwrap();
+    let wire_bytes = frame.encode_with_limit(MAX_BATCH_PAYLOAD_LEN).unwrap();
+    let decoded = decode_frame_with_limit(&wire_bytes, MAX_BATCH_PAYLOAD_LEN).unwrap();
+    let back: TelemetryBatch = decoded.as_telemetry_batch().unwrap();
+    assert_eq!(back.station_id, 19);
+    assert!(back.readings.is_empty());
+}

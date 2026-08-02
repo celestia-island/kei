@@ -11,6 +11,10 @@ pub const FRAME_MAGIC: u8 = 0xCE;
 /// Maximum payload length (before postcard encoding). Keeps frames small
 /// enough for MCUs with limited RAM.
 pub const MAX_PAYLOAD_LEN: usize = 1024;
+/// Maximum payload length for gateway-originated batch frames
+/// ([`MsgType::TelemetryBatch`]). Batches are gateway-enriched and never flow
+/// to MCU nodes, so links that carry them may allow larger frames.
+pub const MAX_BATCH_PAYLOAD_LEN: usize = 4096;
 
 /// Header overhead: magic(1) + length(2) + msg_type(1) + crc16(2) = 6 bytes.
 pub const FRAME_OVERHEAD: usize = 6;
@@ -113,33 +117,93 @@ impl Frame {
         self.payload_as()
     }
 
+    /// Deserialize as TelemetryBatch (convenience).
+    pub fn as_telemetry_batch(&self) -> Result<super::TelemetryBatch, postcard::Error> {
+        self.payload_as()
+    }
+
+    /// Build a TelemetryBatch frame (gateway → service).
+    ///
+    /// Returns `Err` if the payload exceeds [`MAX_BATCH_PAYLOAD_LEN`] —
+    /// unlike the node-side constructors, an oversized batch is never
+    /// silently truncated.
+    pub fn telemetry_batch(batch: &super::TelemetryBatch) -> Result<Self, EncodeError> {
+        let payload = postcard::to_allocvec(batch).map_err(|_| EncodeError::Serialize)?;
+        if payload.len() > MAX_BATCH_PAYLOAD_LEN {
+            return Err(EncodeError::PayloadTooLong);
+        }
+        Ok(Self {
+            msg_type: MsgType::TelemetryBatch,
+            payload,
+        })
+    }
+
     /// Encode this frame to wire bytes.
     ///
     /// Layout: `magic | len_lo len_hi | msg_type | payload... | crc_lo crc_hi`
+    ///
+    /// Legacy behaviour: payloads longer than [`MAX_PAYLOAD_LEN`] are
+    /// silently truncated (kept for backward compatibility with node links).
+    /// Prefer [`Frame::encode_with_limit`] on batch-carrying links.
     pub fn encode(&self) -> Vec<u8> {
         encode_frame(self.msg_type, &self.payload)
+    }
+
+    /// Encode this frame, failing loudly when the payload exceeds `limit`.
+    pub fn encode_with_limit(&self, limit: usize) -> Result<Vec<u8>, EncodeError> {
+        encode_frame_with_limit(self.msg_type, &self.payload, limit)
     }
 }
 
 /// Encode a frame to wire bytes. CRC16-Modbus covers `[length .. end of payload]`.
+///
+/// Legacy behaviour: payloads longer than [`MAX_PAYLOAD_LEN`] are silently
+/// truncated. Prefer [`encode_frame_with_limit`] where corruption must fail
+/// loudly instead.
 pub fn encode_frame(msg_type: MsgType, payload: &[u8]) -> Vec<u8> {
     let payload_len = payload.len().min(MAX_PAYLOAD_LEN);
+    encode_frame_inner(msg_type, &payload[..payload_len])
+}
+
+/// Encode a frame, failing when the payload exceeds `limit`.
+pub fn encode_frame_with_limit(
+    msg_type: MsgType,
+    payload: &[u8],
+    limit: usize,
+) -> Result<Vec<u8>, EncodeError> {
+    if payload.len() > limit {
+        return Err(EncodeError::PayloadTooLong);
+    }
+    Ok(encode_frame_inner(msg_type, payload))
+}
+
+fn encode_frame_inner(msg_type: MsgType, payload: &[u8]) -> Vec<u8> {
+    let payload_len = payload.len();
     let len_bytes = (payload_len as u16).to_le_bytes();
 
     // CRC covers: length(2) + msg_type(1) + payload
     let mut crc_region = Vec::with_capacity(3 + payload_len);
     crc_region.extend_from_slice(&len_bytes);
     crc_region.push(msg_type as u8);
-    crc_region.extend_from_slice(&payload[..payload_len]);
+    crc_region.extend_from_slice(payload);
     let crc_val = crc16_modbus(&crc_region);
 
     let mut out = Vec::with_capacity(FRAME_OVERHEAD + payload_len);
     out.push(FRAME_MAGIC);
     out.extend_from_slice(&len_bytes);
     out.push(msg_type as u8);
-    out.extend_from_slice(&payload[..payload_len]);
+    out.extend_from_slice(payload);
     out.extend_from_slice(&crc_val.to_le_bytes());
     out
+}
+
+/// Error returned by the `_with_limit` encoders and batch constructors.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EncodeError {
+    /// Payload exceeded the caller-specified limit.
+    PayloadTooLong,
+    /// postcard serialisation failed.
+    Serialize,
 }
 
 /// Decode a complete frame from wire bytes.
@@ -148,6 +212,12 @@ pub fn encode_frame(msg_type: MsgType, payload: &[u8]) -> Vec<u8> {
 /// the CRC check fails. For streaming input (UART byte-by-byte), use
 /// [`super::FrameDecoder`] instead.
 pub fn decode_frame(buf: &[u8]) -> Result<Frame, DecodeError> {
+    decode_frame_with_limit(buf, MAX_PAYLOAD_LEN)
+}
+
+/// Decode a complete frame, accepting payloads up to `limit` bytes. Use
+/// [`MAX_BATCH_PAYLOAD_LEN`] on links that carry [`MsgType::TelemetryBatch`].
+pub fn decode_frame_with_limit(buf: &[u8], limit: usize) -> Result<Frame, DecodeError> {
     if buf.len() < FRAME_OVERHEAD {
         return Err(DecodeError::TooShort);
     }
@@ -155,7 +225,7 @@ pub fn decode_frame(buf: &[u8]) -> Result<Frame, DecodeError> {
         return Err(DecodeError::BadMagic);
     }
     let payload_len = u16::from_le_bytes([buf[1], buf[2]]) as usize;
-    if payload_len > MAX_PAYLOAD_LEN {
+    if payload_len > limit {
         return Err(DecodeError::PayloadTooLong);
     }
     let msg_type = MsgType::from_u8(buf[3]).ok_or(DecodeError::UnknownMsgType)?;

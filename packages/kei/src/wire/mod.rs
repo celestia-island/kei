@@ -18,7 +18,7 @@
 //! ## Usage
 //!
 //! Embassy node side:
-//! ```no_run
+//! ```ignore
 //! # use kei::wire::*;
 //! let frame = Frame::telemetry(1, 0x100, 23.5, kei::manifest::SensorUnit::Celsius);
 //! let bytes: Vec<u8> = frame.encode();
@@ -26,7 +26,7 @@
 //! ```
 //!
 //! Gateway side:
-//! ```no_run
+//! ```ignore
 //! # use kei::wire::*;
 //! let bytes = transport.recv().await;
 //! let frame = Frame::decode(&bytes)?;
@@ -40,7 +40,10 @@ pub mod request;
 pub mod response;
 
 pub use decode::FrameDecoder;
-pub use frame::{decode_frame, encode_frame, Frame, FRAME_MAGIC, MAX_PAYLOAD_LEN};
+pub use frame::{
+    decode_frame, decode_frame_with_limit, encode_frame, encode_frame_with_limit, EncodeError,
+    Frame, FRAME_MAGIC, MAX_BATCH_PAYLOAD_LEN, MAX_PAYLOAD_LEN,
+};
 pub use gateway::{Gateway, GatewayError, Incoming};
 pub use node::{Node, NodeError, Request};
 pub use request::*;
@@ -48,7 +51,7 @@ pub use response::*;
 
 // Re-export manifest types used in wire message payloads, so that
 // `super::AlarmLevel` etc. resolve inside frame.rs / response.rs.
-pub use crate::manifest::{AlarmLevel, SensorUnit};
+pub use crate::manifest::{AlarmLevel, Quality, SensorUnit};
 
 use serde::{Deserialize, Serialize};
 
@@ -62,7 +65,9 @@ pub type Register = u16;
 /// Message type byte in the wire frame header.
 ///
 /// `0x01-0x0F`: gateway → node (requests).
-/// `0x10-0x1F`: node → gateway (responses / unsolicited).
+/// `0x10-0x1F`: node → gateway (responses / unsolicited), plus
+/// `0x14 TelemetryBatch` which flows gateway → service (batches are
+/// gateway-enriched and never sent to MCU nodes).
 /// `0xFF`: error (bidirectional).
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -84,6 +89,11 @@ pub enum MsgType {
     Status = 0x12,
     /// Node responds to a discovery probe. Payload: [`DiscoverResponse`].
     DiscoverResponse = 0x13,
+    /// Gateway reports a station's enriched telemetry batch (gateway →
+    /// service link, e.g. evernight → entelecheia). Payload:
+    /// [`TelemetryBatch`]. May exceed [`MAX_PAYLOAD_LEN`]; decode with
+    /// [`MAX_BATCH_PAYLOAD_LEN`](frame::MAX_BATCH_PAYLOAD_LEN) headroom.
+    TelemetryBatch = 0x14,
 
     /// Negative acknowledgement. Payload: [`Nack`].
     Nack = 0xFF,
@@ -101,6 +111,7 @@ impl MsgType {
             0x11 => Self::Alarm,
             0x12 => Self::Status,
             0x13 => Self::DiscoverResponse,
+            0x14 => Self::TelemetryBatch,
             0xFF => Self::Nack,
             _ => return None,
         })
@@ -114,7 +125,8 @@ impl MsgType {
         )
     }
 
-    /// True if this message type flows node → gateway.
+    /// True if this message type reports data (node → gateway, or gateway →
+    /// service in the case of `TelemetryBatch`).
     pub fn is_response(&self) -> bool {
         !self.is_request() && !matches!(self, Self::Nack)
     }

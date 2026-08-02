@@ -1,6 +1,6 @@
 [package]
 name = "kei"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["langyo <langyo.china@gmail.com>"]
 license = "SySL-1.0"

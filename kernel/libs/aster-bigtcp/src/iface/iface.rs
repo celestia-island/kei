@@ -104,6 +104,20 @@ impl<E: Ext> dyn Iface<E> {
         cidr.broadcast()
     }
 
+    /// Sets the IPv4 address of the iface at runtime.
+    ///
+    /// Used by the SIOCSIFADDR ioctl. The current prefix length is kept.
+    pub fn set_ipv4_addr(&self, addr: Ipv4Address) {
+        self.common().set_ipv4_addr(addr);
+    }
+
+    /// Sets the IPv4 prefix length of the iface at runtime.
+    ///
+    /// Used by the SIOCSIFNETMASK ioctl. The current address is kept.
+    pub fn set_ipv4_prefix(&self, prefix: u8) {
+        self.common().set_ipv4_prefix(prefix);
+    }
+
     /// Returns a reference to the associated [`ScheduleNextPoll`].
     ///
     /// [`ScheduleNextPoll`]: crate::iface::sched::ScheduleNextPoll

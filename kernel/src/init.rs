@@ -429,16 +429,15 @@ pub(super) fn on_first_process_startup(ctx: &Context) {
         let _ = aster_framebuffer::init_component_fn();
         let _ = aster_input::init_component_fn();
 
-        // Initialize the TTY subsystem (VT consoles, serial tty, /dev nodes).
-        // The VT subsystem will allocate VT1, connect to the framebuffer
-        // (already published), and register the keyboard handler (connecting
-        // to any virtio-keyboard devices already registered).
-        //
-        // NOTE: TTY init is skipped on aarch64 for now. It hangs in QEMU TCG
-        // mode due to framebuffer flush operations in the VT console backend.
-        // The aris-render user-space process writes directly to /dev/fb0 via
-        // the published FrameBuffer, which does not go through the TTY layer.
-        ostd::info!("skipping tty subsystem (aarch64, QEMU TCG workaround)");
+        // Initialize the serial TTY (`/dev/ttyS0`) before registering device
+        // nodes so the node exists for userspace. The full TTY subsystem (VT
+        // consoles) is skipped on aarch64: it hangs in QEMU TCG mode due to
+        // framebuffer flush operations in the VT console backend. The serial
+        // TTY itself is safe (drives the PL011 directly) and matches the
+        // Linux UART device contract (rig suite `uart-console`).
+        ostd::info!("initializing serial tty...");
+        let _ = crate::device::serial_tty_init_in_first_process();
+        ostd::info!("serial tty initialized");
 
         // Create /dev/fb0 device node directly in the rootfs.
         // The full device::init_in_first_process hangs because mounting ramfs

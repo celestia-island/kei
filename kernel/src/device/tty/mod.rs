@@ -39,6 +39,16 @@ pub(super) fn init_in_first_process() -> Result<()> {
     Ok(())
 }
 
+/// Initializes only the serial TTY (`ttyS0`) and its device node.
+///
+/// Used on aarch64 where the full [`init_in_first_process`] cannot run: the
+/// VT subsystem hangs on QEMU TCG (framebuffer flush in the VT console
+/// backend). The serial TTY itself is safe and gives userspace a `/dev/ttyS0`
+/// matching the Linux UART contract (driver contract rig `uart-console`).
+pub(super) fn serial_init_in_first_process() -> Result<()> {
+    serial::init_in_first_process()
+}
+
 const IO_CAPACITY: usize = 4096;
 
 /// A teletyper (TTY).

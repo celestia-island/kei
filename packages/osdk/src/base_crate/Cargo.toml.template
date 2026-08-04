@@ -12,6 +12,10 @@ ostd = { path = "#OSTD_PATCH_ROOT#/packages/ostd" }
 ostd-pod = { path = "#OSTD_PATCH_ROOT#/packages/ostd/libs/ostd-pod" }
 ostd-macros = { path = "#OSTD_PATCH_ROOT#/packages/ostd/libs/ostd-macros" }
 ostd-test = { path = "#OSTD_PATCH_ROOT#/packages/ostd/libs/ostd-test" }
+# The root workspace patches x86_64 to drop the Step forward/backward_overflowing
+# impls (incompatible with the pinned nightly); the base crate must apply the
+# same patch or the x86_64 build fails with E0407.
+x86_64 = { path = "#OSTD_PATCH_ROOT#/packages/patches/x86_64" }
 
 [profile.release]
 lto = false

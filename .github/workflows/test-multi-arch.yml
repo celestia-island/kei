@@ -19,8 +19,15 @@ jobs:
           components: rust-src, rustc-dev, llvm-tools-preview
           targets: aarch64-unknown-none
       - uses: Swatinem/rust-cache@v2
+      # QEMU is preinstalled on the self-hosted runner; only install when
+      # missing (concurrent jobs share node-1 and apt locks would race).
       - name: Install QEMU
-        run: sudo apt-get update && sudo apt-get install -y qemu-system-arm
+        run: |
+          command -v qemu-system-aarch64 || sudo apt-get update -qq && sudo apt-get install -y -qq qemu-system-arm
+      # The OSDK build canonicalizes the aarch64 initramfs path at build
+      # time; produce it first (tracked busybox, no root needed).
+      - name: Pack aarch64 initramfs
+        run: bash tests/initramfs/build_aarch64_rootfs_ci.sh
       # scripts/test_all_arch.py -> scripts/utils/build_env.py hard-depends on
       # the external celestia_devtools package; install it explicitly.
       - name: Install celestia-devtools
@@ -49,7 +56,9 @@ jobs:
           targets: x86_64-unknown-none
       - uses: Swatinem/rust-cache@v2
       - name: Install QEMU and build tools
-        run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 xorriso mtools
+        run: |
+          command -v qemu-system-x86_64 && command -v xorriso && command -v mtools || \
+            sudo apt-get update -qq && sudo apt-get install -y -qq qemu-system-x86 xorriso mtools
       - name: Install celestia-devtools
         run: pip install --break-system-packages git+https://github.com/celestia-island/celestia-devtools.git
       - name: Install cargo-osdk
@@ -74,8 +83,11 @@ jobs:
           components: rust-src, rustc-dev, llvm-tools-preview
           targets: riscv64imac-unknown-none-elf
       - uses: Swatinem/rust-cache@v2
+      # QEMU is preinstalled on the self-hosted runner; only install when
+      # missing (concurrent jobs share node-1 and apt locks would race).
       - name: Install QEMU
-        run: sudo apt-get update && sudo apt-get install -y qemu-system-misc
+        run: |
+          command -v qemu-system-riscv64 || sudo apt-get update -qq && sudo apt-get install -y -qq qemu-system-misc
       - name: Install celestia-devtools
         run: pip install --break-system-packages git+https://github.com/celestia-island/celestia-devtools.git
       - name: Install cargo-osdk

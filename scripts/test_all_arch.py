@@ -72,11 +72,12 @@ def test_arch(arch: str, output_dir: Path) -> str:
         return "SKIP"
 
     # cargo osdk build canonicalizes the initramfs path from OSDK.toml at
-    # build time; produce it first (tracked busybox, no root needed).
-    # aarch64 needs its own dropbear-based initramfs which is not CI-ready
-    # yet (build_aarch64_rootfs.sh is WSL-specific) — left to a follow-up.
+    # build time; produce it first (tracked busybox, no root needed). The
+    # kernel's rootfs.rs include_bytes! hard-references the x86_64 initramfs
+    # on every arch, and the aarch64 scheme additionally needs its own
+    # initramfs_aarch64.cpio.gz (packed by the CI workflow step).
     initramfs_gz = PROJECT_ROOT / "tests" / "initramfs" / "build" / "initramfs.cpio.gz"
-    if arch != "aarch64" and not initramfs_gz.exists():
+    if not initramfs_gz.exists():
         cf.pending("Packing initramfs (build-time requirement)...")
         rootfs_script = PROJECT_ROOT / "tests" / "initramfs" / "build_x86_64_rootfs.sh"
         # Invoke via bash explicitly: the exec bit / shebang do not survive

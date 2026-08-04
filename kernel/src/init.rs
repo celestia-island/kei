@@ -323,6 +323,13 @@ fn init_in_first_kthread(path_resolver: &PathResolver) {
         // virtio component init probes devices (needs FDT, which is available)
         let _ = aster_virtio::virtio_component_init_pub();
 
+        // Spawn the per-device request handling threads (e.g. the virtio-blk
+        // handle_requests loop) now that the virtio devices are probed. The
+        // generic device::init_in_first_kthread() is skipped on aarch64, so
+        // without this block-device I/O requests would never be serviced.
+        crate::device::registry::init_in_first_kthread();
+        ostd::info!("device registry kthread init done");
+
         // Publish the framebuffer. On QEMU TCG aarch64, Arc::new can trigger
         // a page fault (heap allocator issue). We try it but continue on failure.
         ostd::info!("publishing framebuffer...");
@@ -459,6 +466,10 @@ pub(super) fn on_first_process_startup(ctx: &Context) {
                     );
                 }
             }
+            // Register block device nodes (e.g. /dev/vda) directly as well,
+            // matching what `registry::init_in_first_process` does when the
+            // full devtmpfs mount path can run.
+            let _ = crate::device::registry::init_in_first_process_block(&path_resolver);
             ostd::info!("device nodes registered");
         }
         // The framebuffer flush happens during GPU probe. Background fill

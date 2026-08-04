@@ -130,6 +130,14 @@ impl<E: Ext> IfaceCommon<E> {
         self.interface.lock().prefix_len()
     }
 
+    pub(super) fn set_ipv4_addr(&self, addr: Ipv4Address) {
+        self.interface.lock().set_ipv4_addr(addr);
+    }
+
+    pub(super) fn set_ipv4_prefix(&self, prefix: u8) {
+        self.interface.lock().set_ipv4_prefix(prefix);
+    }
+
     pub(super) fn sched_poll(&self) -> &E::ScheduleNextPoll {
         &self.sched_poll
     }

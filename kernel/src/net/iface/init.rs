@@ -29,6 +29,44 @@ pub fn iter_all_ifaces() -> Iter<'static, Arc<Iface>> {
     IFACES.get().unwrap().iter()
 }
 
+/// Sets the IPv4 address of the interface with the given name.
+///
+/// Returns `ENODEV` if no interface matches. Backs the SIOCSIFADDR socket ioctl.
+pub fn set_iface_ipv4_addr(name: &core::ffi::CStr, addr: core::net::Ipv4Addr) -> Result<()> {
+    for iface in iter_all_ifaces() {
+        if iface.name() == name {
+            iface.set_ipv4_addr(addr);
+            return Ok(());
+        }
+    }
+    return_errno_with_message!(Errno::ENODEV, "no network interface with that name");
+}
+
+/// Sets the IPv4 prefix length of the interface with the given name.
+///
+/// Returns `ENODEV` if no interface matches. Backs the SIOCSIFNETMASK socket ioctl.
+pub fn set_iface_ipv4_prefix(name: &core::ffi::CStr, prefix: u8) -> Result<()> {
+    for iface in iter_all_ifaces() {
+        if iface.name() == name {
+            iface.set_ipv4_prefix(prefix);
+            return Ok(());
+        }
+    }
+    return_errno_with_message!(Errno::ENODEV, "no network interface with that name");
+}
+
+/// Returns the flags of the interface with the given name.
+///
+/// Backs the SIOCGIFFLAGS socket ioctl.
+pub fn get_iface_flags(name: &core::ffi::CStr) -> Result<u32> {
+    for iface in iter_all_ifaces() {
+        if iface.name() == name {
+            return Ok(iface.flags().bits());
+        }
+    }
+    return_errno_with_message!(Errno::ENODEV, "no network interface with that name");
+}
+
 // TODO: Support multiple network devices and avoid the hardcoded device name.
 const VIRTIO_DEVICE_NAME: &str = aster_virtio::device::network::DEVICE_NAME;
 

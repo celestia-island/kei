@@ -158,6 +158,11 @@ fn do_new_base_crate(
     let cargo_toml = include_str!("Cargo.toml.template");
     let cargo_toml = cargo_toml.replace("#NAME#", &(dep_crate_name.to_string() + "-osdk-bin"));
     let cargo_toml = cargo_toml.replace("#VERSION#", dep_crate_version);
+    // The workspace root (this repository) is where the patched ostd crates
+    // live; substituting it keeps the generated manifest valid on any checkout
+    // (CI, worktrees, other machines) instead of a hard-coded dev path.
+    let ostd_patch_root = workspace_root.to_string_lossy();
+    let cargo_toml = cargo_toml.replace("#OSTD_PATCH_ROOT#", &ostd_patch_root);
     fs::write(base_crate_path.as_ref().join("Cargo.toml"), cargo_toml).unwrap();
 
     // Set the current directory to the target osdk directory

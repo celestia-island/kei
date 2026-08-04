@@ -264,6 +264,9 @@ unsafe extern "C" {
 }
 
 pub(crate) fn tlb_flush_addr(vaddr: Vaddr) {
+    // The TLBI register operand is the page number, not the raw VA:
+    // Xt[43:0] = VA[55:12], Xt[63:48] = ASID. Passing the full VA would
+    // shift the address out of range and the invalidation would miss.
     // SAFETY: TLBI instructions are always safe to execute.
     unsafe {
         core::arch::asm!(
@@ -271,7 +274,7 @@ pub(crate) fn tlb_flush_addr(vaddr: Vaddr) {
             "tlbi vaae1is, {0}",
             "dsb ish",
             "isb",
-            in(reg) vaddr,
+            in(reg) vaddr >> 12,
         );
     }
 }

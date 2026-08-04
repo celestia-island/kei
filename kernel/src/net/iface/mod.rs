@@ -7,7 +7,10 @@ mod poll;
 mod sched;
 
 pub use broadcast::is_broadcast_endpoint;
-pub use init::{init, iter_all_ifaces, loopback_iface, virtio_iface};
+pub use init::{
+    get_iface_flags, init, iter_all_ifaces, loopback_iface, set_iface_ipv4_addr,
+    set_iface_ipv4_prefix, virtio_iface,
+};
 pub(super) use poll::{init_in_first_kthread, poll_ifaces};
 
 pub type Iface = dyn aster_bigtcp::iface::Iface<ext::BigtcpExt>;

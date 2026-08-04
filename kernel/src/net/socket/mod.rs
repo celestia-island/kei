@@ -12,9 +12,10 @@ use crate::{
         vfs::path::Path,
     },
     prelude::*,
-    util::{MultiRead, MultiWrite},
+    util::{MultiRead, MultiWrite, ioctl::RawIoctl},
 };
 
+mod ioctl;
 pub mod ip;
 pub mod netlink;
 pub mod options;
@@ -172,6 +173,10 @@ impl<T: Socket + 'static> FileLike for T {
     fn access_mode(&self) -> AccessMode {
         // Reference: <https://elixir.bootlin.com/linux/v7.0/source/net/socket.c#L483>.
         AccessMode::O_RDWR
+    }
+
+    fn ioctl(&self, raw_ioctl: RawIoctl) -> Result<i32> {
+        ioctl::handle_socket_ioctl(raw_ioctl)
     }
 
     fn as_socket(&self) -> Option<&dyn Socket> {

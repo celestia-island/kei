@@ -56,6 +56,29 @@ impl<E: Ext> PollableIface<E> {
             .map(|ip_addr| ip_addr.prefix_len())
     }
 
+    /// Sets the IPv4 address (and prefix length) of the interface.
+    ///
+    /// Replaces the current IPv4 address set. This backs the SIOCSIFADDR /
+    /// SIOCSIFNETMASK ioctls so userspace can configure the address at runtime.
+    pub(super) fn set_ipv4_addr(&mut self, addr: smoltcp::wire::Ipv4Address) {
+        let prefix = self.prefix_len().unwrap_or(24);
+        self.set_ipv4_cidr(smoltcp::wire::Ipv4Cidr::new(addr, prefix));
+    }
+
+    /// Updates the IPv4 prefix length, keeping the current address.
+    pub(super) fn set_ipv4_prefix(&mut self, prefix: u8) {
+        if let Some(addr) = self.ipv4_addr() {
+            self.set_ipv4_cidr(smoltcp::wire::Ipv4Cidr::new(addr, prefix));
+        }
+    }
+
+    fn set_ipv4_cidr(&mut self, cidr: smoltcp::wire::Ipv4Cidr) {
+        self.interface.update_ip_addrs(|addrs| {
+            addrs.retain(|addr| !matches!(addr, smoltcp::wire::IpCidr::Ipv4(_)));
+            addrs.push(smoltcp::wire::IpCidr::Ipv4(cidr));
+        });
+    }
+
     /// Returns the next poll time.
     pub(super) fn next_poll_at_ms(&self) -> Option<u64> {
         self.pending_conns.next_poll_at_ms()

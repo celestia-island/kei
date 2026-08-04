@@ -159,5 +159,10 @@ kcmd_args = [
     "HOME=/root",
     "USER=root",
     "PATH=/bin:/sbin",
+    # The top-level [run.boot] carries init=/init but this scheme overrides
+    # kcmd_args entirely — without it, INIT_PATH is None and kei probes
+    # /sbin/init, /etc/init, /bin/init, /bin/sh (all absent in a minimal
+    # initramfs) and fails to start init. See issue #51.
+    "init=/init",
 ]
 init_args = ["/init"]

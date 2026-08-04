@@ -197,3 +197,11 @@ pub fn init_in_first_process(ctx: &Context) -> Result<()> {
 pub fn tty_init_in_first_process() -> Result<()> {
     tty::init_in_first_process()
 }
+
+/// Initializes only the serial TTY (`ttyS0`).
+///
+/// Used on aarch64 where the VT subsystem hangs on QEMU TCG; the serial TTY
+/// still works and exposes `/dev/ttyS0` to userspace (UART contract).
+pub fn serial_tty_init_in_first_process() -> Result<()> {
+    tty::serial_init_in_first_process()
+}

@@ -8,10 +8,10 @@ version = "#VERSION#"
 edition = "2024"
 
 [patch.crates-io]
-ostd = { path = "/mnt/codespace/kei/packages/ostd" }
-ostd-pod = { path = "/mnt/codespace/kei/packages/ostd/libs/ostd-pod" }
-ostd-macros = { path = "/mnt/codespace/kei/packages/ostd/libs/ostd-macros" }
-ostd-test = { path = "/mnt/codespace/kei/packages/ostd/libs/ostd-test" }
+ostd = { path = "#OSTD_PATCH_ROOT#/packages/ostd" }
+ostd-pod = { path = "#OSTD_PATCH_ROOT#/packages/ostd/libs/ostd-pod" }
+ostd-macros = { path = "#OSTD_PATCH_ROOT#/packages/ostd/libs/ostd-macros" }
+ostd-test = { path = "#OSTD_PATCH_ROOT#/packages/ostd/libs/ostd-test" }
 
 [profile.release]
 lto = false

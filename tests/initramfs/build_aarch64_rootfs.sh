@@ -76,5 +76,10 @@ if [ -f /tmp/client_ssh_key.pub ]; then
     cp /tmp/client_ssh_key.pub "$ROOTFS"/root/.ssh/authorized_keys
 fi
 
-echo "=== rootfs ready at $ROOTFS ==="
-echo "Next: python3 tests/initramfs/build_aarch64_cpio.py $ROOTFS tests/initramfs/build/initramfs_aarch64_dropbear.cpio.gz"
+# Pack the initramfs image.
+BUILD_DIR="$SCRIPT_DIR/build"
+mkdir -p "$BUILD_DIR"
+python3 "$SCRIPT_DIR/build_aarch64_cpio.py" "$ROOTFS" "$BUILD_DIR/initramfs_aarch64_dropbear.cpio.gz"
+echo "=== initramfs ready at $BUILD_DIR/initramfs_aarch64_dropbear.cpio.gz ==="
+echo "Boot it with: qemu-system-aarch64 -M virt,gic-version=3,virtualization=on -cpu cortex-a72 -m 1024 -kernel <kei.bin> -initrd $BUILD_DIR/initramfs_aarch64_dropbear.cpio.gz -append 'console=ttyAMA0 init=/init' -netdev user,id=n0,hostfwd=tcp::2222-:22 -device virtio-net-device,netdev=n0"
+echo "Then: ssh -i /tmp/client_ssh_key -p 2222 root@127.0.0.1"

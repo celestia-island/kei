@@ -1,14 +1,43 @@
 #!/bin/bash
-# Builds the aarch64 initramfs rootfs directory.
-# Run on the WSL/Linux host: bash build_aarch64_rootfs.sh
+# Builds the aarch64 dropbear initramfs rootfs directory.
+# Run on the Linux host: bash build_aarch64_rootfs.sh
+#
+# Requires:
+#   - aarch64 musl cross toolchain (musl.cc aarch64-linux-musl-cross), or
+#     AR/RANLIB/CC env vars pointing at aarch64 musl tools.
+#   - dropbear source at $DROPBEAR_SRC (default /tmp/dropbear-2022.83), or
+#     prebuilt static dropbear/dropbearkey binaries at $DROPBEAR_DIR.
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+KEI_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 ROOTFS=/tmp/aarch64-rootfs
-KEI_ROOT="/mnt/d/源代码/工程项目/celestia/kei"
-DROPBEAR_SRC=/tmp/dropbear-2022.83
+DROPBEAR_SRC="${DROPBEAR_SRC:-/tmp/dropbear-2022.83}"
+DROPBEAR_DIR="${DROPBEAR_DIR:-}"
+MUSL_BIN="${MUSL_BIN:-/tmp/aarch64-linux-musl-cross/bin}"
+
+# ---------------------------------------------------------------- toolchain
+
+if [ -z "$DROPBEAR_DIR" ]; then
+    if [ ! -d "$DROPBEAR_SRC" ]; then
+        echo "[aarch64-rootfs] dropbear source missing at $DROPBEAR_SRC"
+        echo "  get it: curl -L -o /tmp/db.tgz https://github.com/mkj/dropbear/archive/refs/tags/DROPBEAR_2022.83.tar.gz && tar -xzf /tmp/db.tgz -C /tmp && mv /tmp/dropbear-DROPBEAR_2022.83 $DROPBEAR_SRC"
+        exit 1
+    fi
+    export PATH="$MUSL_BIN:$PATH"
+    export AR="${AR:-aarch64-linux-musl-ar}"
+    export RANLIB="${RANLIB:-aarch64-linux-musl-ranlib}"
+    export CC="${CC:-aarch64-linux-musl-gcc}"
+    if ! command -v "$CC" >/dev/null 2>&1; then
+        echo "[aarch64-rootfs] musl cross compiler not found ($CC); get it from https://musl.cc (aarch64-linux-musl-cross.tgz) and set MUSL_BIN"
+        exit 1
+    fi
+fi
+
+# ---------------------------------------------------------------- rootfs
 
 rm -rf "$ROOTFS"
-mkdir -p "$ROOTFS"/{bin,sbin,etc/dropbear,dev,proc,sys,tmp,root,run,var/log}
+mkdir -p "$ROOTFS"/{bin,sbin,etc/dropbear,dev,proc,sys,tmp,root/.ssh,run,var/log}
 
 # busybox
 cp "$KEI_ROOT"/tests/initramfs/busybox-aarch64 "$ROOTFS"/bin/busybox
@@ -23,27 +52,19 @@ done
 cd -
 
 # dropbear + dropbearkey
-cp "$DROPBEAR_SRC"/dropbear "$ROOTFS"/sbin/dropbear
-cp "$DROPBEAR_SRC"/dropbearkey "$ROOTFS"/sbin/dropbearkey
+if [ -n "$DROPBEAR_DIR" ]; then
+    cp "$DROPBEAR_DIR"/dropbear "$ROOTFS"/sbin/dropbear
+    cp "$DROPBEAR_DIR"/dropbearkey "$ROOTFS"/sbin/dropbearkey
+else
+    (cd "$DROPBEAR_SRC" && make clean >/dev/null 2>&1 || true)
+    (cd "$DROPBEAR_SRC" && make -j4 PROGRAMS="dropbear dropbearkey" LDFLAGS="-static -Wl,-z,now -Wl,-z,relro")
+    cp "$DROPBEAR_SRC"/dropbear "$ROOTFS"/sbin/dropbear
+    cp "$DROPBEAR_SRC"/dropbearkey "$ROOTFS"/sbin/dropbearkey
+fi
 chmod +x "$ROOTFS"/sbin/dropbear "$ROOTFS"/sbin/dropbearkey
 
-# dropbear host key (ed25519)
-HOST_KEY="$ROOTFS"/etc/dropbear/dropbear_ed25519_host_key
-HOST_KEY_GEN=0
-if command -v qemu-aarch64-static &>/dev/null; then
-    qemu-aarch64-static "$DROPBEAR_SRC"/dropbearkey -t ed25519 -f "$HOST_KEY" && HOST_KEY_GEN=1
-elif command -v dropbearkey &>/dev/null; then
-    dropbearkey -t ed25519 -f "$HOST_KEY" && HOST_KEY_GEN=1
-elif command -v ssh-keygen &>/dev/null; then
-    ssh-keygen -t ed25519 -N "" -C "kei@aarch64" -f "$HOST_KEY" && HOST_KEY_GEN=1
-fi
-if [ "$HOST_KEY_GEN" = 0 ]; then
-    echo "WARNING: dropbear host key not generated (missing qemu-aarch64-static / dropbearkey / ssh-keygen)."
-    echo "         The init script will generate it at boot time."
-fi
-
 # init script
-cp "$KEI_ROOT"/tests/initramfs/src/init_aarch64 "$ROOTFS"/init
+cp "$SCRIPT_DIR"/src/init_aarch64 "$ROOTFS"/init
 chmod +x "$ROOTFS"/init
 
 # config files (dropbear needs getpwnam("root"))
@@ -52,11 +73,8 @@ printf 'root:x:0:\n' > "$ROOTFS"/etc/group
 
 # authorized_keys (if a client key was generated)
 if [ -f /tmp/client_ssh_key.pub ]; then
-    cp /tmp/client_ssh_key.pub "$ROOTFS"/etc/dropbear/authorized_keys
+    cp /tmp/client_ssh_key.pub "$ROOTFS"/root/.ssh/authorized_keys
 fi
 
-echo "=== bin symlinks ==="
-ls "$ROOTFS"/bin/ | tr '\n' ' '; echo
-echo "=== sbin ==="
-ls "$ROOTFS"/sbin/
 echo "=== rootfs ready at $ROOTFS ==="
+echo "Next: python3 tests/initramfs/build_aarch64_cpio.py $ROOTFS tests/initramfs/build/initramfs_aarch64_dropbear.cpio.gz"

@@ -251,7 +251,7 @@ smoltcp = { git = "https://github.com/asterinas/smoltcp", tag = "r_2024-11-08_f0
     "socket-tcp",
 ] }
 spin = "^0.12"
-syn = { version = "^2.0", features = ["full", "parsing", "fold"] }
+syn = { version = "^3.0", features = ["full", "parsing", "fold"] }
 takeable = "^0.2"
 time = { version = "^0.3", default-features = false, features = ["alloc"] }
 uart_16550 = "^0.3"

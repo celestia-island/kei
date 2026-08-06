@@ -28,6 +28,14 @@ initramfs = "tests/initramfs/build/initramfs.cpio.gz"
 [test.qemu]
 args = "$(./scripts/tools/qemu_args.sh test)"
 
+# Common build options for all schemes.
+# aes-gcm/aes 0.9+ select the hardware AES backend via runtime CPU feature
+# detection by default; the kernel cannot use it because it does not save and
+# restore the FPU state. Force the software backend (replaces the old
+# aes-gcm "force-soft" feature, removed in aes-gcm 0.10).
+[build]
+rustflags = '--cfg aes_backend="soft"'
+
 # Other Schemes
 
 # x86_64 boots as a Linux bzImage on the QEMU microvm machine (qemu-direct).

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use tdx_guest::{
-    SHARED_MASK, TdxTrapFrame,
+    TdxTrapFrame,
     tdcall::{TdCallError, accept_page},
     tdvmcall::{TdVmcallError, map_gpa},
 };

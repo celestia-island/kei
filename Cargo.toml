@@ -198,13 +198,15 @@ xarray = { path = "kernel/libs/xarray" }
 
 # External dependencies only for safe crates (i.e., crates under kernel or osdk/deps directories)
 #
-# Enable `force-soft` feature to disable `AES-NI` and `CLMUL` intrinsics, ensuring that the implementation
-# relies solely on software, and in the software implementation, unsafe code is rarely used.
+# The `force-soft` feature was removed in aes-gcm 0.10; the software-only AES backend is now
+# selected by passing `--cfg aes_backend="soft"` in the OSDK build rustflags (see OSDK.toml).
+# This disables `AES-NI` and `CLMUL` intrinsics, ensuring that the implementation relies solely
+# on software, and in the software implementation, unsafe code is rarely used.
 # FIXME: to utilize `AES-NI` and `CLMUL` intrinsics, some specific flags must be added to `RUSTFLAGS`,
 # i.e. `-Ctarget-cpu=sandybridge -Ctarget-feature=+aes,+sse2,+sse4.1,+ssse3`.
 # This suggests that `Asterinas` should support saving and restoring the `FPU` state within the kernel context,
 # a capability it currently lacks.
-aes-gcm = { version = "^0.9", features = ["force-soft"] }
+aes-gcm = { version = "^0.11", default-features = false, features = ["aes", "alloc"] }
 # External dependencies only for unsafe crates (i.e., crates under ostd directory)
 bit_field = "^0.10"
 # External dependencies for both safe and unsafe crates
@@ -213,7 +215,7 @@ bittle = "^0.6"
 bitvec = { version = "^1.0", default-features = false, features = ["alloc"] }
 cfg-if = "^1.0"
 const_format = "^0.2"
-ctr = "^0.8"
+ctr = "^0.10"
 font8x8 = { version = "^0.3", default-features = false, features = [ "unicode" ] }
 getset = "^0.1"
 gimli = { version = "^0.34", default-features = false, features = ["read-core"] }

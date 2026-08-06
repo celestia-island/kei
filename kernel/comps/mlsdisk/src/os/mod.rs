@@ -16,10 +16,10 @@ use core::{
 
 use aes_gcm::{
     Aes128Gcm,
-    aead::{AeadInPlace, Key, NewAead, Nonce, Tag},
+    aead::{AeadInPlace, Key, KeyInit, Nonce, Tag},
     aes::Aes128,
 };
-use ctr::cipher::{NewCipher, StreamCipher};
+use ctr::cipher::{KeyIvInit, StreamCipher};
 pub use hashbrown::{HashMap, HashSet};
 pub use ostd::sync::{Mutex, MutexGuard, RwLock, SpinLock};
 use ostd::{

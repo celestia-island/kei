@@ -223,7 +223,7 @@ hashbrown = { version = "^0.17", features = ["serde"]  }
 inherit-methods-macro = { git = "https://github.com/asterinas/inherit-methods-macro", rev = "98f7e3e", version = "0.1.0" }
 intrusive-collections = { version = "^0.10", features = ["nightly"] }
 inventory = { git = "https://github.com/asterinas/inventory", rev = "9dce587" }
-itertools = "^0.10"
+itertools = "^0.15"
 lending-iterator = "^0.1"
 libflate = { version = "^2.3", default-features = false }
 log = "^0.4"

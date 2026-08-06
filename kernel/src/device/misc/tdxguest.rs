@@ -49,7 +49,6 @@ use ostd::{
 };
 use spin::Once;
 use tdx_guest::{
-    SHARED_MASK,
     tdcall::{self, TdCallError},
     tdvmcall::{self, TdVmcallError},
 };

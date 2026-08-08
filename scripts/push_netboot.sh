@@ -8,7 +8,7 @@
 # Usage:
 #   scripts/push_netboot.sh                            # copy to ${KEI_TFTP_ROOT}/kei/
 #   KEI_TFTP_ROOT=/srv/tftp scripts/push_netboot.sh
-#   KEI_TFTP_DEST=lab@192.168.2.74:/srv/tftp scripts/push_netboot.sh   # remote via rsync/ssh
+#   KEI_TFTP_DEST=lab@192.0.2.74:/srv/tftp scripts/push_netboot.sh   # remote via rsync/ssh
 set -euo pipefail
 
 BOARD="${BOARD:-nanopi-r3s}"
@@ -69,7 +69,7 @@ next steps:
   1. make sure a TFTP server serves that directory
      (e.g. tftpd-hpa with TFTP_DIRECTORY="${KEI_TFTP_ROOT:-/srv/tftp}")
   2. the board's armbianEnv.txt must set kei_netboot=1 and
-     serverip=<this host's IP> (shipped default: 192.168.2.74)
+     serverip=<this host's IP> (shipped default: 192.0.2.74)
   3. reset the board — U-Boot fetches kei over TFTP and falls
      back to the SD card copy if TFTP is unreachable
 EOF

@@ -11,8 +11,8 @@
 
 set -euo pipefail
 
-KEI_ROOT="${KEI_ROOT:-/mnt/sdb1/kei}"
-EVERNIGHT_ROOT="${EVERNIGHT_ROOT:-/mnt/sdb1/evernight}"
+KEI_ROOT="${KEI_ROOT:-/opt/kei}"
+EVERNIGHT_ROOT="${EVERNIGHT_ROOT:-/opt/evernight}"
 GATEWAY_PORT="${GATEWAY_PORT:-8443}"
 MODBUS_PORT="${MODBUS_PORT:-5020}"
 INITRAMFS="$KEI_ROOT/test/initramfs/build/initramfs.cpio.gz"

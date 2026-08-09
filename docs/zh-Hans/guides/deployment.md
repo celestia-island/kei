@@ -161,7 +161,7 @@ sudo install -d -o "$USER" /srv/tftp/kei
 ```
 kei_netboot=1
 kei_tftp_prefix=kei
-serverip=192.168.2.74   # 运行 TFTP 服务的构建机 —— 按你的局域网调整
+serverip=192.0.2.74   # 运行 TFTP 服务的构建机 —— 按你的局域网调整
 ```
 
 迭代循环：

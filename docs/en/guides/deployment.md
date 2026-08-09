@@ -164,7 +164,7 @@ Board-side settings (shipped as defaults in
 ```
 kei_netboot=1
 kei_tftp_prefix=kei
-serverip=192.168.2.74   # build host running the TFTP server — adjust to your LAN
+serverip=192.0.2.74   # build host running the TFTP server — adjust to your LAN
 ```
 
 Iteration loop:

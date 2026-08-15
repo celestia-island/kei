@@ -4,6 +4,7 @@ use tairitsu_vdom::VNode;
 #[cfg(target_family = "wasm")]
 use tairitsu_web::WitPlatform;
 
+#[allow(unused_braces)]
 pub fn render_dashboard(system_info: &KeiSystemInfo) -> VNode {
     let status_color = if system_info.ws_connected {
         "#a6e3a1"
@@ -48,13 +49,13 @@ pub fn render_dashboard(system_info: &KeiSystemInfo) -> VNode {
                         div {
                             style: "display:grid;grid-template-columns:120px 1fr;gap:6px 12px;font-size:13px",
                             div { style: "color:#6c7086", "kernel" }
-                            div { (system_info.kernel_version.clone()) }
+                            div { {system_info.kernel_version.clone()} }
                             div { style: "color:#6c7086", "arch" }
-                            div { (system_info.arch.clone()) }
+                            div { {system_info.arch.clone()} }
                             div { style: "color:#6c7086", "uptime" }
-                            div { (system_info.uptime.clone()) }
+                            div { {system_info.uptime.clone()} }
                             div { style: "color:#6c7086", "memory" }
-                            div { (system_info.memory.clone()) }
+                            div { {system_info.memory.clone()} }
                         }
                     }
 
@@ -68,9 +69,9 @@ pub fn render_dashboard(system_info: &KeiSystemInfo) -> VNode {
                         div {
                             style: "display:grid;grid-template-columns:120px 1fr;gap:6px 12px;font-size:13px",
                             div { style: "color:#6c7086", "host" }
-                            div { (system_info.host.clone()) }
+                            div { {system_info.host.clone()} }
                             div { style: "color:#6c7086", "port" }
-                            div { (system_info.port.clone()) }
+                            div { {system_info.port.clone()} }
                             div { style: "color:#6c7086", "protocol" }
                             div { "ws jsonrpc" }
                             div {
@@ -79,7 +80,7 @@ pub fn render_dashboard(system_info: &KeiSystemInfo) -> VNode {
                             }
                             div {
                                 style: format!("color:{};font-weight:600", status_color),
-                                (status_text.to_string())
+                                {status_text.to_string()}
                             }
                         }
                     }
@@ -95,14 +96,14 @@ pub fn render_dashboard(system_info: &KeiSystemInfo) -> VNode {
                     div {
                         id: "kei-terminal",
                         style: "flex:1;padding:12px 16px;font-size:12px;line-height:1.6;overflow-y:auto;white-space:pre-wrap;word-break:break-all;color:#a6adc8",
-                        (system_info.terminal_output.clone())
+                        {system_info.terminal_output.clone()}
                     }
                 }
             }
 
             div {
                 style: "flex:0 0 auto;padding:10px 28px;border-top:1px solid #313244;font-size:11px;color:#585b70;display:flex;gap:20px",
-                div { format!("ws://{}:{}/ws", system_info.host, system_info.port) }
+                div { {format!("ws://{}:{}/ws", system_info.host, system_info.port)} }
                 div { "kei.celestia.world" }
                 div {
                     style: "margin-left:auto",

@@ -55,7 +55,7 @@ unwinding = { version = "=0.2.8", default-features = false, features = ["fde-gnu
 fdt = { version = "^0.1", features = ["pretty-printing"] }
 unwinding = { version = "=0.2.8", default-features = false, features = ["fde-static", "hide-trace", "panic", "personality", "unwinder"] }
 tock-registers = "^0.10"
-arm-gic = "^0.8"
+arm-gic = "^0.9"
 
 # cargo-osdk builds aarch64 with the -softfloat target variant
 # (aarch64-unknown-none-softfloat), so the same deps must be declared for
@@ -65,7 +65,7 @@ arm-gic = "^0.8"
 fdt = { version = "^0.1", features = ["pretty-printing"] }
 unwinding = { version = "=0.2.8", default-features = false, features = ["fde-static", "hide-trace", "panic", "personality", "unwinder"] }
 tock-registers = "^0.10"
-arm-gic = "^0.8"
+arm-gic = "^0.9"
 
 [target.riscv64imac-unknown-none-elf.dependencies]
 riscv = { version = "^0.16", features = ["s-mode"] }

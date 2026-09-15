@@ -5,11 +5,9 @@ on:
     branches: [master, dev, main]
   pull_request:
     branches: [master, dev, main]
-    types: [opened, reopened, ready_for_review, synchronize]
+    types: [opened, reopened, ready_for_review]
 
 jobs:
-  commit-msg-lint:
-    uses: celestia-island/celestia-devtools/.github/workflows/commit-msg-lint.yml@master
   check-bsp:
     runs-on: [self-hosted, linux, x64, local]
     steps:

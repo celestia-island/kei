@@ -1,5 +1,8 @@
 [toolchain]
-# Matches upstream asterinas toolchain: nightly-2026-04-03
+# `channel` below must equal the one in
+# packages/osdk/src/commands/new/rust-toolchain.toml.template: `cargo osdk new`
+# compares the two and exits if they differ (check_rust_toolchain in
+# packages/osdk/src/commands/new/mod.rs).
 # For ARM64 bare-metal target: aarch64-unknown-none
 channel = "nightly-2026-05-01"
 components = ["rust-src", "rustc-dev", "llvm-tools-preview"]

@@ -2,9 +2,20 @@ name: Multi-Architecture QEMU Boot Test
 on:
   push:
     branches: [master]
+    # Three jobs of up to 60 minutes each must not be spent on a documentation
+    # change. `paths-ignore` rather than `paths` on purpose: an allow-list that
+    # missed one kernel input would let a real kernel change skip the boot test,
+    # which is worse than running it needlessly. `docs/**` is provably inert here
+    # (no Rust `include_str!` and no script reads it), whereas `**/*.md` would be
+    # wrong — `packages/ostd/src/lib.rs` and four of its libs do
+    # `#![doc = include_str!("../README.md")]`.
+    paths-ignore:
+      - "docs/**"
   pull_request:
     branches: [master]
     types: [opened, reopened, ready_for_review]
+    paths-ignore:
+      - "docs/**"
   workflow_dispatch:
 
 jobs:

@@ -15,18 +15,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
       - run: cd packages/kei && cargo check
 
-  check-vendored-versions:
-    runs-on: [self-hosted, linux, x64, local]
-    steps:
-      - uses: actions/checkout@v7
-      - name: Show vendored upstream versions
-        run: |
-          echo "=== Upstream asterinas ==="
-          cat .vendored-upstream 2>/dev/null || echo "  (not vendored yet)"
-          echo ""
-          echo "=== ARM64 source ==="
-          cat .vendored-arm64 2>/dev/null || echo "  (not pulled yet)"
-
   fmt:
     runs-on: [self-hosted, linux, x64, local]
     env:

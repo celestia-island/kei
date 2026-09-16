@@ -2,7 +2,7 @@
 
 <h1 align="center">KEI</h1>
 
-<p align="center"><strong>Ядро ОС на Rust для промышленных IoT edge-устройств.</strong></p>
+<p align="center"><strong>Ядро на Rust для промышленных edge-шлюзов — ABI системных вызовов Linux, ARM64 и RISC-V.</strong></p>
 
 <div align="center">
 
@@ -28,15 +28,15 @@
 
 ## Введение
 
-KEI — ядро ОС на Rust для edge-устройств ARM64 и RISC-V. Включает библиотеку `#![no_std]` для сенсорных узлов embassy.
+KEI — ядро на Rust для edge-**шлюзов** ARM64 и RISC-V, реализующее **ABI системных вызовов Linux** (требуется MMU). Это **не RTOS**, и цели для микроконтроллеров нет. Уровень микроконтроллеров отдельно закрывает библиотека `kei` (`packages/kei/`).
 
-KEI основан на [Asterinas](https://github.com/asterinas/asterinas), фрейм-ядре на Rust.
+KEI начинался как форк [Asterinas](https://github.com/asterinas/asterinas) и теперь несёт собственное vendored-дерево: **upstream больше не отслеживается**.
 
 ## Содержимое
 
 | Компонент | Расположение | Описание |
 |-----------|-------------|----------|
-| **Ядро KEI** | корень workspace | Ядро ОС Rust ARM64/RISC-V |
+| **Ядро KEI** | корень workspace | Ядро на Rust для edge-шлюзов ARM64/RISC-V. ABI системных вызовов Linux (требуется MMU). Не RTOS. |
 | **Библиотека kei** | `packages/kei/` | `#![no_std]` библиотека для embassy |
 
 ## Быстрый старт

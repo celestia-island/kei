@@ -2,7 +2,7 @@
 
 <h1 align="center">KEI</h1>
 
-<p align="center"><strong>نواة نظام تشغيل بـ Rust لأجهزة حافة إنترنت الأشياء الصناعي.</strong></p>
+<p align="center"><strong>نواة بـ Rust لبوابات الحافة الصناعية — ABI استدعاءات نظام Linux، ARM64 و RISC-V.</strong></p>
 
 <div align="center">
 
@@ -28,15 +28,15 @@
 
 ## مقدمة
 
-KEI هو نواة نظام تشغيل بـ Rust لأجهزة الحافة ARM64 و RISC-V. يتضمن أيضًا مكتبة `#![no_std]` لعقد المستشعرات embassy.
+KEI نواة بـ Rust لـ**بوابات** الحافة ARM64 و RISC-V، تطبّق **ABI استدعاءات نظام Linux** (تتطلب MMU). **ليست RTOS** وليس لها هدف للمتحكمات الدقيقة. طبقة المتحكمات الدقيقة تتولاها مكتبة `kei` (`packages/kei/`) بشكل منفصل.
 
-KEI مشتق من [Asterinas](https://github.com/asterinas/asterinas)، نواة إطار بـ Rust.
+بدأ KEI كتفريعة من [Asterinas](https://github.com/asterinas/asterinas) ويحمل الآن شجرة vendored خاصة به: **لم يعد يتابع المصدر upstream**.
 
 ## المحتويات
 
 | المكون | الموقع | الوصف |
 |--------|--------|------|
-| **نواة KEI** | جذر workspace | نواة نظام تشغيل Rust لـ ARM64/RISC-V |
+| **نواة KEI** | جذر workspace | نواة بـ Rust لبوابات الحافة ARM64/RISC-V. ABI استدعاءات نظام Linux (تتطلب MMU). ليست RTOS. |
 | **مكتبة kei** | `packages/kei/` | مكتبة `#![no_std]` لـ embassy |
 
 ## البدء السريع

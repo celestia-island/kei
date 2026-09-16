@@ -30,10 +30,6 @@ flowchart LR
 # One-time setup
 just setup        # Configure git remotes and Rust targets
 
-# Sync upstream sources
-just vendor       # Absorb latest upstream asterinas (squash)
-just versions     # Show upstream baseline versions
-
 # Build for the NanoPi R3S
 just build        # Builds kei-kernel.bin for aarch64/armv8
 

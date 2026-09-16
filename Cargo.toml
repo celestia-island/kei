@@ -140,7 +140,7 @@ redundant_test_prefix = "warn"
 # Once `cargo-cargofmt` becomes stable, we will use it to enforce a consistent key order.
 [workspace.package]
 version = "0.18.1"
-repository = "https://github.com/asterinas/asterinas"
+repository = "https://github.com/celestia-island/kei"
 license = "MPL-2.0"
 edition = "2024"
 

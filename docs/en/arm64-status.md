@@ -39,8 +39,8 @@ The ARM64 code is maintained directly in kei's repository. This means:
 
 1. The full `ostd/src/arch/aarch64/` tree exists in kei's repo
 2. We can modify any file directly
-3. When upstream eventually merges a different arm64 implementation, we
-   rebase our BSP on top of the new arch code
+3. Upstream is not tracked, so this tree is the source of truth — there is no
+   rebase onto a new upstream arch implementation
 
 ## Known Issues
 

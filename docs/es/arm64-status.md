@@ -39,8 +39,8 @@ El código ARM64 se mantiene directamente en el repositorio de kei. Esto signifi
 
 1. El árbol completo `ostd/src/arch/aarch64/` existe en el repo de kei
 2. Podemos modificar cualquier archivo directamente
-3. Cuando upstream eventualmente fusiona una implementación arm64 diferente,
-   hacemos rebase de nuestro BSP sobre el nuevo código de arquitectura
+3. No seguimos el upstream, así que este árbol es la fuente de verdad — no hay
+   rebase sobre una nueva implementación de arquitectura del upstream
 
 ## Problemas conocidos
 

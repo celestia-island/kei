@@ -68,9 +68,9 @@
 
 # path dep on the workspace `ostd` crate. That dep is intentionally commented out in
 
-# `bsp/rk3566/Cargo.toml` until the patched-ostd → upstream-ostd merge stabilises
+# `bsp/rk3566/Cargo.toml` until the BSP → ostd integration stabilises
 
-# (see `docs/en/guides/upstream-sync.md`). When uncommented, use
+# When uncommented, use
 
 # `ostd = { path = "../../ostd", default-features = false }` and gate `#[cfg(...)]`
 

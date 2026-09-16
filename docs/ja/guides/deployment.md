@@ -139,6 +139,58 @@ sudo dd if=target/output/nanopi-r3s/sdcard.img of=/dev/sdX bs=4M status=progress
 sync
 ```
 
+### 再書き込み不要のイテレーション
+
+上の 1 回限りの書き込みが、**最後**のフル書き込みになります。同梱の `boot.scr` は、
+GPT や U-Boot 領域に触れずに済む 2 つの繰り返し作業手法に対応しています：
+
+#### TFTP ネットブート（実機での検証に推奨）
+
+`kei_netboot=1`（`armbianEnv.txt` の既定値）が設定されていると、U-Boot はカーネル・
+DTB・initramfs を TFTP で取得し、サーバーに到達できない場合は SD カード上のコピーへ
+フォールバックします。
+
+ビルドホストでの 1 回限りのセットアップ：
+
+```bash
+# Serve /srv/tftp, e.g. with tftpd-hpa:
+sudo apt install tftpd-hpa
+sudo install -d -o "$USER" /srv/tftp/kei
+```
+
+ボード側の設定（`configs/board/nanopi-r3s/armbianEnv.txt` に既定値として同梱）：
+
+```
+kei_netboot=1
+kei_tftp_prefix=kei
+serverip=192.0.2.74   # build host running the TFTP server — adjust to your LAN
+```
+
+繰り返しの流れ：
+
+```bash
+python3 scripts/build.py nanopi-r3s   # rebuild kernel + DTB
+scripts/push_netboot.sh               # copy artifacts into the TFTP root
+# reset the board — U-Boot fetches kei over TFTP
+```
+
+ローカルディレクトリの代わりにリモートの TFTP サーバーへ転送する場合：
+
+```bash
+KEI_TFTP_DEST=user@host:/srv/tftp scripts/push_netboot.sh
+```
+
+#### SD カードのその場更新（オフライン）
+
+ボードがビルド LAN 上にないときは、既存のカード（またはイメージ）をその場で更新します —
+置き換えられるのは `/boot/` 以下のファイルだけです：
+
+```bash
+scripts/update_sdcard_kernel.sh --image target/output/nanopi-r3s/sdcard.img
+# or, with the card in a reader on this host:
+sudo scripts/update_sdcard_kernel.sh --device /dev/sdX
+```
+
 ### 起動検証
 
 SD カードを挿入して電源を投入した後、USB-TTL シリアル（1500000 ボー、

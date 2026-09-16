@@ -138,6 +138,57 @@ sudo dd if=target/output/nanopi-r3s/sdcard.img of=/dev/sdX bs=4M status=progress
 sync
 ```
 
+### تكرار بدون إعادة نسخ
+
+النسخ لمرة واحدة أعلاه هو **آخر** نسخة كاملة مطلوبة. ملف `boot.scr` المرفق يدعم
+مساري تكرار لا يلمسان GPT ولا منطقة U-Boot:
+
+#### الإقلاع عبر TFTP (موصى به للعمل على المنصة)
+
+مع `kei_netboot=1` (الافتراضي في `armbianEnv.txt`)، يجلب U-Boot النواة وDTB
+وinitramfs عبر TFTP ويعود إلى النسخة على بطاقة SD عند تعذر الوصول إلى الخادم.
+
+إعداد لمرة واحدة على مضيف البناء:
+
+```bash
+# Serve /srv/tftp, e.g. with tftpd-hpa:
+sudo apt install tftpd-hpa
+sudo install -d -o "$USER" /srv/tftp/kei
+```
+
+إعدادات اللوحة (مرفقة افتراضيًا في `configs/board/nanopi-r3s/armbianEnv.txt`):
+
+```
+kei_netboot=1
+kei_tftp_prefix=kei
+serverip=192.0.2.74   # build host running the TFTP server — adjust to your LAN
+```
+
+حلقة التكرار:
+
+```bash
+python3 scripts/build.py nanopi-r3s   # rebuild kernel + DTB
+scripts/push_netboot.sh               # copy artifacts into the TFTP root
+# reset the board — U-Boot fetches kei over TFTP
+```
+
+للدفع إلى خادم TFTP بعيد بدلًا من مجلد محلي:
+
+```bash
+KEI_TFTP_DEST=user@host:/srv/tftp scripts/push_netboot.sh
+```
+
+#### تحديث بطاقة SD في مكانها (دون اتصال)
+
+عندما لا تكون اللوحة على شبكة البناء المحلية، حدّث بطاقة (أو صورة) موجودة في
+مكانها — تُستبدل الملفات تحت `/boot/` فقط:
+
+```bash
+scripts/update_sdcard_kernel.sh --image target/output/nanopi-r3s/sdcard.img
+# or, with the card in a reader on this host:
+sudo scripts/update_sdcard_kernel.sh --device /dev/sdX
+```
+
 ### التحقق من الإقلاع
 
 بعد إدخال بطاقة SD وتشغيل الطاقة، اتصل عبر USB-TTL التسلسلي (1500000 باود،

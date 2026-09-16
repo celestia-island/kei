@@ -129,7 +129,10 @@ flowchart TB
 
 ```bash
 # Build the complete firmware image (includes kei-kernel.bin)
-just build-board nanopi-r3s
+just build board nanopi-r3s
+
+# Assemble the SD card image (borrows U-Boot + GPT from an Armbian reference)
+just image ARMBIAN_IMG=/path/to/armbian.img
 
 # Flash to SD card
 sudo dd if=target/output/nanopi-r3s/sdcard.img of=/dev/sdX bs=4M status=progress

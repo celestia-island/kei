@@ -3,9 +3,21 @@ on:
   workflow_dispatch:
   push:
     branches: [master]
+    # Markdown under docs/ cannot affect `cargo check` or `rustfmt`, and nothing
+    # in the build reads it (verified: no Rust `include_str!`/`include_bytes!`
+    # references docs/, and no build script consumes it). `docs/` is site content
+    # that only `docs.yml` publishes, by design, and `docs.yml` is not touched here.
+    # Ignoring it stops a docs-only merge from occupying a self-hosted runner.
+    # Deliberately NOT `**/*.md`: five sources do
+    # `#![doc = include_str!("../README.md")]` (packages/ostd/src/lib.rs and four of
+    # its libs), so a crate README change does affect compilation and must still run.
+    paths-ignore:
+      - "docs/**"
   pull_request:
     branches: [master]
     types: [opened, reopened, ready_for_review]
+    paths-ignore:
+      - "docs/**"
 
 jobs:
   check-bsp:

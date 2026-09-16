@@ -5,6 +5,12 @@ on:
     branches: [master]
     paths:
       - 'docs/**'
+      # The English landing page IS the repository-root README: docs/en/README.md is
+      # a symlink (mode 120000) to ../../README.md, so a change to the root README
+      # alters the rendered site without touching anything under docs/. Without this
+      # entry such a change left the published page stale until some other docs file
+      # happened to change.
+      - 'README.md'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 

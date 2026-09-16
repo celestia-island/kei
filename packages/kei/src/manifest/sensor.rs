@@ -65,6 +65,13 @@ impl SensorUnit {
     /// External consumers of the wire protocol (e.g. the evernight gateway)
     /// cannot construct a [`SensorUnit`] variant directly because the enum is
     /// `#[non_exhaustive]`; this is the sanctioned construction path.
+    ///
+    /// Returns `Option`, not `Result`: an unrecognised string is a normal lookup
+    /// miss (the caller substitutes [`Self::Dimensionless`]), not a parse error —
+    /// which is why this is deliberately not an implementation of
+    /// `core::str::FromStr`. The name is kept because it is the published
+    /// counterpart of [`Self::as_str`] and is called by the gateway.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "MPa" => Some(Self::MPa),

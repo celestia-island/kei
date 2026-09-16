@@ -20,7 +20,7 @@ flowchart LR
 ## Requisitos previos
 
 - **Host**: Linux x86_64 o ARM64
-- **Rust**: 1.85+ con el target `aarch64-unknown-none`
+- **Rust**: nightly-2026-05-01 con el target `aarch64-unknown-none`
 - **QEMU**: ≥ 8.0 para máquina virt con cortex-a72
 - **just**: `cargo install just`
 

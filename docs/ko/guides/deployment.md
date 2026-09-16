@@ -19,7 +19,7 @@ flowchart LR
 ## 사전 요구 사항
 
 - **호스트**: Linux x86_64 또는 ARM64
-- **Rust**: 1.85+, `aarch64-unknown-none` 타겟 포함
+- **Rust**: nightly-2026-05-01, `aarch64-unknown-none` 타겟 포함
 - **QEMU**: ≥ 8.0, cortex-a72 용 virt 머신
 - **just**: `cargo install just`
 

@@ -20,7 +20,7 @@ flowchart LR
 ## 前提条件
 
 - **ホスト**: Linux x86_64 または ARM64
-- **Rust**: 1.85+、`aarch64-unknown-none` ターゲット付き
+- **Rust**: nightly-2026-05-01、`aarch64-unknown-none` ターゲット付き
 - **QEMU**: ≥ 8.0、cortex-a72 搭載 virt マシン用
 - **just**: `cargo install just`
 

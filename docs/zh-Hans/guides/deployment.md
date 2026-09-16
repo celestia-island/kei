@@ -19,7 +19,7 @@ flowchart LR
 ## 先决条件
 
 - **主机**: Linux x86_64 或 ARM64
-- **Rust**: 1.85+，含 `aarch64-unknown-none` 目标
+- **Rust**: nightly-2026-05-01，含 `aarch64-unknown-none` 目标
 - **QEMU**: ≥ 8.0，用于 cortex-a72 的 virt 机器
 - **just**: `cargo install just`
 

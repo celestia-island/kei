@@ -5,13 +5,18 @@
 # is inert while this crate lives inside the kei repository. The library's gates
 # that actually run are `.github/workflows/kei-lib-ci.yml` at the repo root.
 #
-# It is kept here, with root-relative paths, as the ready-made pipeline for the
-# case where this package is extracted into its own repository — the workspace is
-# self-contained (its only member, `qemu-mps2/`, lives inside this directory), so
-# extraction is a plain copy plus `git init`. If you change the library's gate set,
-# change BOTH files; they are meant to stay identical, job for job. Note that the
-# clippy gate MUST keep `--all-targets` — without it, tests/examples/benches are
-# silently skipped (measured 2026-09-16: a broken example survived behind that gap).
+# It is kept here as the ready-made pipeline for the case where this package is
+# extracted into its own repository. That is not quite a plain copy: `license-file`
+# stays `../../LICENSE` because that is the family convention for packages under
+# `packages/` (cherino, hikari, kirino) and because the consumers keep
+# `[[licenses.clarify]]` entries pointing at exactly that path; cargo rewrites it to
+# `LICENSE` when packaging. An extraction must therefore also copy the repository-root
+# `LICENSE` in and repoint `license-file` at it. The workspace itself is
+# self-contained: its only member, `qemu-mps2/`, lives inside this directory. If you
+# change the library's gate set, change BOTH files; they are meant to stay identical,
+# job for job. Note that the clippy gate MUST keep `--all-targets` — without it,
+# tests/examples/benches are silently skipped (measured 2026-09-16: a broken example
+# survived behind that gap).
 name: CI
 on:
   workflow_dispatch:
@@ -27,6 +32,7 @@ jobs:
   # ── Host tests (std target) ──────────────────────────────────────────────-
   test:
     runs-on: [self-hosted, linux, x64, local]
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -35,6 +41,7 @@ jobs:
   # ── no_std check on ARM Cortex-M (the primary embassy target) ────────────-
   no_std-check:
     runs-on: [self-hosted, linux, x64, local]
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -46,6 +53,7 @@ jobs:
   # ── no_std check on RISC-V (secondary target) ────────────────────────────-
   no_std-riscv:
     runs-on: [self-hosted, linux, x64, local]
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -56,6 +64,7 @@ jobs:
   # ── Formatting ────────────────────────────────────────────────────────────-
   fmt:
     runs-on: [self-hosted, linux, x64, local]
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -66,6 +75,7 @@ jobs:
   # ── Benchmarks compile (no run) ───────────────────────────────────────────-
   bench-check:
     runs-on: [self-hosted, linux, x64, local]
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -74,6 +84,7 @@ jobs:
   # ── Clippy (on host, all features) ────────────────────────────────────────-
   clippy:
     runs-on: [self-hosted, linux, x64, local]
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable

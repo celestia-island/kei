@@ -10,8 +10,8 @@ kei создает `kei-kernel.bin` — ядро Asterinas с поддержко
 
 ```mermaid
 flowchart LR
-    SRC["Source\nostd/ kernel/ bsp/"] -->|"cargo build\n(aarch64)"| BIN["kei-kernel.bin"]
-    BIN --> QEMU["QEMU Test\n(virt/cortex-a55)"]
+    SRC["Source\npackages/ostd, kernel, packages/bsp"] -->|"cargo osdk build\n(scripts/build.py)"| BIN["kei-kernel.bin"]
+    BIN --> QEMU["QEMU Test\n(virt/cortex-a72)"]
     QEMU -->|passes| PACK["Package\n(DTB + initramfs)"]
     PACK --> FLASH["Flash SD card"]
     FLASH --> BOARD["NanoPi R3S"]
@@ -20,15 +20,18 @@ flowchart LR
 ## Предварительные требования
 
 - **Хост**: Linux x86_64 или ARM64
-- **Rust**: 1.85+ с целью `aarch64-unknown-none-softfloat`
-- **QEMU**: ≥ 8.0 для машины virt с cortex-a55
+- **Rust**: 1.85+ с целью `aarch64-unknown-none`
+- **QEMU**: ≥ 8.0 для машины virt с cortex-a72
 - **just**: `cargo install just`
 
 ## Быстрая сборка
 
 ```bash
+# Stage the shared devtools recipes once (.just/ is gitignored)
+just fetch
+
 # One-time setup
-just setup        # Configure git remotes and Rust targets
+just setup        # Configure git remotes
 
 # Build for the NanoPi R3S
 just build        # Builds kei-kernel.bin for aarch64/armv8
@@ -42,16 +45,17 @@ just test-all     # Boot-tests all supported architectures
 Для кросс-компиляции с x86_64 на aarch64:
 
 ```bash
-# Add the ARM64 target (one-time)
-rustup target add aarch64-unknown-none-softfloat
+# The ARM64 target is declared in rust-toolchain.toml, so rustup installs it with
+# the toolchain; adding it by hand is:
+rustup target add aarch64-unknown-none
 
 # Install GCC cross-toolchain (distribution-dependent)
 # Ubuntu / Debian:
 sudo apt install gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-# Build
-cargo build --release --target aarch64-unknown-none-softfloat \
-  -p kei-kernel
+# Build. The kernel is produced through OSDK (it needs the initramfs packed and a
+# nightly cargo on PATH), so use the build script rather than a bare `cargo build`:
+python3 scripts/build.py nanopi-r3s
 ```
 
 Бинарный файл ядра — это сырой образ ARM64 Image (протокол загрузки Linux),
@@ -65,8 +69,8 @@ cargo build --release --target aarch64-unknown-none-softfloat \
 flowchart TB
     subgraph Host["Хост-машина"]
         KERN["kei-kernel.bin"]
-        DTB["nanopi-r3s.dtb"]
-        QEMU["QEMU\n(virt, cortex-a55)"]
+        DTB["board.dtb"]
+        QEMU["QEMU\n(virt, cortex-a72)"]
     end
     KERN --> QEMU
     DTB --> QEMU
@@ -78,7 +82,7 @@ flowchart TB
 
 | Машина QEMU | CPU | RAM | Статус | Команда |
 |-------------|-----|-----|--------|---------|
-| virt | cortex-a55 | 2GB | ✅ Основной | `just test` |
+| virt | cortex-a72 | 2GB | ✅ Основной | `just test` |
 | virt | cortex-a72 | 2GB | 🔲 Запланирован | — |
 | virt | max | 4GB | 🔲 Запланирован | — |
 | sbsa-ref | max | 4GB | 🔲 Запланирован | — |
@@ -90,9 +94,9 @@ just test
 # Manual QEMU invocation
 qemu-system-aarch64 \
   -machine virt,gic-version=3 \
-  -cpu cortex-a55 \
+  -cpu cortex-a72 \
   -m 2G \
-  -kernel output/kei-kernel.bin \
+  -kernel target/output/nanopi-r3s/kei-kernel.bin \
   -nographic
 ```
 
@@ -106,18 +110,18 @@ qemu-system-aarch64 \
 flowchart TB
     subgraph Build["Хост сборки"]
         KERN["kei-kernel.bin"]
-        DTB["nanopi-r3s.dtb"]
+        DTB["board.dtb"]
         INIT["initramfs.cpio.gz"]
     end
     subgraph Deploy["Развертывание"]
-        IMG["image.img"]
+        IMG["sdcard.img"]
         SD["SD-карта"]
         BOARD["NanoPi R3S"]
     end
     KERN --> IMG
     DTB --> IMG
     INIT --> IMG
-    IMG -->|"dd / just flash-sd"| SD
+    IMG -->|"dd / just image"| SD
     SD --> BOARD
 ```
 
@@ -128,7 +132,7 @@ flowchart TB
 just build-board nanopi-r3s
 
 # Flash to SD card
-sudo dd if=output/nanopi-r3s/image.img of=/dev/sdX bs=4M status=progress
+sudo dd if=target/output/nanopi-r3s/sdcard.img of=/dev/sdX bs=4M status=progress
 sync
 ```
 
@@ -174,5 +178,5 @@ flowchart TB
 | Нет вывода в последовательный порт | Неверная скорость | Используйте 1500000, а не 115200 |
 | Сбой инициализации GICv3 | Тип машины QEMU | Используйте `virt,gic-version=3` |
 | Сбой SMP | Отсутствует PSCI в DTB | Проверьте узел `/cpus` в дереве устройств |
-| Kernel panic | Ошибка в коде архитектурного слоя | Проверьте `ostd/src/arch/aarch64/` |
+| Kernel panic | Ошибка в коде архитектурного слоя | Проверьте `packages/ostd/src/arch/aarch64/` |
 | U-Boot не находит ядро | Неверное смещение раздела | Проверьте смещение в `boot.scr` |

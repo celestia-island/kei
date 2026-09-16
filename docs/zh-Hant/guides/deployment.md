@@ -138,6 +138,57 @@ sudo dd if=target/output/nanopi-r3s/sdcard.img of=/dev/sdX bs=4M status=progress
 sync
 ```
 
+### 免燒卡迭代
+
+上面的單次燒錄就是**最後一次**完整燒錄。隨附的 `boot.scr` 支援兩種不會動到
+GPT 與 U-Boot 區塊的迭代流程：
+
+#### TFTP 網路開機（實驗台建議）
+
+設定 `kei_netboot=1`（`armbianEnv.txt` 的預設值）後，U-Boot 會透過 TFTP 取得
+核心、DTB 與 initramfs，伺服器不可達時退回 SD 卡上的副本。
+
+建置主機上的單次設定：
+
+```bash
+# Serve /srv/tftp, e.g. with tftpd-hpa:
+sudo apt install tftpd-hpa
+sudo install -d -o "$USER" /srv/tftp/kei
+```
+
+板端設定（`configs/board/nanopi-r3s/armbianEnv.txt` 內建預設值）：
+
+```
+kei_netboot=1
+kei_tftp_prefix=kei
+serverip=192.0.2.74   # build host running the TFTP server — adjust to your LAN
+```
+
+迭代循環：
+
+```bash
+python3 scripts/build.py nanopi-r3s   # rebuild kernel + DTB
+scripts/push_netboot.sh               # copy artifacts into the TFTP root
+# reset the board — U-Boot fetches kei over TFTP
+```
+
+要推送到遠端 TFTP 伺服器而非本機目錄時：
+
+```bash
+KEI_TFTP_DEST=user@host:/srv/tftp scripts/push_netboot.sh
+```
+
+#### SD 卡就地更新（離線）
+
+當板子不在建置 LAN 上時，可就地更新現有卡片（或映像）— 只會替換 `/boot/`
+下的檔案：
+
+```bash
+scripts/update_sdcard_kernel.sh --image target/output/nanopi-r3s/sdcard.img
+# or, with the card in a reader on this host:
+sudo scripts/update_sdcard_kernel.sh --device /dev/sdX
+```
+
 ### 啟動驗證
 
 插入 SD 卡並上電後，透過 USB-TTL 序列埠（1500000 鮑率，8N1）連接：

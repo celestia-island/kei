@@ -140,6 +140,60 @@ sudo dd if=target/output/nanopi-r3s/sdcard.img of=/dev/sdX bs=4M status=progress
 sync
 ```
 
+### Iteración sin regrabar
+
+El grabado único de arriba es el **último** grabado completo necesario. El
+`boot.scr` incluido admite dos flujos de iteración que nunca tocan la GPT ni el
+área de U-Boot:
+
+#### Arranque por red TFTP (recomendado para trabajo de banco)
+
+Con `kei_netboot=1` (valor por defecto en `armbianEnv.txt`), U-Boot obtiene el
+kernel, el DTB y el initramfs por TFTP y recurre a la copia en la tarjeta SD
+cuando el servidor no está accesible.
+
+Configuración única en el host de compilación:
+
+```bash
+# Serve /srv/tftp, e.g. with tftpd-hpa:
+sudo apt install tftpd-hpa
+sudo install -d -o "$USER" /srv/tftp/kei
+```
+
+Ajustes en la placa (incluidos por defecto en
+`configs/board/nanopi-r3s/armbianEnv.txt`):
+
+```
+kei_netboot=1
+kei_tftp_prefix=kei
+serverip=192.0.2.74   # build host running the TFTP server — adjust to your LAN
+```
+
+Bucle de iteración:
+
+```bash
+python3 scripts/build.py nanopi-r3s   # rebuild kernel + DTB
+scripts/push_netboot.sh               # copy artifacts into the TFTP root
+# reset the board — U-Boot fetches kei over TFTP
+```
+
+Para enviar a un servidor TFTP remoto en lugar de un directorio local:
+
+```bash
+KEI_TFTP_DEST=user@host:/srv/tftp scripts/push_netboot.sh
+```
+
+#### Actualización de la tarjeta SD en el sitio (sin conexión)
+
+Cuando la placa no está en la LAN de compilación, actualiza una tarjeta (o
+imagen) existente en el sitio — solo se reemplazan los archivos bajo `/boot/`:
+
+```bash
+scripts/update_sdcard_kernel.sh --image target/output/nanopi-r3s/sdcard.img
+# or, with the card in a reader on this host:
+sudo scripts/update_sdcard_kernel.sh --device /dev/sdX
+```
+
 ### Verificación de arranque
 
 Después de insertar la tarjeta SD y encender, conéctese mediante USB-TTL serial

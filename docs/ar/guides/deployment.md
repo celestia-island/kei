@@ -19,7 +19,7 @@ flowchart LR
 ## المتطلبات الأساسية
 
 - **المضيف**: Linux x86_64 أو ARM64
-- **Rust**: 1.85+ مع هدف `aarch64-unknown-none`
+- **Rust**: nightly-2026-05-01 مع هدف `aarch64-unknown-none`
 - **QEMU**: ≥ 8.0 لآلة virt مع cortex-a72
 - **just**: `cargo install just`
 

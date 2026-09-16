@@ -1,10 +1,24 @@
+# CI for the `kei` no_std bridge library.
+#
+# ⚠️ THIS FILE DOES NOT RUN ANYWHERE TODAY. GitHub only reads the workflow
+# directory at the REPOSITORY ROOT, so a `.github/` nested inside `packages/kei/`
+# is inert while this crate lives inside the kei repository. The library's gates
+# that actually run are `.github/workflows/kei-lib-ci.yml` at the repo root.
+#
+# It is kept here, with root-relative paths, as the ready-made pipeline for the
+# case where this package is extracted into its own repository — the workspace is
+# self-contained (its only member, `qemu-mps2/`, lives inside this directory), so
+# extraction is a plain copy plus `git init`. If you change the library's gate set,
+# change BOTH files; they are meant to stay identical, job for job. Note that the
+# clippy gate MUST keep `--all-targets` — without it, tests/examples/benches are
+# silently skipped (measured 2026-09-16: a broken example survived behind that gap).
 name: CI
 on:
   workflow_dispatch:
   push:
-    branches: [dev, main]
+    branches: [master]
   pull_request:
-    branches: [dev, main]
+    branches: [master]
 
 env:
   CARGO_TERM_COLOR: always
@@ -14,7 +28,7 @@ jobs:
   test:
     runs-on: [self-hosted, linux, x64, local]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --all-features --tests
 
@@ -22,7 +36,7 @@ jobs:
   no_std-check:
     runs-on: [self-hosted, linux, x64, local]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: thumbv7em-none-eabi
@@ -33,7 +47,7 @@ jobs:
   no_std-riscv:
     runs-on: [self-hosted, linux, x64, local]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: riscv32imc-unknown-none-elf
@@ -43,18 +57,26 @@ jobs:
   fmt:
     runs-on: [self-hosted, linux, x64, local]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
       - run: cargo fmt --all -- --check
 
+  # ── Benchmarks compile (no run) ───────────────────────────────────────────-
+  bench-check:
+    runs-on: [self-hosted, linux, x64, local]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo bench --no-run
+
   # ── Clippy (on host, all features) ────────────────────────────────────────-
   clippy:
     runs-on: [self-hosted, linux, x64, local]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - run: cargo clippy --all-features -- -D warnings
+      - run: cargo clippy --all-features --all-targets -- -D warnings

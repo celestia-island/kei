@@ -21,12 +21,12 @@ cargo run --example host_demo          # host-side wire protocol demo
 
 ## QEMU demo (Cortex-M4)
 
-The `examples/qemu-mps2/` directory contains a bare-metal firmware that runs
+The `packages/kei/qemu-mps2/` directory contains a bare-metal firmware that runs
 under QEMU's `mps2-an386` machine (Cortex-M4) and demonstrates the wire
 protocol end-to-end.
 
 ```bash
-cd examples/qemu-mps2
+cd packages/kei/qemu-mps2
 cargo build --release --target thumbv7em-none-eabi
 qemu-system-arm -M mps2-an386 -cpu cortex-m4 -m 16M \
     -display none -serial stdio \

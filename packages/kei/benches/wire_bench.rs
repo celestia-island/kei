@@ -11,8 +11,8 @@
 //! - Full Node → Gateway round-trip (send_telemetry → recv)
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
-use kei::hal::{DeviceError, SensorDevice, Transport, TransportError};
-use kei::manifest::{RawValue, RegisterMode, SensorUnit};
+use kei::hal::{Transport, TransportError};
+use kei::manifest::SensorUnit;
 use kei::wire::{decode::FrameDecoder, frame::decode_frame, Frame, Gateway, Node};
 
 // ── In-memory transport (zero-overhead, same as test harness) ────────────────
@@ -57,26 +57,6 @@ impl Transport for PipeTransport {
         buf[..n].copy_from_slice(&rx.buf[..n]);
         rx.buf.drain(..n);
         Ok(n)
-    }
-}
-
-// Stub sensor for Node
-struct StubSensor;
-impl SensorDevice for StubSensor {
-    fn read_register(&mut self, _: u16) -> Result<RawValue, DeviceError> {
-        Ok(RawValue::F32(0.0))
-    }
-    fn write_register(&mut self, _: u16, _: f32) -> Result<(), DeviceError> {
-        Ok(())
-    }
-    fn register_count(&self) -> u16 {
-        1
-    }
-    fn unit_for(&self, _: u16) -> SensorUnit {
-        SensorUnit::Celsius
-    }
-    fn mode_for(&self, _: u16) -> RegisterMode {
-        RegisterMode::ReadOnly
     }
 }
 

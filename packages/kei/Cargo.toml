@@ -3,7 +3,7 @@ name = "kei"
 version = "0.1.3"
 edition = "2021"
 authors = ["langyo <langyo.china@gmail.com>"]
-license-file = "LICENSE"
+license-file = "../../LICENSE"
 description = """\
 kei — no_std embedded bridge library: manifest schema, wire protocol, \
 and protocol type identifiers shared between embassy-based sensor nodes \

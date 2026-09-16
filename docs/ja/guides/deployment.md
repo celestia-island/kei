@@ -10,8 +10,8 @@ kei は `kei-kernel.bin` — ARM64 対応 Asterinas カーネルを生成しま�
 
 ```mermaid
 flowchart LR
-    SRC["Source\nostd/ kernel/ bsp/"] -->|"cargo build\n(aarch64)"| BIN["kei-kernel.bin"]
-    BIN --> QEMU["QEMU Test\n(virt/cortex-a55)"]
+    SRC["Source\npackages/ostd, kernel, packages/bsp"] -->|"cargo osdk build\n(scripts/build.py)"| BIN["kei-kernel.bin"]
+    BIN --> QEMU["QEMU Test\n(virt/cortex-a72)"]
     QEMU -->|passes| PACK["Package\n(DTB + initramfs)"]
     PACK --> FLASH["Flash SD card"]
     FLASH --> BOARD["NanoPi R3S"]
@@ -20,15 +20,18 @@ flowchart LR
 ## 前提条件
 
 - **ホスト**: Linux x86_64 または ARM64
-- **Rust**: 1.85+、`aarch64-unknown-none-softfloat` ターゲット付き
-- **QEMU**: ≥ 8.0、cortex-a55 搭載 virt マシン用
+- **Rust**: 1.85+、`aarch64-unknown-none` ターゲット付き
+- **QEMU**: ≥ 8.0、cortex-a72 搭載 virt マシン用
 - **just**: `cargo install just`
 
 ## クイックビルド
 
 ```bash
+# Stage the shared devtools recipes once (.just/ is gitignored)
+just fetch
+
 # One-time setup
-just setup        # Configure git remotes and Rust targets
+just setup        # Configure git remotes
 
 # Build for the NanoPi R3S
 just build        # Builds kei-kernel.bin for aarch64/armv8
@@ -42,16 +45,17 @@ just test-all     # Boot-tests all supported architectures
 x86_64 から aarch64 へのクロスコンパイルの場合：
 
 ```bash
-# Add the ARM64 target (one-time)
-rustup target add aarch64-unknown-none-softfloat
+# The ARM64 target is declared in rust-toolchain.toml, so rustup installs it with
+# the toolchain; adding it by hand is:
+rustup target add aarch64-unknown-none
 
 # Install GCC cross-toolchain (distribution-dependent)
 # Ubuntu / Debian:
 sudo apt install gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-# Build
-cargo build --release --target aarch64-unknown-none-softfloat \
-  -p kei-kernel
+# Build. The kernel is produced through OSDK (it needs the initramfs packed and a
+# nightly cargo on PATH), so use the build script rather than a bare `cargo build`:
+python3 scripts/build.py nanopi-r3s
 ```
 
 カーネルバイナリは生の ARM64 Image（Linux ブートプロトコル）であり、ELF
@@ -65,8 +69,8 @@ cargo build --release --target aarch64-unknown-none-softfloat \
 flowchart TB
     subgraph Host["ホストマシン"]
         KERN["kei-kernel.bin"]
-        DTB["nanopi-r3s.dtb"]
-        QEMU["QEMU\n(virt, cortex-a55)"]
+        DTB["board.dtb"]
+        QEMU["QEMU\n(virt, cortex-a72)"]
     end
     KERN --> QEMU
     DTB --> QEMU
@@ -78,7 +82,7 @@ flowchart TB
 
 | QEMU マシン | CPU | RAM | 状態 | コマンド |
 |-------------|-----|-----|--------|---------|
-| virt | cortex-a55 | 2GB | ✅ 主要 | `just test` |
+| virt | cortex-a72 | 2GB | ✅ 主要 | `just test` |
 | virt | cortex-a72 | 2GB | 🔲 予定 | — |
 | virt | max | 4GB | 🔲 予定 | — |
 | sbsa-ref | max | 4GB | 🔲 予定 | — |
@@ -90,9 +94,9 @@ just test
 # Manual QEMU invocation
 qemu-system-aarch64 \
   -machine virt,gic-version=3 \
-  -cpu cortex-a55 \
+  -cpu cortex-a72 \
   -m 2G \
-  -kernel output/kei-kernel.bin \
+  -kernel target/output/nanopi-r3s/kei-kernel.bin \
   -nographic
 ```
 
@@ -106,18 +110,18 @@ kei を物理 NanoPi R3S に展開する：
 flowchart TB
     subgraph Build["ビルドホスト"]
         KERN["kei-kernel.bin"]
-        DTB["nanopi-r3s.dtb"]
+        DTB["board.dtb"]
         INIT["initramfs.cpio.gz"]
     end
     subgraph Deploy["展開"]
-        IMG["image.img"]
+        IMG["sdcard.img"]
         SD["SD カード"]
         BOARD["NanoPi R3S"]
     end
     KERN --> IMG
     DTB --> IMG
     INIT --> IMG
-    IMG -->|"dd / just flash-sd"| SD
+    IMG -->|"dd / just image"| SD
     SD --> BOARD
 ```
 
@@ -128,7 +132,7 @@ flowchart TB
 just build-board nanopi-r3s
 
 # Flash to SD card
-sudo dd if=output/nanopi-r3s/image.img of=/dev/sdX bs=4M status=progress
+sudo dd if=target/output/nanopi-r3s/sdcard.img of=/dev/sdX bs=4M status=progress
 sync
 ```
 
@@ -174,5 +178,5 @@ flowchart TB
 | シリアル出力なし | ボーレートが間違っている | 115200 ではなく 1500000 を使用 |
 | GICv3 初期化失敗 | QEMU マシン種別 | `virt,gic-version=3` を使用 |
 | SMP 失敗 | DTB に PSCI がない | デバイスツリーの `/cpus` ノードを確認 |
-| Kernel panic | アーキテクチャ層のコードバグ | `ostd/src/arch/aarch64/` を監査 |
+| Kernel panic | アーキテクチャ層のコードバグ | `packages/ostd/src/arch/aarch64/` を監査 |
 | U-Boot がカーネルを見つけられない | パーティションオフセットが間違い | `boot.scr` のオフセットを確認 |

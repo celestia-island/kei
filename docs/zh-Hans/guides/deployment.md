@@ -9,8 +9,8 @@ kei 生成 `kei-kernel.bin` — ARM64 支持的 Asterinas 内核。本指南涵�
 
 ```mermaid
 flowchart LR
-    SRC["Source\nostd/ kernel/ bsp/"] -->|"cargo build\n(aarch64)"| BIN["kei-kernel.bin"]
-    BIN --> QEMU["QEMU Test\n(virt/cortex-a55)"]
+    SRC["Source\npackages/ostd, kernel, packages/bsp"] -->|"cargo osdk build\n(scripts/build.py)"| BIN["kei-kernel.bin"]
+    BIN --> QEMU["QEMU Test\n(virt/cortex-a72)"]
     QEMU -->|passes| PACK["Package\n(DTB + initramfs)"]
     PACK --> FLASH["Flash SD card"]
     FLASH --> BOARD["NanoPi R3S"]
@@ -19,15 +19,18 @@ flowchart LR
 ## 先决条件
 
 - **主机**: Linux x86_64 或 ARM64
-- **Rust**: 1.85+，含 `aarch64-unknown-none-softfloat` 目标
-- **QEMU**: ≥ 8.0，用于 cortex-a55 的 virt 机器
+- **Rust**: 1.85+，含 `aarch64-unknown-none` 目标
+- **QEMU**: ≥ 8.0，用于 cortex-a72 的 virt 机器
 - **just**: `cargo install just`
 
 ## 快速构建
 
 ```bash
+# Stage the shared devtools recipes once (.just/ is gitignored)
+just fetch
+
 # One-time setup
-just setup        # Configure git remotes and Rust targets
+just setup        # Configure git remotes
 
 # Build for the NanoPi R3S
 just build        # Builds kei-kernel.bin for aarch64/armv8
@@ -41,16 +44,17 @@ just test-all     # Boot-tests all supported architectures
 从 x86_64 交叉编译到 aarch64：
 
 ```bash
-# Add the ARM64 target (one-time)
-rustup target add aarch64-unknown-none-softfloat
+# The ARM64 target is declared in rust-toolchain.toml, so rustup installs it with
+# the toolchain; adding it by hand is:
+rustup target add aarch64-unknown-none
 
 # Install GCC cross-toolchain (distribution-dependent)
 # Ubuntu / Debian:
 sudo apt install gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-# Build
-cargo build --release --target aarch64-unknown-none-softfloat \
-  -p kei-kernel
+# Build. The kernel is produced through OSDK (it needs the initramfs packed and a
+# nightly cargo on PATH), so use the build script rather than a bare `cargo build`:
+python3 scripts/build.py nanopi-r3s
 ```
 
 内核二进制文件是原始 ARM64 Image（Linux 启动协议），而非 ELF。它通过
@@ -64,8 +68,8 @@ cargo build --release --target aarch64-unknown-none-softfloat \
 flowchart TB
     subgraph Host["主机"]
         KERN["kei-kernel.bin"]
-        DTB["nanopi-r3s.dtb"]
-        QEMU["QEMU\n(virt, cortex-a55)"]
+        DTB["board.dtb"]
+        QEMU["QEMU\n(virt, cortex-a72)"]
     end
     KERN --> QEMU
     DTB --> QEMU
@@ -77,7 +81,7 @@ flowchart TB
 
 | QEMU 机器 | CPU | RAM | 状态 | 命令 |
 |-------------|-----|-----|--------|---------|
-| virt | cortex-a55 | 2GB | ✅ 主要 | `just test` |
+| virt | cortex-a72 | 2GB | ✅ 主要 | `just test` |
 | virt | cortex-a72 | 2GB | 🔲 计划中 | — |
 | virt | max | 4GB | 🔲 计划中 | — |
 | sbsa-ref | max | 4GB | 🔲 计划中 | — |
@@ -89,9 +93,9 @@ just test
 # Manual QEMU invocation
 qemu-system-aarch64 \
   -machine virt,gic-version=3 \
-  -cpu cortex-a55 \
+  -cpu cortex-a72 \
   -m 2G \
-  -kernel output/kei-kernel.bin \
+  -kernel target/output/nanopi-r3s/kei-kernel.bin \
   -nographic
 ```
 
@@ -105,18 +109,18 @@ qemu-system-aarch64 \
 flowchart TB
     subgraph Build["构建主机"]
         KERN["kei-kernel.bin"]
-        DTB["nanopi-r3s.dtb"]
+        DTB["board.dtb"]
         INIT["initramfs.cpio.gz"]
     end
     subgraph Deploy["部署"]
-        IMG["image.img"]
+        IMG["sdcard.img"]
         SD["SD 卡"]
         BOARD["NanoPi R3S"]
     end
     KERN --> IMG
     DTB --> IMG
     INIT --> IMG
-    IMG -->|"dd / just flash-sd"| SD
+    IMG -->|"dd / just image"| SD
     SD --> BOARD
 ```
 
@@ -226,7 +230,7 @@ flowchart TB
 | 无串口输出 | 波特率错误 | 使用 1500000，而非 115200 |
 | GICv3 初始化失败 | QEMU 机器类型 | 使用 `virt,gic-version=3` |
 | SMP 失败 | DTB 中缺少 PSCI | 检查设备树中的 `/cpus` 节点 |
-| Kernel panic | 架构层代码缺陷 | 审计 `ostd/src/arch/aarch64/` |
+| Kernel panic | 架构层代码缺陷 | 审计 `packages/ostd/src/arch/aarch64/` |
 | U-Boot 找不到内核 | 分区偏移错误 | 检查 `boot.scr` 中的偏移量 |
 | TFTP 超时、回退 SD 启动 | `serverip` 错误或服务未运行 | 检查 `armbianEnv.txt` 中 `kei_netboot`/`serverip`；确认 tftpd 服务 `kei/` 前缀 |
 | netboot 已开但启动的是旧内核 | TFTP 拉取静默失败 | 观察串口是否出现 `[kei] netboot:` 行；检查 TFTP 服务日志 |

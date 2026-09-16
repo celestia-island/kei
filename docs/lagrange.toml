@@ -1,6 +1,6 @@
 [site]
 title = "KEI"
-description = "IoT-oriented OS kernel — RTOS discipline on Asterinas, with Linux ecosystem access"
+description = "A Rust kernel for industrial edge gateways — Linux syscall ABI, ARM64 and RISC-V"
 
 cname = "kei.docs.celestia.world"
 [languages]

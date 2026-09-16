@@ -58,12 +58,12 @@
 
 // ── ADC-backed temperature sensor ──────────────────────────────────────────-
 
-/// A temperature sensor backed by an ADC pin.
-/// Register 0x0100 = current temperature (read-only).
-/// Register 0x0200 = alarm threshold (read-write).
-///
-/// Uncomment the `impl SensorDevice` block and the `use kei::hal::*` imports
-/// in your real embassy project.
+// A temperature sensor backed by an ADC pin.
+// Register 0x0100 = current temperature (read-only).
+// Register 0x0200 = alarm threshold (read-write).
+//
+// Uncomment the `impl SensorDevice` block and the `use kei::hal::*` imports
+// in your real embassy project.
 /*
 pub struct AdcTempSensor {
     pub adc_raw: u16,

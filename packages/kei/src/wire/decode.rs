@@ -188,8 +188,7 @@ pub enum DecodeStreamError {
 mod tests {
     use super::*;
     use crate::manifest::SensorUnit;
-    use crate::wire::frame::{encode_frame, FRAME_MAGIC};
-    use crate::wire::{MsgType, Register, StationId, Telemetry};
+    use crate::wire::{MsgType, Telemetry};
 
     #[test]
     fn decode_complete_frame_byte_by_byte() {

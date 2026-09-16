@@ -6,8 +6,12 @@
 # that actually run are `.github/workflows/kei-lib-ci.yml` at the repo root.
 #
 # It is kept here, with root-relative paths, as the ready-made pipeline for the
-# case where this package is extracted into its own repository. If you change the
-# library's gate set, change BOTH files.
+# case where this package is extracted into its own repository — the workspace is
+# self-contained (its only member, `qemu-mps2/`, lives inside this directory), so
+# extraction is a plain copy plus `git init`. If you change the library's gate set,
+# change BOTH files; they are meant to stay identical, job for job. Note that the
+# clippy gate MUST keep `--all-targets` — without it, tests/examples/benches are
+# silently skipped (measured 2026-09-16: a broken example survived behind that gap).
 name: CI
 on:
   workflow_dispatch:
@@ -59,6 +63,14 @@ jobs:
           components: rustfmt
       - run: cargo fmt --all -- --check
 
+  # ── Benchmarks compile (no run) ───────────────────────────────────────────-
+  bench-check:
+    runs-on: [self-hosted, linux, x64, local]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo bench --no-run
+
   # ── Clippy (on host, all features) ────────────────────────────────────────-
   clippy:
     runs-on: [self-hosted, linux, x64, local]
@@ -67,4 +79,4 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - run: cargo clippy --all-features -- -D warnings
+      - run: cargo clippy --all-features --all-targets -- -D warnings

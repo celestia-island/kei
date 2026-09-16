@@ -56,8 +56,13 @@ This crate is a **separate workspace that does not depend on the kernel**. It bu
 **stable** Rust for `thumbv7em-none-eabi` and `riscv32imc-unknown-none-elf`, and its
 `rust-toolchain.toml` declares exactly that, so it resolves the right toolchain from the
 directory alone — no kernel checkout and no `rustup` override needed. (The kernel at the
-repository root pins a nightly toolchain for `aarch64-unknown-none`; that pin does not
+repository root pins a nightly toolchain for its four bare-metal targets; that pin does not
 apply here.)
+
+The whole directory is self-contained: its workspace member — the `qemu-mps2` Cortex-M
+firmware demo, which doubles as the wire-protocol test harness — lives **inside**
+`packages/kei/`, so copying that one directory yields a workspace that loads and builds on
+its own.
 
 The two are independent artifacts that share a contract rather than code:
 

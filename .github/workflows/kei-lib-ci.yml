@@ -64,7 +64,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - run: cargo clippy --all-features -- -D warnings
+      # --all-targets is required: without it the gate silently skips tests,
+      # examples and benches, which is how a broken example survived here
+      # unnoticed (measured 2026-09-16: examples/embassy_node.rs had a
+      # stray-doc-comment error that the plain clippy gate never saw).
+      - run: cargo clippy --all-features --all-targets -- -D warnings
 
   bench-check:
     runs-on: [self-hosted, linux, x64, local]

@@ -6,7 +6,9 @@ soc = "rk3566"
 arch = "aarch64"
 
 [kernel]
-asterinas_version = "0.18.0"
+# One-time vendored baseline, NOT a tracked upstream version:
+# kei no longer absorbs upstream Asterinas (see docs/*/guides/upstream-sync.md).
+asterinas_baseline = "0.18.0"
 bsp_crate = "bsp-rk3566"
 dtb = "rk3566-nanopi-r3s"
 features = ["aarch64", "rk3566"]

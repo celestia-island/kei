@@ -6,7 +6,9 @@ soc = ""
 arch = "aarch64"
 
 [kernel]
-asterinas_version = "0.18.0"
+# One-time vendored baseline, NOT a tracked upstream version:
+# kei no longer absorbs upstream Asterinas (see docs/*/guides/upstream-sync.md).
+asterinas_baseline = "0.18.0"
 bsp_crate = ""
 dtb = ""
 features = []

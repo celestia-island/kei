@@ -62,40 +62,14 @@ default: list-arch
 env-check:
     {{python_cmd}} scripts/check_env.py
 
-# ── Vendoring (Apple LLVM model: pin + periodically absorb) ──
+# ── Setup ───────────────────────────────────────────────────
 
 setup:
     {{python_cmd}} scripts/setup.py
 
-# Vendor upstream asterinas into the tree.
-#   just vendor          # latest
-#   just vendor <ref>    # specific git ref
-vendor *ARGS='':
-    {{python_cmd}} scripts/vendor_upstream.py {{ARGS}}
-
-# Pull (vendor) upstream code.
-#   just pull arm64          # latest arm64 code
-#   just pull arm64 <ref>    # specific git ref
-[script('sh')]
-pull target='arm64' *ARGS='':
-    set -euo pipefail
-    case "{{target}}" in
-      arm64)
-        {{python_cmd}} scripts/pull_arm64.py {{ARGS}}
-        ;;
-      *)
-        echo "unknown pull target: {{target}}" >&2
-        echo "usage: just pull [arm64]" >&2
-        exit 1
-        ;;
-    esac
-
-versions:
-    @echo "=== Upstream asterinas ==="
-    @cat .vendored-upstream 2>/dev/null || echo "  (not vendored yet — run 'just vendor')"
-    @echo ""
-    @echo "=== ARM64 source ==="
-    @cat .vendored-arm64 2>/dev/null || echo "  (not pulled yet — run 'just pull arm64')"
+# NOTE: kei does not track upstream Asterinas. The tree carries a one-time
+# vendored baseline and there is deliberately no sync target; the relationship
+# is recorded in the READMEs (docs/<lang>/README.md).
 
 # ── SSH Keys (aarch64) ──────────────────────────────────────
 #

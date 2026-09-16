@@ -10,7 +10,7 @@ license.workspace = true
 #
 # To finish the integration, the path dep below must be uncommented and adjusted to
 # point at the workspace `ostd` crate. Use the line marked [ENABLE BELOW] once the
-# patched-ostd → upstream-ostd merge stabilises (see docs/en/guides/upstream-sync.md).
+# BSP → ostd integration stabilises.
 #
 # Until then, drivers are built standalone (e.g. `cargo check -p bsp-rk3566` works
 # in isolation because the source files don't yet use any ostd symbols).

@@ -7,7 +7,7 @@ arch = "aarch64"
 
 [kernel]
 # One-time vendored baseline, NOT a tracked upstream version:
-# kei no longer absorbs upstream Asterinas (see docs/*/guides/upstream-sync.md).
+# kei no longer absorbs upstream Asterinas.
 asterinas_baseline = "0.18.0"
 bsp_crate = "bsp-rk3566"
 dtb = "rk3566-nanopi-r3s"

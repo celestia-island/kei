@@ -32,6 +32,15 @@ KEI es un núcleo Rust para **pasarelas** edge ARM64 y RISC-V que implementa la 
 
 KEI comenzó como un fork de [Asterinas](https://github.com/asterinas/asterinas) y ahora mantiene su propio árbol vendored: **ya no sigue el upstream**.
 
+## Estado
+
+KEI es un **núcleo de investigación**. Ningún servicio de Celestia ya entregado se ejecuta sobre él, y el núcleo no tiene consumidores en producción.
+
+- **El tiempo real está previsto, no presente.** Los temporizadores de alta resolución y el bloqueo de páginas figuran como trabajo pendiente. Este núcleo no es un RTOS y no afirma latencia acotada.
+- **El contrato de controladores aún no se ha demostrado en kei.** El rig de `evernight-appliance` ejecuta la misma suite de ABI sobre Linux (el oráculo) y sobre kei; **hasta ahora solo existe el oráculo de Linux**.
+
+La parte con consumidores en producción es la biblioteca `kei` en `packages/kei/`.
+
 ## Contenido
 
 | Componente | Ubicación | Descripción |

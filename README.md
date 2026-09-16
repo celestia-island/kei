@@ -55,6 +55,20 @@ flowchart TB
 The kernel carries no industrial protocol drivers. Modbus, S7comm and the rest
 live in gateway user space, above the syscall ABI.
 
+## Status
+
+KEI is a **research kernel**. No shipped Celestia service runs on it, and the kernel
+has no product consumer.
+
+- **Real-time support is planned, not present.** High-resolution timers and page
+  locking are recorded as outstanding work. The kernel is not an RTOS and does not
+  claim bounded latency.
+- **The driver contract has not been proven on kei yet.** `evernight-appliance`'s rig
+  runs one ABI suite against Linux (the recorded oracle) and against kei; only the
+  Linux oracle exists so far.
+
+The part with production consumers is the `kei` library under `packages/kei/`.
+
 ## What's in this repo?
 
 | Component | Location | What it does |

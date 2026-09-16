@@ -32,6 +32,15 @@ KEI est un noyau Rust pour les **passerelles** edge ARM64 et RISC-V, implémenta
 
 KEI a commencé comme fork d'[Asterinas](https://github.com/asterinas/asterinas) et porte désormais son propre arbre vendored : il **ne suit plus l'amont**.
 
+## État
+
+KEI est un **noyau de recherche**. Aucun service Celestia livré ne l'exécute, et le noyau n'a pas de consommateur en production.
+
+- **Le temps réel est prévu, pas présent.** Les minuteries haute résolution et le verrouillage de pages sont enregistrés comme travaux en attente. Ce noyau n'est pas un RTOS et ne revendique aucune latence bornée.
+- **Le contrat de pilotes n'a pas encore été prouvé sur kei.** Le rig d'`evernight-appliance` exécute la même suite d'ABI sur Linux (l'oracle) et sur kei ; **seul l'oracle Linux est enregistré à ce jour**.
+
+La partie qui a des consommateurs en production est la bibliothèque `kei` sous `packages/kei/`.
+
 ## Contenu
 
 | Composant | Emplacement | Description |

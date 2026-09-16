@@ -32,6 +32,15 @@ KEI 是面向 ARM64 與 RISC-V **邊緣閘道**的 Rust 核心，實作 **Linux 
 
 KEI 起初 fork 自 [Asterinas（星綻）](https://github.com/asterinas/asterinas)，現已持有自己的 vendored 程式碼樹，**不再跟隨上游**。
 
+## 狀態
+
+KEI 是一個**研究型核心**：目前沒有任何已交付的 Celestia 服務運行在它上面，核心也沒有產品消費方。
+
+- **即時能力是計畫項，尚未實作。** 高精度計時器與頁鎖定仍列為待償債務；本核心不是 RTOS，也不聲明有界延遲。
+- **驅動契約尚未在 kei 上驗證過。** `evernight-appliance` 的 rig 用同一套 ABI 測試分別跑 Linux（基準）與 kei，但**至今只錄得 Linux 基準**。
+
+有生產消費方的是 `packages/kei/` 下的 `kei` 程式庫。
+
 ## 倉庫內容
 
 | 組件 | 位置 | 說明 |

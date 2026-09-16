@@ -47,6 +47,15 @@ flowchart TB
     Gateway -->|"WebSocket / MQTT"| CLOUD["云平台"]
 ```
 
+## 状态
+
+KEI 是一个**研究型内核**：目前没有任何已交付的 Celestia 服务运行在它上面，内核也没有产品消费方。
+
+- **实时能力是计划项，尚未实现。** 高精度定时器与页锁定仍记为待偿债务；本内核不是 RTOS，也不声明有界延迟。
+- **驱动契约尚未在 kei 上验证过。** `evernight-appliance` 的 rig 用同一套 ABI 测试分别跑 Linux（基准）与 kei，但**至今只录得 Linux 基准**。
+
+有生产消费方的是 `packages/kei/` 下的 `kei` 库。
+
 ## 仓库内容
 
 | 组件 | 位置 | 说明 |

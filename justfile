@@ -11,7 +11,11 @@
 #   just run riscv64
 
 set shell := ["bash", "-c"]
-set windows-shell := ["bash.exe", "-c"]
+# Windows: PowerShell (the 5.1 floor ships with every Windows; pwsh 7 is
+# NOT assumed). Linewise recipes must stay PS-5.1-safe: no `&&` chains,
+# `cd X; cmd` instead of `cd X && cmd`. Bash-only recipes use
+# [script('bash')] and need Git Bash (or WSL) when actually run.
+set windows-shell := ["powershell.exe", "-NoLogo", "-NoProfile", "-Command", "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; $PSDefaultParameterValues['*:Encoding']='utf8';"]
 set unstable
 set lists
 
@@ -161,8 +165,13 @@ dev ARCH="":
 # (Linux-kernel-console-style status screen served by kei_tty).
 # Usage: just render             # aarch64 QEMU + aris-rendered vtty
 [script('bash')]
+[unix]
 render ARCH="aarch64":
     RENDER_UI=1 just _run-aarch64 0
+
+[windows]
+render ARCH="aarch64":
+    $env:RENDER_UI='1'; just _run-aarch64 0
 
 # ── aris cross-compilation (vtty console) ─────────────────
 #
@@ -276,7 +285,7 @@ fmt-check:
     just fmt-markdown --check
 
 check-bsp:
-    cd bsp && cargo check
+    cd bsp; cargo check
 
 # Build the aarch64 initramfs with dropbear SSH server.
 initramfs:

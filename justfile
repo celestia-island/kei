@@ -59,38 +59,9 @@ env-check:
 setup:
     {{python_cmd}} scripts/setup.py
 
-# Vendor upstream asterinas into the tree.
-#   just vendor          # latest
-#   just vendor <ref>    # specific git ref
-vendor *ARGS='':
-    {{python_cmd}} scripts/vendor_upstream.py {{ARGS}}
-
-# Pull (vendor) upstream code.
-#   just pull arm64          # latest arm64 code
-#   just pull arm64 <ref>    # specific git ref
-[script('python')]
-pull target='arm64' *ARGS='':
-    import shlex, subprocess, sys
-    if "{{target}}" == "arm64":
-        cmd = ["{{python_cmd}}", "scripts/pull_arm64.py"] + shlex.split("{{ARGS}}")
-        sys.exit(subprocess.run(cmd).returncode)
-    else:
-        print("unknown pull target: {{target}}", file=sys.stderr)
-        print("usage: just pull [arm64]", file=sys.stderr)
-        sys.exit(1)
-
-[script('python')]
-versions:
-    import pathlib
-    print("=== Upstream asterinas ===")
-    p = pathlib.Path(".vendored-upstream")
-    print(p.read_text(encoding="utf-8", errors="replace").strip() if p.exists()
-          else "  (not vendored yet — run 'just vendor')")
-    print("")
-    print("=== ARM64 source ===")
-    p = pathlib.Path(".vendored-arm64")
-    print(p.read_text(encoding="utf-8", errors="replace").strip() if p.exists()
-          else "  (not pulled yet — run 'just pull arm64')")
+# NOTE: kei does not track upstream Asterinas. The tree carries a one-time
+# vendored baseline and there is deliberately no sync target; the relationship
+# is recorded in the READMEs (docs/<lang>/README.md).
 
 # ── SSH Keys (aarch64) ──────────────────────────────────────
 #

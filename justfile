@@ -27,6 +27,16 @@ set dotenv-load := true
 set allow-duplicate-recipes
 set allow-duplicate-variables
 
+# Local fallbacks for the shared template's tool resolution — byte-identical
+# semantics, so a fresh clone (no gitignored .just/ staging yet) parses and
+# runs the same; when the staged template is present it re-defines the same
+# values and allow-duplicate-variables lets either order win.
+python_cmd := if os_family() == "windows" {
+    if which("python") != "" { "python" } else { "python3" }
+} else {
+    if which("python3") != "" { "python3" } else { "python" }
+}
+
 # Path to the aris repository. Override via .env or shell env var.
 # Used by build-aris / build-desktop recipes and the initramfs scripts.
 ARIS_REPO := env_var_or_default("ARIS_REPO", "../aris")

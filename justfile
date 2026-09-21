@@ -11,13 +11,31 @@
 #   just run riscv64
 
 set shell := ["bash", "-c"]
-set windows-shell := ["bash.exe", "-c"]
+# Windows: PowerShell (the 5.1 floor ships with every Windows; pwsh 7 is
+# NOT assumed). Linewise recipes must stay PS-5.1-safe: no `&&` chains,
+# `cd X; cmd` instead of `cd X && cmd`. Bash-only recipes use
+# [script('bash')] and need Git Bash (or WSL) when actually run.
+set windows-shell := ["powershell.exe", "-NoLogo", "-NoProfile", "-Command", "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; $PSDefaultParameterValues['*:Encoding']='utf8';"]
 set unstable
 set lists
 
 # Auto-load .env so ARIS_REPO (and other config) is available in all recipes.
 # just >= 1.32 supports this natively; we're on 1.55.
 set dotenv-load := true
+
+# Repo definitions override the shared template's (imported above).
+set allow-duplicate-recipes
+set allow-duplicate-variables
+
+# Local fallbacks for the shared template's tool resolution — byte-identical
+# semantics, so a fresh clone (no gitignored .just/ staging yet) parses and
+# runs the same; when the staged template is present it re-defines the same
+# values and allow-duplicate-variables lets either order win.
+python_cmd := if os_family() == "windows" {
+    if which("python") != "" { "python" } else { "python3" }
+} else {
+    if which("python3") != "" { "python3" } else { "python" }
+}
 
 # Path to the aris repository. Override via .env or shell env var.
 # Used by build-aris / build-desktop recipes and the initramfs scripts.
@@ -34,25 +52,9 @@ import? "./.just/celestia-devtools.just"
 # Stage shared celestia-devtools recipes into .just/ (gitignored).
 # Source order: explicit URL arg → local pip bundle (offline) → GitHub raw.
 # curl honors HTTP_PROXY/HTTPS_PROXY/ALL_PROXY env vars automatically.
-[script('bash')]
 fetch URL='':
-    #!/usr/bin/env bash
-    set -euo pipefail
-    out=.just/celestia-devtools.just
-    mkdir -p .just
-    if [ -n "{{URL}}" ]; then
-      echo "[fetch] {{URL}} -> $out"
-      curl -fsSL "{{URL}}" -o "$out"
-    elif command -v celestia-devtools >/dev/null 2>&1; then
-      src=$(celestia-devtools include-path)
-      echo "[fetch] local bundle ($src) -> $out"
-      cp "$src" "$out"
-    else
-      echo "[fetch] github raw -> $out"
-      curl -fsSL "https://raw.githubusercontent.com/celestia-island/celestia-devtools/dev/src/celestia_devtools/common.just" -o "$out"
-    fi
-    echo "[fetch] wrote $out"
-
+    {{ if os_family() == "windows" { "python" } else { "python3" } }} -c "import os; os.makedirs('.just', exist_ok=True)"
+    {{ if URL != "" { "curl -fsSL " + URL + " -o .just/celestia-devtools.just" } else if which("celestia-devtools") != "" { "celestia-devtools fetch-just" } else { "curl -fsSL https://raw.githubusercontent.com/celestia-island/celestia-devtools/dev/src/celestia_devtools/common.just -o .just/celestia-devtools.just" } }}
 default: list-arch
 
 # ── Environment ─────────────────────────────────────────────
@@ -78,22 +80,27 @@ setup:
 
 # Generate an ed25519 SSH keypair for VM access (one-time setup).
 # The private key is saved to tests/initramfs/build/client_ssh_key.
-[script('bash')]
+[script('python')]
 setup-keys:
-    set -e
-    KEYDIR="tests/initramfs/build"
-    mkdir -p "$KEYDIR"
-    if [ -f "$KEYDIR/client_ssh_key" ]; then
-        echo "SSH key already exists at $KEYDIR/client_ssh_key"
-    else
-        ssh-keygen -t ed25519 -N "" -C "kei@aarch64" \
-            -f "$KEYDIR/client_ssh_key"
-        echo "Generated SSH keypair:"
-        echo "  Private: $KEYDIR/client_ssh_key"
-        echo "  Public:  $KEYDIR/client_ssh_key.pub"
-    fi
+    import os, pathlib, shutil, subprocess
+    keydir = pathlib.Path("tests/initramfs/build")
+    keydir.mkdir(parents=True, exist_ok=True)
+    key = keydir / "client_ssh_key"
+    if key.exists():
+        print(f"SSH key already exists at {keydir}/client_ssh_key")
+    else:
+        subprocess.run([
+            "ssh-keygen", "-t", "ed25519", "-N", "", "-C", "kei@aarch64",
+            "-f", str(key),
+        ], check=True)
+        print("Generated SSH keypair:")
+        print(f"  Private: {keydir}/client_ssh_key")
+        print(f"  Public:  {keydir}/client_ssh_key.pub")
     # Also copy to /tmp for the rootfs build scripts
-    cp "$KEYDIR/client_ssh_key.pub" /tmp/client_ssh_key.pub 2>/dev/null || true
+    try:
+        shutil.copy(str(key) + ".pub", "/tmp/client_ssh_key.pub")
+    except OSError:
+        pass
 
 # Show SSH connection instructions for the running VM.
 ssh-info:
@@ -123,21 +130,31 @@ ssh-info:
 #   just build desktop <ARCH>     # full stack: kernel + vtty + initramfs
 
 # Build dispatcher: just build <object> [args...]
+[script('python')]
 build WHAT="default" ARG1="":
-    @case "{{WHAT}}" in \
-        default)  just _build-default ;; \
-        board)    just _build-board "{{ARG1}}" ;; \
-        kernel)   just build-arch "{{ARG1}}" ;; \
-        vtty)     just _build-browser "{{ARG1}}" ;; \
-        browser)  just _build-browser "{{ARG1}}" ;; \
-        desktop)  just _build-desktop "{{ARG1}}" ;; \
-        *) echo "Usage: just build [board|kernel|vtty|browser|desktop] [arg]"; \
-           echo "  just build              # default board (NanoPi R3S)"; \
-           echo "  just build board <name> # specific board"; \
-           echo "  just build kernel <arch>  # aarch64|x86_64|riscv64"; \
-           echo "  just build vtty <arch>    # aris-render kei_tty console (musl cross)"; \
-           echo "  just build desktop <arch> # full stack"; exit 1 ;; \
-    esac
+    import subprocess, sys
+    what = "{{WHAT}}"
+    arg1 = "{{ARG1}}"
+    if what == "default":
+        sys.exit(subprocess.run(["just", "_build-default"]).returncode)
+    elif what == "board":
+        sys.exit(subprocess.run(["just", "_build-board", arg1]).returncode)
+    elif what == "kernel":
+        sys.exit(subprocess.run(["just", "build-arch", arg1]).returncode)
+    elif what == "vtty":
+        sys.exit(subprocess.run(["just", "_build-browser", arg1]).returncode)
+    elif what == "browser":
+        sys.exit(subprocess.run(["just", "_build-browser", arg1]).returncode)
+    elif what == "desktop":
+        sys.exit(subprocess.run(["just", "_build-desktop", arg1]).returncode)
+    else:
+        print("Usage: just build [board|kernel|vtty|browser|desktop] [arg]")
+        print("  just build              # default board (NanoPi R3S)")
+        print("  just build board <name> # specific board")
+        print("  just build kernel <arch>  # aarch64|x86_64|riscv64")
+        print("  just build vtty <arch>    # aris-render kei_tty console (musl cross)")
+        print("  just build desktop <arch> # full stack")
+        sys.exit(1)
 
 _build-default:
     just cache-guard
@@ -160,9 +177,16 @@ dev ARCH="":
 # Run kei with the aris-rendered vtty console filling the entire screen
 # (Linux-kernel-console-style status screen served by kei_tty).
 # Usage: just render             # aarch64 QEMU + aris-rendered vtty
-[script('bash')]
+[script('python')]
+[unix]
 render ARCH="aarch64":
-    RENDER_UI=1 just _run-aarch64 0
+    import os, subprocess, sys
+    sys.exit(subprocess.run(["just", "_run-aarch64", "0"],
+                            env=dict(os.environ, RENDER_UI="1")).returncode)
+
+[windows]
+render ARCH="aarch64":
+    $env:RENDER_UI='1'; just _run-aarch64 0
 
 # ── aris cross-compilation (vtty console) ─────────────────
 #
@@ -176,48 +200,65 @@ render ARCH="aarch64":
 # blits a host-pre-rendered Linux-kernel-console-style frame to /dev/fb0
 # and serves the WS JSON-RPC gateway on :8423.
 # Invoked via: just build vtty <ARCH>   (alias: just build browser <ARCH>)
-[script('bash')]
+[script('python')]
 _build-browser ARCH="aarch64":
-    set -e
-    ARCH="{{ARCH}}"
-    ARIS="{{ARIS_REPO}}"
-    case "$ARCH" in
-        aarch64) TRIPLE="aarch64-unknown-linux-musl" ;;
-        riscv64) TRIPLE="riscv64gc-unknown-linux-musl" ;;
-        x86_64)  TRIPLE="x86_64-unknown-linux-musl" ;;
-        *) echo "Unsupported arch: $ARCH (aarch64|riscv64|x86_64)"; exit 1 ;;
-    esac
+    import os, pathlib, re, subprocess, sys
+    arch = "{{ARCH}}"
+    aris = "{{ARIS_REPO}}"
+    if arch == "aarch64":
+        triple = "aarch64-unknown-linux-musl"
+    elif arch == "riscv64":
+        triple = "riscv64gc-unknown-linux-musl"
+    elif arch == "x86_64":
+        triple = "x86_64-unknown-linux-musl"
+    else:
+        print(f"Unsupported arch: {arch} (aarch64|riscv64|x86_64)")
+        sys.exit(1)
 
     # Resolve ARIS to an absolute path, then convert to a WSL /mnt/... path
     # so cargo inside Ubuntu-24.04 can find the source tree.
-    ARIS_ABS=$(cd "$ARIS" 2>/dev/null && pwd || echo "$ARIS")
-    echo "[build vtty] ARIS_REPO=$ARIS_ABS  triple=$TRIPLE"
+    try:
+        aris_abs = os.path.abspath(aris)
+    except OSError:
+        aris_abs = aris
+    print(f"[build vtty] ARIS_REPO={aris_abs}  triple={triple}")
 
     # Windows path → WSL path (D:\foo\bar → /mnt/d/foo/bar)
-    WSL_ARIS=$(echo "$ARIS_ABS" | sed 's|\\|/|g' | sed -E 's|^([A-Za-z]):|/mnt/\L\1|')
+    wsl_aris = aris_abs.replace("\\", "/")
+    wsl_aris = re.sub(r"^([A-Za-z]):", lambda m: "/mnt/" + m.group(1).lower(), wsl_aris)
 
-    wsl -d Ubuntu-24.04 -- bash -lc \
-        'cd "$1" && source ~/.cargo/env 2>/dev/null && RUSTUP_TOOLCHAIN=nightly-2026-05-01 cargo build --release --target "$2" -p aris-render --no-default-features --features png --bin kei_tty' \
-        bash "$WSL_ARIS" "$TRIPLE" 2>&1 | tail -15
+    r = subprocess.run(
+        ["wsl", "-d", "Ubuntu-24.04", "--", "bash", "-lc",
+         'cd "$1" && source ~/.cargo/env 2>/dev/null && RUSTUP_TOOLCHAIN=nightly-2026-05-01 cargo build --release --target "$2" -p aris-render --no-default-features --features png --bin kei_tty',
+         "bash", wsl_aris, triple],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    lines = r.stdout.decode("utf-8", errors="replace").splitlines()
+    for line in lines[-15:]:
+        print(line)
 
-    echo "[build vtty] done: $ARIS_ABS/target/$TRIPLE/release/kei_tty"
+    print(f"[build vtty] done: {aris_abs}/target/{triple}/release/kei_tty")
 
 # Full vtty stack: kernel + kei_tty console + initramfs.
 # (kei is vtty-only during the gateway-mode transition — the aris-rendered
 # GUI desktop chain is retired.)
 # Invoked via: just build desktop <ARCH>
-[script('bash')]
+[script('python')]
 _build-desktop ARCH="aarch64":
-    set -e
-    ARCH="{{ARCH}}"
-    echo "═══════ build vtty stack: $ARCH ═══════"
-    echo "[1/3] Building kei kernel..."
-    just build-arch "$ARCH"
-    echo "[2/3] Building aris-render kei_tty console..."
-    just _build-browser "$ARCH"
-    echo "[3/3] Packaging initramfs..."
-    ARIS_REPO="{{ARIS_REPO}}" {{python_cmd}} scripts/build_render_initramfs.py kei_tty
-    echo "═══════ done: just render $ARCH ═══════"
+    import os, subprocess, sys
+    arch = "{{ARCH}}"
+    print(f"═══════ build vtty stack: {arch} ═══════")
+    print("[1/3] Building kei kernel...")
+    subprocess.run(["just", "build-arch", arch], check=True)
+    print("[2/3] Building aris-render kei_tty console...")
+    subprocess.run(["just", "_build-browser", arch], check=True)
+    print("[3/3] Packaging initramfs...")
+    env = dict(os.environ, ARIS_REPO="{{ARIS_REPO}}")
+    rc = subprocess.run(
+        ["{{python_cmd}}", "scripts/build_render_initramfs.py", "kei_tty"],
+        env=env).returncode
+    if rc != 0:
+        sys.exit(rc)
+    print(f"═══════ done: just render {arch} ═══════")
 
 # Build only (no QEMU launch).
 dev-build ARCH="":
@@ -225,45 +266,59 @@ dev-build ARCH="":
 
 # Build the kernel for a specific architecture.
 # Usage: just build-arch aarch64  (or x86_64, riscv64, loongarch64)
-[script('bash')]
+[script('python')]
 build-arch ARCH:
-    set -e
-    ARCH="{{ARCH}}"
-    case "$ARCH" in
-        aarch64)
-            just _build-aarch64
-            ;;
-        x86_64)
-            # x86_64 needs VDSO_LIBRARY_DIR pointing at the prebuilt vDSO .so.
-            VDSO_LIBRARY_DIR=tests/vdso cargo osdk build --scheme microvm --target-arch x86_64
-            ;;
-        riscv64)
-            cargo osdk build --scheme riscv --target-arch riscv64
-            ;;
-        loongarch64)
-            cargo osdk build --scheme loongarch --target-arch loongarch64
-            ;;
-        *)
-            echo "Unsupported arch: $ARCH"
-            echo "Supported: aarch64, x86_64, riscv64, loongarch64"
-            exit 1
-            ;;
-    esac
+    import os, subprocess, sys
+    arch = "{{ARCH}}"
+    if arch == "aarch64":
+        sys.exit(subprocess.run(["just", "_build-aarch64"]).returncode)
+    elif arch == "x86_64":
+        # x86_64 needs VDSO_LIBRARY_DIR pointing at the prebuilt vDSO .so.
+        env = dict(os.environ, VDSO_LIBRARY_DIR="tests/vdso")
+        sys.exit(subprocess.run(
+            ["cargo", "osdk", "build", "--scheme", "microvm", "--target-arch", "x86_64"],
+            env=env).returncode)
+    elif arch == "riscv64":
+        sys.exit(subprocess.run(
+            ["cargo", "osdk", "build", "--scheme", "riscv", "--target-arch", "riscv64"]).returncode)
+    elif arch == "loongarch64":
+        sys.exit(subprocess.run(
+            ["cargo", "osdk", "build", "--scheme", "loongarch", "--target-arch", "loongarch64"]).returncode)
+    else:
+        print(f"Unsupported arch: {arch}")
+        print("Supported: aarch64, x86_64, riscv64, loongarch64")
+        sys.exit(1)
 
 # Build aarch64 kernel + ARM64 Image + initramfs (internal).
-[script('bash')]
+[script('python')]
 _build-aarch64:
-    set -e
-    echo "[build] Building aarch64 kernel..."
-    wsl -d Ubuntu-24.04 -- bash -lc 'source ~/.cargo/env 2>/dev/null; cd "/mnt/d/源代码/工程项目/celestia/kei" && cargo osdk build --scheme aarch64 --target-arch aarch64' 2>&1 | tail -5
+    import pathlib, shutil, subprocess, sys
+    print("[build] Building aarch64 kernel...")
+    KEI = "/mnt/d/源代码/工程项目/celestia/kei"
+    r = subprocess.run(
+        ["wsl", "-d", "Ubuntu-24.04", "--", "bash", "-lc",
+         'source ~/.cargo/env 2>/dev/null; cd "/mnt/d/源代码/工程项目/celestia/kei" && cargo osdk build --scheme aarch64 --target-arch aarch64'],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    lines = r.stdout.decode("utf-8", errors="replace").splitlines()
+    for line in lines[-5:]:
+        print(line)
+    if r.returncode != 0:
+        sys.exit(r.returncode)
     # Copy ELF if OSDK packaging failed (WSL/9p issue)
-    if [ ! -f target/osdk/aster-kernel/aster-kernel-osdk-bin.qemu_elf ]; then
-        cp target/osdk/aster-kernel-osdk-bin.qemu_elf target/osdk/aster-kernel/ 2>/dev/null || true
-    fi
+    elf_src = pathlib.Path("target/osdk/aster-kernel-osdk-bin.qemu_elf")
+    elf_dst = pathlib.Path("target/osdk/aster-kernel/aster-kernel-osdk-bin.qemu_elf")
+    if not elf_dst.exists() and elf_src.exists():
+        shutil.copy(elf_src, elf_dst)
     # Build ARM64 Image from ELF
-    echo "[build] Creating ARM64 Image..."
-    wsl -d Ubuntu-24.04 -- bash -c 'python3 "/mnt/d/源代码/工程项目/celestia/kei/scripts/tools/make_arm64_image.py" "/mnt/d/源代码/工程项目/celestia/kei/target/osdk/aster-kernel/aster-kernel-osdk-bin.qemu_elf" "/mnt/d/源代码/工程项目/celestia/kei/target/osdk/aster-kernel/aster-kernel-osdk-bin.image" 2>&1 | tail -1'
-    echo "[build] Done. Kernel image: target/osdk/aster-kernel/aster-kernel-osdk-bin.image"
+    print("[build] Creating ARM64 Image...")
+    r = subprocess.run(
+        ["wsl", "-d", "Ubuntu-24.04", "--", "bash", "-c",
+         'python3 "/mnt/d/源代码/工程项目/celestia/kei/scripts/tools/make_arm64_image.py" "/mnt/d/源代码/工程项目/celestia/kei/target/osdk/aster-kernel/aster-kernel-osdk-bin.qemu_elf" "/mnt/d/源代码/工程项目/celestia/kei/target/osdk/aster-kernel/aster-kernel-osdk-bin.image" 2>&1 | tail -1'],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    print(r.stdout.decode("utf-8", errors="replace"))
+    if r.returncode != 0:
+        sys.exit(r.returncode)
+    print("[build] Done. Kernel image: target/osdk/aster-kernel/aster-kernel-osdk-bin.image")
 
 # Format Rust + Markdown docs
 fmt:
@@ -276,7 +331,7 @@ fmt-check:
     just fmt-markdown --check
 
 check-bsp:
-    cd bsp && cargo check
+    cd bsp; cargo check
 
 # Build the aarch64 initramfs with dropbear SSH server.
 initramfs:
@@ -301,157 +356,154 @@ initramfs-force:
 #   just run headless     # aarch64 without GUI (SSH only)
 
 # Launch QEMU. Defaults to host architecture; pass ARCH to override.
-[script('bash')]
+[script('python')]
 run ARCH="":
-    set -e
-    ARG="{{ARCH}}"
-    if [ -z "$ARG" ]; then
+    import platform, subprocess, sys
+    arg = "{{ARCH}}"
+    if not arg:
         # Auto-detect host architecture
-        HOST_ARCH=$(uname -m)
-        case "$HOST_ARCH" in
-            x86_64|amd64)  ARG="x86_64" ;;
-            aarch64|arm64) ARG="aarch64" ;;
-            riscv64)       ARG="riscv64" ;;
-            loongarch64)   ARG="loongarch64" ;;
-            *)             ARG="x86_64" ;;
-        esac
-        echo "[run] Auto-detected host arch: $HOST_ARCH → $ARG"
-    fi
+        host_arch = platform.machine().lower()
+        if host_arch in ("x86_64", "amd64"):
+            arg = "x86_64"
+        elif host_arch in ("aarch64", "arm64"):
+            arg = "aarch64"
+        elif host_arch == "riscv64":
+            arg = "riscv64"
+        elif host_arch == "loongarch64":
+            arg = "loongarch64"
+        else:
+            arg = "x86_64"
+        print(f"[run] Auto-detected host arch: {host_arch} → {arg}")
 
-    if [ "$ARG" = "headless" ]; then
-        ARG="aarch64"
-        HEADLESS=1
-    else
-        HEADLESS=0
-    fi
+    if arg == "headless":
+        arg = "aarch64"
+        headless = "1"
+    else:
+        headless = "0"
 
-    echo ""
-    echo "═══════════════════════════════════════════════════════"
-    echo "  kei VM — Architecture: $ARG"
-    echo "═══════════════════════════════════════════════════════"
-    echo ""
+    print()
+    print("═══════════════════════════════════════════════════════")
+    print(f"  kei VM — Architecture: {arg}")
+    print("═══════════════════════════════════════════════════════")
+    print()
 
-    case "$ARG" in
-        aarch64)
-            just _run-aarch64 "$HEADLESS"
-            ;;
-        x86_64)
-            just _run-x86_64
-            ;;
-        riscv64)
-            just _run-riscv64
-            ;;
-        loongarch64)
-            just _run-loongarch64
-            ;;
-        *)
-            echo "Unsupported arch: $ARG"
-            echo "Supported: aarch64, x86_64, riscv64, loongarch64"
-            echo "  just run aarch64    — ARM64 with SDL window + SSH"
-            echo "  just run x86_64     — x86_64 with serial console"
-            echo "  just run riscv64    — RISC-V with serial console"
-            echo "  just run headless   — aarch64 without GUI"
-            exit 1
-            ;;
-    esac
+    if arg == "aarch64":
+        sys.exit(subprocess.run(["just", "_run-aarch64", headless]).returncode)
+    elif arg == "x86_64":
+        sys.exit(subprocess.run(["just", "_run-x86_64"]).returncode)
+    elif arg == "riscv64":
+        sys.exit(subprocess.run(["just", "_run-riscv64"]).returncode)
+    elif arg == "loongarch64":
+        sys.exit(subprocess.run(["just", "_run-loongarch64"]).returncode)
+    else:
+        print(f"Unsupported arch: {arg}")
+        print("Supported: aarch64, x86_64, riscv64, loongarch64")
+        print("  just run aarch64    — ARM64 with SDL window + SSH")
+        print("  just run x86_64     — x86_64 with serial console")
+        print("  just run riscv64    — RISC-V with serial console")
+        print("  just run headless   — aarch64 without GUI")
+        sys.exit(1)
 
 # Internal: launch aarch64 QEMU.
-[script('bash')]
+[script('python')]
 _run-aarch64 HEADLESS:
-    set -e
-    HEADLESS="{{HEADLESS}}"
+    import os, pathlib, subprocess, sys, time
+    headless = "{{HEADLESS}}"
 
     # Ensure SSH keys exist
-    just setup-keys
+    subprocess.run(["just", "setup-keys"], check=True)
 
     # Ensure kernel is built
-    if [ ! -f target/osdk/aster-kernel/aster-kernel-osdk-bin.image ]; then
-        echo "[run] Kernel image not found, building..."
-        just _build-aarch64
-    fi
+    kernel_image = pathlib.Path("target/osdk/aster-kernel/aster-kernel-osdk-bin.image")
+    if not kernel_image.exists():
+        print("[run] Kernel image not found, building...")
+        subprocess.run(["just", "_build-aarch64"], check=True)
 
     # Kill any existing QEMU
-    taskkill //F //IM qemu-system-aarch64.exe 2>/dev/null || true
-    pkill -9 -f qemu-system-aarch64 2>/dev/null || true
-    sleep 1
+    subprocess.run(["taskkill", "/F", "/IM", "qemu-system-aarch64.exe"], capture_output=True)
+    subprocess.run(["taskkill", "/F", "/IM", "qemu-system-aarch64"], capture_output=True)
+    time.sleep(1)
 
     # Determine display mode
-    if [ "$HEADLESS" = "1" ]; then
-        DISPLAY_OPT="-display none"
-        echo "[run] Headless mode (no GUI window)"
-    else
-        DISPLAY_OPT="-display sdl"
-        echo "[run] SDL window mode (GUI terminal)"
-    fi
+    if headless == "1":
+        display_opt = ["-display", "none"]
+        print("[run] Headless mode (no GUI window)")
+    else:
+        display_opt = ["-display", "sdl"]
+        print("[run] SDL window mode (GUI terminal)")
 
-    echo ""
+    print()
 
     # Print SSH info BEFORE launching QEMU
-    just ssh-info
+    subprocess.run(["just", "ssh-info"], check=True)
 
-    echo "  Serial log: target/qemu_serial.log"
-    echo "  Kernel:     target/osdk/aster-kernel/aster-kernel-osdk-bin.image"
-    echo ""
+    print("  Serial log: target/qemu_serial.log")
+    print("  Kernel:     target/osdk/aster-kernel/aster-kernel-osdk-bin.image")
+    print()
 
-    # Convert paths for Windows QEMU
-    WINIMAGE=$(cygpath -w "target/osdk/aster-kernel/aster-kernel-osdk-bin.image" 2>/dev/null || echo "target/osdk/aster-kernel/aster-kernel-osdk-bin.image")
+    # Native Windows paths (no cygpath needed on a Windows host)
+    winimage = str(kernel_image.resolve())
     # Use the aris-rendered vtty initramfs if RENDER_UI=1, else the SSH/shell initramfs.
-    if [ "$RENDER_UI" = "1" ]; then
-        INITRAMFS_PATH="tests/initramfs/build/initramfs_kei_tty.cpio.gz"
-        echo "[run] Using aris-rendered vtty (kei_tty) initramfs"
-    else
-        INITRAMFS_PATH="tests/initramfs/build/initramfs_aarch64.cpio.gz"
-    fi
-    WININITRD=$(cygpath -w "$INITRAMFS_PATH" 2>/dev/null || echo "$INITRAMFS_PATH")
-    WINLOG=$(cygpath -w "target/qemu_serial.log" 2>/dev/null || echo "target/qemu_serial.log")
+    if os.environ.get("RENDER_UI") == "1":
+        initramfs_path = "tests/initramfs/build/initramfs_kei_tty.cpio.gz"
+        print("[run] Using aris-rendered vtty (kei_tty) initramfs")
+    else:
+        initramfs_path = "tests/initramfs/build/initramfs_aarch64.cpio.gz"
+    wininitrd = str(pathlib.Path(initramfs_path).resolve())
+    winlog = str(pathlib.Path("target/qemu_serial.log").resolve())
 
     # Launch QEMU in the foreground. The SDL window appears, and the terminal
     # stays attached. Press Ctrl+C or close the window to stop.
     # -monitor tcp: provides a HMP monitor on port 55555 for screendump etc.
-    # MSYS_NO_PATHCONV=1 prevents Git Bash from mangling /init.
-    echo "[run] Launching QEMU (Ctrl+C or close window to stop)..."
-    echo "[run] Monitor: tcp://127.0.0.1:55555 (use 'just screenshot' to capture)"
-    echo ""
-    export MSYS_NO_PATHCONV=1; exec "/c/Program Files/qemu/qemu-system-aarch64.exe" \
-        -cpu cortex-a72 -machine virt,gic-version=3,virtualization=on \
-        -m 2G -smp 1 --no-reboot \
-        $DISPLAY_OPT \
-        -device virtio-gpu-device \
-        -device virtio-keyboard-device \
-        -serial file:"$WINLOG" \
-        -monitor tcp:127.0.0.1:55555,server,nowait \
-        -netdev user,id=net0,hostfwd=tcp::2222-:22 \
-        -device virtio-net-device,netdev=net0 \
-        -kernel "$WINIMAGE" \
-        -initrd "$WININITRD" \
-        -append "init=/init SHELL=/bin/sh LOGNAME=root HOME=/ USER=root PATH=/bin:/sbin"
+    print("[run] Launching QEMU (Ctrl+C or close window to stop)...")
+    print("[run] Monitor: tcp://127.0.0.1:55555 (use 'just screenshot' to capture)")
+    print()
+    qemu = r"C:\Program Files\qemu\qemu-system-aarch64.exe"
+    sys.exit(subprocess.run([
+        qemu,
+        "-cpu", "cortex-a72", "-machine", "virt,gic-version=3,virtualization=on",
+        "-m", "2G", "-smp", "1", "--no-reboot",
+    ] + display_opt + [
+        "-device", "virtio-gpu-device",
+        "-device", "virtio-keyboard-device",
+        "-serial", "file:" + winlog,
+        "-monitor", "tcp:127.0.0.1:55555,server,nowait",
+        "-netdev", "user,id=net0,hostfwd=tcp::2222-:22",
+        "-device", "virtio-net-device,netdev=net0",
+        "-kernel", winimage,
+        "-initrd", wininitrd,
+        "-append", "init=/init SHELL=/bin/sh LOGNAME=root HOME=/ USER=root PATH=/bin:/sbin",
+    ]).returncode)
 
 # Internal: launch x86_64 QEMU via cargo osdk run.
-[script('bash')]
+[script('python')]
 _run-x86_64:
-    set -e
-    echo "[run] x86_64 uses 'cargo osdk run' with serial console"
-    echo "[run] No SSH server on x86_64 (uses serial shell)"
-    echo ""
-    cargo osdk run --scheme microvm --target-arch x86_64
+    import subprocess, sys
+    print("[run] x86_64 uses 'cargo osdk run' with serial console")
+    print("[run] No SSH server on x86_64 (uses serial shell)")
+    print()
+    sys.exit(subprocess.run(
+        ["cargo", "osdk", "run", "--scheme", "microvm", "--target-arch", "x86_64"]).returncode)
 
 # Internal: launch RISC-V QEMU via cargo osdk run.
-[script('bash')]
+[script('python')]
 _run-riscv64:
-    set -e
-    echo "[run] RISC-V uses 'cargo osdk run' with serial console"
-    echo "[run] No SSH server on RISC-V (uses serial shell)"
-    echo ""
-    cargo osdk run --scheme riscv --target-arch riscv64
+    import subprocess, sys
+    print("[run] RISC-V uses 'cargo osdk run' with serial console")
+    print("[run] No SSH server on RISC-V (uses serial shell)")
+    print()
+    sys.exit(subprocess.run(
+        ["cargo", "osdk", "run", "--scheme", "riscv", "--target-arch", "riscv64"]).returncode)
 
 # Internal: launch LoongArch QEMU via cargo osdk run.
-[script('bash')]
+[script('python')]
 _run-loongarch64:
-    set -e
-    echo "[run] LoongArch uses 'cargo osdk run' with serial console"
-    echo "[run] No SSH server on LoongArch (uses serial shell)"
-    echo ""
-    cargo osdk run --scheme loongarch --target-arch loongarch64
+    import subprocess, sys
+    print("[run] LoongArch uses 'cargo osdk run' with serial console")
+    print("[run] No SSH server on LoongArch (uses serial shell)")
+    print()
+    sys.exit(subprocess.run(
+        ["cargo", "osdk", "run", "--scheme", "loongarch", "--target-arch", "loongarch64"]).returncode)
 
 # ── WSL2 QEMU (headless, screenshot-driven) ────────────────
 #
@@ -472,35 +524,54 @@ _run-loongarch64:
 
 # Run kei aarch64 in WSL2 QEMU headless. Optional SECS (default 100).
 # Uses INITRAMFS env var to select the initramfs (default: kei_tty vtty).
-[script('bash')]
+[script('python')]
 wslq-run SECS="100":
-    set -e
-    export INITRAMFS="${INITRAMFS:-tests/initramfs/build/initramfs_kei_tty.cpio.gz}"
-    wsl -d Ubuntu-24.04 -e bash -lc 'bash ~/celestia/kei/scripts/wsl_qemu_aarch64.sh {{SECS}}'
+    import os, subprocess, sys
+    env = dict(os.environ,
+               INITRAMFS=os.environ.get("INITRAMFS", "tests/initramfs/build/initramfs_kei_tty.cpio.gz"))
+    sys.exit(subprocess.run(
+        ["wsl", "-d", "Ubuntu-24.04", "-e", "bash", "-lc",
+         'bash ~/celestia/kei/scripts/wsl_qemu_aarch64.sh {{SECS}}'],
+        env=env).returncode)
 
 # Run kei with the legacy kei_ui (aris-render runtime UI) initramfs.
-[script('bash')]
+[script('python')]
 wslq-ui SECS="110":
-    set -e
-    export INITRAMFS="tests/initramfs/build/initramfs_kei_ui.cpio.gz"
-    wsl -d Ubuntu-24.04 -e bash -lc 'bash ~/celestia/kei/scripts/wsl_qemu_aarch64.sh {{SECS}}'
+    import os, subprocess, sys
+    env = dict(os.environ, INITRAMFS="tests/initramfs/build/initramfs_kei_ui.cpio.gz")
+    sys.exit(subprocess.run(
+        ["wsl", "-d", "Ubuntu-24.04", "-e", "bash", "-lc",
+         'bash ~/celestia/kei/scripts/wsl_qemu_aarch64.sh {{SECS}}'],
+        env=env).returncode)
 
 # Build a render initramfs (kei_tty vtty console by default).
-[script('bash')]
+[script('python')]
 wslq-initramfs BIN="kei_tty":
-    {{python_cmd}} scripts/build_render_initramfs.py {{BIN}}
+    import subprocess, sys
+    sys.exit(subprocess.run(
+        ["{{python_cmd}}", "scripts/build_render_initramfs.py", "{{BIN}}"]).returncode)
 
 # Convert the last WSL2 screendump to PNG and show pixel stats.
-[script('bash')]
+[script('python')]
 wslq-screenshot:
-    set -e
-    wsl -d Ubuntu-24.04 -e bash -lc 'cd ~/celestia/kei && python3 scripts/ppm_to_png.py target/wsl_screendump.ppm target/wsl_screendump.png'
-    @ls -la target/wsl_screendump.png 2>/dev/null || echo "[wslq-screenshot] no screendump yet"
+    import pathlib, subprocess, sys
+    subprocess.run(
+        ["wsl", "-d", "Ubuntu-24.04", "-e", "bash", "-lc",
+         'cd ~/celestia/kei && python3 scripts/ppm_to_png.py target/wsl_screendump.ppm target/wsl_screendump.png'],
+        check=True)
+    p = pathlib.Path("target/wsl_screendump.png")
+    if p.exists():
+        print(f"total {p.stat().st_size} {p}")
+    else:
+        print("[wslq-screenshot] no screendump yet")
 
 # Ensure the ~/celestia/kei ASCII symlink exists (bypasses CJK-path blocker).
-[script('bash')]
+[script('python')]
 wslq-setup:
-    wsl -d Ubuntu-24.04 -e bash -lc 'mkdir -p ~/celestia && ln -sfn "/mnt/d/源代码/工程项目/celestia/kei" ~/celestia/kei && echo "symlink OK: ~/celestia/kei"'
+    import subprocess, sys
+    sys.exit(subprocess.run(
+        ["wsl", "-d", "Ubuntu-24.04", "-e", "bash", "-lc",
+         'mkdir -p ~/celestia && ln -sfn "/mnt/d/源代码/工程项目/celestia/kei" ~/celestia/kei && echo "symlink OK: ~/celestia/kei"']).returncode)
 
 # ── Screenshot ──────────────────────────────────────────────
 #
@@ -510,87 +581,119 @@ wslq-setup:
 
 # Capture a screenshot of the running QEMU display.
 # Usage: just screenshot [filename]
-[script('bash')]
+[script('python')]
 screenshot FILE="target/screenshot.ppm":
-    set -e
-    OUT="{{FILE}}"
+    import os, pathlib, shutil, socket, subprocess, sys
+    out = "{{FILE}}"
     # Ensure .ppm extension for QEMU compatibility
-    case "$OUT" in
-        *.ppm) ;;
-        *) OUT="$OUT.ppm" ;;
-    esac
-    WOUT=$(cygpath -w "$OUT" 2>/dev/null || echo "$OUT")
+    if not out.endswith(".ppm"):
+        out = out + ".ppm"
+    wout = str(pathlib.Path(out).resolve())
 
-    echo "[screenshot] Capturing QEMU display to $OUT ..."
+    print(f"[screenshot] Capturing QEMU display to {out} ...")
 
     # Send 'screendump' to QEMU monitor via TCP
     # The monitor expects commands terminated by newline.
-    printf 'screendump %s\n' "$WOUT" | \
-        "/c/Program Files/qemu/qemu-system-aarch64.exe" -qmp stdout 2>/dev/null || true
+    qemu = r"C:\Program Files\qemu\qemu-system-aarch64.exe"
+    if shutil.which("qemu-system-aarch64"):
+        qemu = "qemu-system-aarch64"
+    try:
+        subprocess.run(
+            ["cmd", "/c", "echo screendump " + wout + "|", qemu, "-qmp", "stdout"],
+            capture_output=True)
+    except OSError:
+        pass
 
-    # Alternative: use a simple TCP connection (bash /dev/tcp)
-    # This works on Git Bash (MSYS2) with /dev/tcp support
-    if [ ! -f "$OUT" ]; then
-        echo "[screenshot] /dev/tcp method..."
-        exec 3<>/dev/tcp/127.0.0.1/55555 || {
-            echo "[screenshot] ERROR: Cannot connect to QEMU monitor on port 55555"
-            echo "[screenshot] Make sure 'just run' is running."
-            exit 1
-        }
-        # Read banner
-        read -t 2 -u 3 line || true
-        # Send screendump
-        echo "screendump $WOUT" >&3
-        # Read response
-        read -t 5 -u 3 line || true
-        exec 3>&-
-    fi
+    # Alternative: use a simple TCP connection to the QEMU monitor
+    if not pathlib.Path(out).exists():
+        print("[screenshot] /dev/tcp method...")
+        try:
+            with socket.create_connection(("127.0.0.1", 55555), timeout=5) as s:
+                s.settimeout(2)
+                try:
+                    s.recv(4096)  # Read banner
+                except OSError:
+                    pass
+                # Send screendump
+                s.sendall(f"screendump {wout}\n".encode())
+                s.settimeout(5)
+                try:
+                    s.recv(4096)  # Read response
+                except OSError:
+                    pass
+        except OSError:
+            print("[screenshot] ERROR: Cannot connect to QEMU monitor on port 55555")
+            print("[screenshot] Make sure 'just run' is running.")
+            sys.exit(1)
 
-    if [ -f "$OUT" ]; then
-        SIZE=$(wc -c < "$OUT" 2>/dev/null || echo 0)
-        echo "[screenshot] Saved $OUT ($SIZE bytes)"
+    if pathlib.Path(out).exists():
+        size = pathlib.Path(out).stat().st_size
+        print(f"[screenshot] Saved {out} ({size} bytes)")
 
         # Try converting PPM to PNG if ImageMagick is available
-        if command -v convert &>/dev/null; then
-            PNG="${OUT%.ppm}.png"
-            convert "$OUT" "$PNG" 2>/dev/null && {
-                echo "[screenshot] Converted to $PNG"
-                rm -f "$OUT"
-            }
-        elif command -v python3 &>/dev/null || command -v python &>/dev/null; then
-            PNG="${OUT%.ppm}.png"
-            PYTHON=$(command -v python3 || command -v python)
-            "$PYTHON" scripts/ppm_info.py "$OUT" 2>/dev/null && echo "[screenshot] PPM validated"
-        fi
-    else
-        echo "[screenshot] ERROR: Screenshot file not created."
-        echo "[screenshot] The QEMU monitor screendump may not support the path."
-        echo "[screenshot] Try: just screenshot target/screenshot"
-    fi
+        if shutil.which("convert"):
+            png = out[:-4] + ".png"
+            r = subprocess.run(["convert", out, png], capture_output=True)
+            if r.returncode == 0:
+                print(f"[screenshot] Converted to {png}")
+                os.remove(out)
+        elif shutil.which("python3") or shutil.which("python"):
+            png = out[:-4] + ".png"
+            py = shutil.which("python3") or shutil.which("python")
+            r = subprocess.run([py, "scripts/ppm_info.py", out], capture_output=True)
+            if r.returncode == 0:
+                print("[screenshot] PPM validated")
+    else:
+        print("[screenshot] ERROR: Screenshot file not created.")
+        print("[screenshot] The QEMU monitor screendump may not support the path.")
+        print("[screenshot] Try: just screenshot target/screenshot")
 
 # Connect to the running aarch64 VM via SSH.
 ssh:
     @echo "Connecting to kei VM via SSH..."
-    ssh -i tests/initramfs/build/client_ssh_key \
-        -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-        -p 2222 root@127.0.0.1
+    ssh -i tests/initramfs/build/client_ssh_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 root@127.0.0.1
 
 # Stop the running QEMU instance.
-[script('bash')]
+[script('python')]
 kill:
-    taskkill //F //IM qemu-system-aarch64.exe 2>/dev/null || true
-    taskkill //F //IM qemu-system-x86_64.exe 2>/dev/null || true
-    taskkill //F //IM qemu-system-riscv64.exe 2>/dev/null || true
-    pkill -9 -f qemu-system 2>/dev/null || true
-    echo "QEMU stopped."
+    import subprocess
+    for image in ("qemu-system-aarch64.exe", "qemu-system-x86_64.exe", "qemu-system-riscv64.exe"):
+        subprocess.run(["taskkill", "/F", "/IM", image], capture_output=True)
+    subprocess.run(["taskkill", "/F", "/IM", "qemu-system-aarch64"], capture_output=True)
+    subprocess.run(["taskkill", "/F", "/IM", "qemu-system-x86_64"], capture_output=True)
+    subprocess.run(["taskkill", "/F", "/IM", "qemu-system-riscv64"], capture_output=True)
+    print("QEMU stopped.")
 
 # Show the serial log (boot messages).
+[script('python')]
 log:
-    @tail -50 target/qemu_serial.log 2>/dev/null || echo "No serial log found. Run 'just run' first."
+    import pathlib, sys
+    p = pathlib.Path("target/qemu_serial.log")
+    if p.exists():
+        for line in p.read_text(encoding="utf-8", errors="replace").splitlines()[-50:]:
+            print(line)
+    else:
+        print("No serial log found. Run 'just run' first.")
 
 # Watch the serial log in real-time.
+[script('python')]
 log-follow:
-    @tail -f target/qemu_serial.log 2>/dev/null || echo "No serial log found."
+    import pathlib, sys, time
+    p = pathlib.Path("target/qemu_serial.log")
+    if not p.exists():
+        print("No serial log found.")
+        sys.exit(0)
+    with p.open("r", encoding="utf-8", errors="replace") as f:
+        for line in f:
+            print(line, end="")
+        sys.stdout.flush()
+        while True:
+            line = f.readline()
+            if line:
+                print(line, end="")
+                sys.stdout.flush()
+            else:
+                time.sleep(0.5)
 
 # ── Test ───────────────────────────────────────────────────
 
@@ -652,19 +755,24 @@ list-arch:
 # Example:
 #   just image ARMBIAN_IMG=Armbian_26.5.1_Nanopi-r3s-lts_trixie_current_6.18.33_minimal.img
 
+[script('python')]
 image ARMBIAN_IMG="" BOARD="nanopi-r3s":
-    @if [ -z "{{ARMBIAN_IMG}}" ]; then \
-        echo "Usage: just image ARMBIAN_IMG=/path/to/armbian.img [BOARD=nanopi-r3s]"; \
-        echo ""; \
-        echo "The Armbian image provides U-Boot (sector 64-32767) required for"; \
-        echo "Rockchip BootROM to start the device. The resulting sdcard.img"; \
-        echo "contains kei kernel + DTB + initramfs in a single boot partition."; \
-        echo ""; \
-        echo "Download: https://www.armbian.com/nanopi-r3s/"; \
-        exit 1; \
-    fi
-    just build board {{BOARD}}
-    {{python_cmd}} scripts/make_sdcard.py {{BOARD}} --armbian-image "{{ARMBIAN_IMG}}"
+    import subprocess, sys
+    if not "{{ARMBIAN_IMG}}":
+        print("Usage: just image ARMBIAN_IMG=/path/to/armbian.img [BOARD=nanopi-r3s]")
+        print("")
+        print("The Armbian image provides U-Boot (sector 64-32767) required for")
+        print("Rockchip BootROM to start the device. The resulting sdcard.img")
+        print("contains kei kernel + DTB + initramfs in a single boot partition.")
+        print("")
+        print("Download: https://www.armbian.com/nanopi-r3s/")
+        sys.exit(1)
+    r = subprocess.run(["just", "build", "board", "{{BOARD}}"])
+    if r.returncode != 0:
+        sys.exit(r.returncode)
+    sys.exit(subprocess.run(
+        ["{{python_cmd}}", "scripts/make_sdcard.py", "{{BOARD}}",
+         "--armbian-image", "{{ARMBIAN_IMG}}"]).returncode)
 
 # Build everything and create the SD card image (one-shot).
 # just image-all ARMBIAN_IMG=/path/to/armbian.img
@@ -673,9 +781,8 @@ image-all ARMBIAN_IMG="" BOARD="nanopi-r3s":
     @just image ARMBIAN_IMG="{{ARMBIAN_IMG}}" BOARD="{{BOARD}}"
 
 clean:
-    rm -rf build/ output/
+    {{python_cmd}} -c "import os, pathlib, shutil; [shutil.rmtree(d, ignore_errors=True) for d in ('build', 'output')]; [os.remove(str(p)) for p in (pathlib.Path('target/qemu_serial.log'), pathlib.Path('target/qemu.pid'), pathlib.Path('target/client_ssh_key')) if p.exists()]"
     cargo clean
-    rm -f target/qemu_serial.log target/qemu.pid target/client_ssh_key 2>/dev/null || true
 
 dev-shell:
     {{python_cmd}} scripts/dev_shell.py

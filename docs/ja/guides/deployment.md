@@ -10,8 +10,8 @@ kei は `kei-kernel.bin` — ARM64 対応 Asterinas カーネルを生成しま�
 
 ```mermaid
 flowchart LR
-    SRC["Source\nostd/ kernel/ bsp/"] -->|"cargo build\n(aarch64)"| BIN["kei-kernel.bin"]
-    BIN --> QEMU["QEMU Test\n(virt/cortex-a55)"]
+    SRC["Source\npackages/ostd, kernel, packages/bsp"] -->|"cargo osdk build\n(scripts/build.py)"| BIN["kei-kernel.bin"]
+    BIN --> QEMU["QEMU Test\n(virt/cortex-a72)"]
     QEMU -->|passes| PACK["Package\n(DTB + initramfs)"]
     PACK --> FLASH["Flash SD card"]
     FLASH --> BOARD["NanoPi R3S"]
@@ -20,19 +20,18 @@ flowchart LR
 ## 前提条件
 
 - **ホスト**: Linux x86_64 または ARM64
-- **Rust**: 1.85+、`aarch64-unknown-none-softfloat` ターゲット付き
-- **QEMU**: ≥ 8.0、cortex-a55 搭載 virt マシン用
+- **Rust**: nightly-2026-05-01、`aarch64-unknown-none` ターゲット付き
+- **QEMU**: ≥ 8.0、cortex-a72 搭載 virt マシン用
 - **just**: `cargo install just`
 
 ## クイックビルド
 
 ```bash
-# One-time setup
-just setup        # Configure git remotes and Rust targets
+# Stage the shared devtools recipes once (.just/ is gitignored)
+just fetch
 
-# Sync upstream sources
-just vendor       # Absorb latest upstream asterinas (squash)
-just versions     # Show upstream baseline versions
+# One-time setup
+just setup        # Configure git remotes
 
 # Build for the NanoPi R3S
 just build        # Builds kei-kernel.bin for aarch64/armv8
@@ -46,16 +45,17 @@ just test-all     # Boot-tests all supported architectures
 x86_64 から aarch64 へのクロスコンパイルの場合：
 
 ```bash
-# Add the ARM64 target (one-time)
-rustup target add aarch64-unknown-none-softfloat
+# The ARM64 target is declared in rust-toolchain.toml, so rustup installs it with
+# the toolchain; adding it by hand is:
+rustup target add aarch64-unknown-none
 
 # Install GCC cross-toolchain (distribution-dependent)
 # Ubuntu / Debian:
 sudo apt install gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-# Build
-cargo build --release --target aarch64-unknown-none-softfloat \
-  -p kei-kernel
+# Build. The kernel is produced through OSDK (it needs the initramfs packed and a
+# nightly cargo on PATH), so use the build script rather than a bare `cargo build`:
+python3 scripts/build.py nanopi-r3s
 ```
 
 カーネルバイナリは生の ARM64 Image（Linux ブートプロトコル）であり、ELF
@@ -69,8 +69,8 @@ cargo build --release --target aarch64-unknown-none-softfloat \
 flowchart TB
     subgraph Host["ホストマシン"]
         KERN["kei-kernel.bin"]
-        DTB["nanopi-r3s.dtb"]
-        QEMU["QEMU\n(virt, cortex-a55)"]
+        DTB["board.dtb"]
+        QEMU["QEMU\n(virt, cortex-a72)"]
     end
     KERN --> QEMU
     DTB --> QEMU
@@ -82,7 +82,7 @@ flowchart TB
 
 | QEMU マシン | CPU | RAM | 状態 | コマンド |
 |-------------|-----|-----|--------|---------|
-| virt | cortex-a55 | 2GB | ✅ 主要 | `just test` |
+| virt | cortex-a72 | 2GB | ✅ 主要 | `just test` |
 | virt | cortex-a72 | 2GB | 🔲 予定 | — |
 | virt | max | 4GB | 🔲 予定 | — |
 | sbsa-ref | max | 4GB | 🔲 予定 | — |
@@ -94,9 +94,9 @@ just test
 # Manual QEMU invocation
 qemu-system-aarch64 \
   -machine virt,gic-version=3 \
-  -cpu cortex-a55 \
+  -cpu cortex-a72 \
   -m 2G \
-  -kernel output/kei-kernel.bin \
+  -kernel target/output/nanopi-r3s/kei-kernel.bin \
   -nographic
 ```
 
@@ -110,18 +110,18 @@ kei を物理 NanoPi R3S に展開する：
 flowchart TB
     subgraph Build["ビルドホスト"]
         KERN["kei-kernel.bin"]
-        DTB["nanopi-r3s.dtb"]
+        DTB["board.dtb"]
         INIT["initramfs.cpio.gz"]
     end
     subgraph Deploy["展開"]
-        IMG["image.img"]
+        IMG["sdcard.img"]
         SD["SD カード"]
         BOARD["NanoPi R3S"]
     end
     KERN --> IMG
     DTB --> IMG
     INIT --> IMG
-    IMG -->|"dd / just flash-sd"| SD
+    IMG -->|"dd / just image"| SD
     SD --> BOARD
 ```
 
@@ -129,11 +129,66 @@ flowchart TB
 
 ```bash
 # Build the complete firmware image (includes kei-kernel.bin)
-just build-board nanopi-r3s
+just build board nanopi-r3s
+
+# Assemble the SD card image (borrows U-Boot + GPT from an Armbian reference)
+just image ARMBIAN_IMG=/path/to/armbian.img
 
 # Flash to SD card
-sudo dd if=output/nanopi-r3s/image.img of=/dev/sdX bs=4M status=progress
+sudo dd if=target/output/nanopi-r3s/sdcard.img of=/dev/sdX bs=4M status=progress
 sync
+```
+
+### 再書き込み不要のイテレーション
+
+上の 1 回限りの書き込みが、**最後**のフル書き込みになります。同梱の `boot.scr` は、
+GPT や U-Boot 領域に触れずに済む 2 つの繰り返し作業手法に対応しています：
+
+#### TFTP ネットブート（実機での検証に推奨）
+
+`kei_netboot=1`（`armbianEnv.txt` の既定値）が設定されていると、U-Boot はカーネル・
+DTB・initramfs を TFTP で取得し、サーバーに到達できない場合は SD カード上のコピーへ
+フォールバックします。
+
+ビルドホストでの 1 回限りのセットアップ：
+
+```bash
+# Serve /srv/tftp, e.g. with tftpd-hpa:
+sudo apt install tftpd-hpa
+sudo install -d -o "$USER" /srv/tftp/kei
+```
+
+ボード側の設定（`configs/board/nanopi-r3s/armbianEnv.txt` に既定値として同梱）：
+
+```
+kei_netboot=1
+kei_tftp_prefix=kei
+serverip=192.0.2.74   # build host running the TFTP server — adjust to your LAN
+```
+
+繰り返しの流れ：
+
+```bash
+python3 scripts/build.py nanopi-r3s   # rebuild kernel + DTB
+scripts/push_netboot.sh               # copy artifacts into the TFTP root
+# reset the board — U-Boot fetches kei over TFTP
+```
+
+ローカルディレクトリの代わりにリモートの TFTP サーバーへ転送する場合：
+
+```bash
+KEI_TFTP_DEST=user@host:/srv/tftp scripts/push_netboot.sh
+```
+
+#### SD カードのその場更新（オフライン）
+
+ボードがビルド LAN 上にないときは、既存のカード（またはイメージ）をその場で更新します —
+置き換えられるのは `/boot/` 以下のファイルだけです：
+
+```bash
+scripts/update_sdcard_kernel.sh --image target/output/nanopi-r3s/sdcard.img
+# or, with the card in a reader on this host:
+sudo scripts/update_sdcard_kernel.sh --device /dev/sdX
 ```
 
 ### 起動検証
@@ -178,5 +233,5 @@ flowchart TB
 | シリアル出力なし | ボーレートが間違っている | 115200 ではなく 1500000 を使用 |
 | GICv3 初期化失敗 | QEMU マシン種別 | `virt,gic-version=3` を使用 |
 | SMP 失敗 | DTB に PSCI がない | デバイスツリーの `/cpus` ノードを確認 |
-| Kernel panic | アーキテクチャ層のコードバグ | `ostd/src/arch/aarch64/` を監査 |
+| Kernel panic | アーキテクチャ層のコードバグ | `packages/ostd/src/arch/aarch64/` を監査 |
 | U-Boot がカーネルを見つけられない | パーティションオフセットが間違い | `boot.scr` のオフセットを確認 |

@@ -2,35 +2,35 @@ name: CI
 on:
   workflow_dispatch:
   push:
-    branches: [master, dev, main]
+    branches: [master]
+    # Markdown under docs/ cannot affect `cargo check` or `rustfmt`, and nothing
+    # in the build reads it (verified: no Rust `include_str!`/`include_bytes!`
+    # references docs/, and no build script consumes it). `docs/` is site content
+    # that only `docs.yml` publishes, by design, and `docs.yml` is not touched here.
+    # Ignoring it stops a docs-only merge from occupying a self-hosted runner.
+    # Deliberately NOT `**/*.md`: five sources do
+    # `#![doc = include_str!("../README.md")]` (packages/ostd/src/lib.rs and four of
+    # its libs), so a crate README change does affect compilation and must still run.
+    paths-ignore:
+      - "docs/**"
   pull_request:
-    branches: [master, dev, main]
+    branches: [master]
     types: [opened, reopened, ready_for_review]
+    paths-ignore:
+      - "docs/**"
 
 jobs:
-  commit-msg-lint:
-    uses: celestia-island/celestia-devtools/.github/workflows/commit-msg-lint.yml@master
   check-bsp:
     runs-on: [self-hosted, linux, x64, local]
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@nightly
       - run: cd packages/kei && cargo check
 
-  check-vendored-versions:
-    runs-on: [self-hosted, linux, x64, local]
-    steps:
-      - uses: actions/checkout@v7
-      - name: Show vendored upstream versions
-        run: |
-          echo "=== Upstream asterinas ==="
-          cat .vendored-upstream 2>/dev/null || echo "  (not vendored yet)"
-          echo ""
-          echo "=== ARM64 source ==="
-          cat .vendored-arm64 2>/dev/null || echo "  (not pulled yet)"
-
   fmt:
     runs-on: [self-hosted, linux, x64, local]
+    timeout-minutes: 60
     env:
       # Override rust-toolchain.toml so fmt uses stable (nightly's rustfmt
       # is not always available for pinned toolchains).

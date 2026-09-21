@@ -10,8 +10,8 @@ kei создает `kei-kernel.bin` — ядро Asterinas с поддержко
 
 ```mermaid
 flowchart LR
-    SRC["Source\nostd/ kernel/ bsp/"] -->|"cargo build\n(aarch64)"| BIN["kei-kernel.bin"]
-    BIN --> QEMU["QEMU Test\n(virt/cortex-a55)"]
+    SRC["Source\npackages/ostd, kernel, packages/bsp"] -->|"cargo osdk build\n(scripts/build.py)"| BIN["kei-kernel.bin"]
+    BIN --> QEMU["QEMU Test\n(virt/cortex-a72)"]
     QEMU -->|passes| PACK["Package\n(DTB + initramfs)"]
     PACK --> FLASH["Flash SD card"]
     FLASH --> BOARD["NanoPi R3S"]
@@ -20,19 +20,18 @@ flowchart LR
 ## Предварительные требования
 
 - **Хост**: Linux x86_64 или ARM64
-- **Rust**: 1.85+ с целью `aarch64-unknown-none-softfloat`
-- **QEMU**: ≥ 8.0 для машины virt с cortex-a55
+- **Rust**: nightly-2026-05-01 с целью `aarch64-unknown-none`
+- **QEMU**: ≥ 8.0 для машины virt с cortex-a72
 - **just**: `cargo install just`
 
 ## Быстрая сборка
 
 ```bash
-# One-time setup
-just setup        # Configure git remotes and Rust targets
+# Stage the shared devtools recipes once (.just/ is gitignored)
+just fetch
 
-# Sync upstream sources
-just vendor       # Absorb latest upstream asterinas (squash)
-just versions     # Show upstream baseline versions
+# One-time setup
+just setup        # Configure git remotes
 
 # Build for the NanoPi R3S
 just build        # Builds kei-kernel.bin for aarch64/armv8
@@ -46,16 +45,17 @@ just test-all     # Boot-tests all supported architectures
 Для кросс-компиляции с x86_64 на aarch64:
 
 ```bash
-# Add the ARM64 target (one-time)
-rustup target add aarch64-unknown-none-softfloat
+# The ARM64 target is declared in rust-toolchain.toml, so rustup installs it with
+# the toolchain; adding it by hand is:
+rustup target add aarch64-unknown-none
 
 # Install GCC cross-toolchain (distribution-dependent)
 # Ubuntu / Debian:
 sudo apt install gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-# Build
-cargo build --release --target aarch64-unknown-none-softfloat \
-  -p kei-kernel
+# Build. The kernel is produced through OSDK (it needs the initramfs packed and a
+# nightly cargo on PATH), so use the build script rather than a bare `cargo build`:
+python3 scripts/build.py nanopi-r3s
 ```
 
 Бинарный файл ядра — это сырой образ ARM64 Image (протокол загрузки Linux),
@@ -69,8 +69,8 @@ cargo build --release --target aarch64-unknown-none-softfloat \
 flowchart TB
     subgraph Host["Хост-машина"]
         KERN["kei-kernel.bin"]
-        DTB["nanopi-r3s.dtb"]
-        QEMU["QEMU\n(virt, cortex-a55)"]
+        DTB["board.dtb"]
+        QEMU["QEMU\n(virt, cortex-a72)"]
     end
     KERN --> QEMU
     DTB --> QEMU
@@ -82,7 +82,7 @@ flowchart TB
 
 | Машина QEMU | CPU | RAM | Статус | Команда |
 |-------------|-----|-----|--------|---------|
-| virt | cortex-a55 | 2GB | ✅ Основной | `just test` |
+| virt | cortex-a72 | 2GB | ✅ Основной | `just test` |
 | virt | cortex-a72 | 2GB | 🔲 Запланирован | — |
 | virt | max | 4GB | 🔲 Запланирован | — |
 | sbsa-ref | max | 4GB | 🔲 Запланирован | — |
@@ -94,9 +94,9 @@ just test
 # Manual QEMU invocation
 qemu-system-aarch64 \
   -machine virt,gic-version=3 \
-  -cpu cortex-a55 \
+  -cpu cortex-a72 \
   -m 2G \
-  -kernel output/kei-kernel.bin \
+  -kernel target/output/nanopi-r3s/kei-kernel.bin \
   -nographic
 ```
 
@@ -110,18 +110,18 @@ qemu-system-aarch64 \
 flowchart TB
     subgraph Build["Хост сборки"]
         KERN["kei-kernel.bin"]
-        DTB["nanopi-r3s.dtb"]
+        DTB["board.dtb"]
         INIT["initramfs.cpio.gz"]
     end
     subgraph Deploy["Развертывание"]
-        IMG["image.img"]
+        IMG["sdcard.img"]
         SD["SD-карта"]
         BOARD["NanoPi R3S"]
     end
     KERN --> IMG
     DTB --> IMG
     INIT --> IMG
-    IMG -->|"dd / just flash-sd"| SD
+    IMG -->|"dd / just image"| SD
     SD --> BOARD
 ```
 
@@ -129,11 +129,66 @@ flowchart TB
 
 ```bash
 # Build the complete firmware image (includes kei-kernel.bin)
-just build-board nanopi-r3s
+just build board nanopi-r3s
+
+# Assemble the SD card image (borrows U-Boot + GPT from an Armbian reference)
+just image ARMBIAN_IMG=/path/to/armbian.img
 
 # Flash to SD card
-sudo dd if=output/nanopi-r3s/image.img of=/dev/sdX bs=4M status=progress
+sudo dd if=target/output/nanopi-r3s/sdcard.img of=/dev/sdX bs=4M status=progress
 sync
+```
+
+### Итерация без перезаписи
+
+Единоразовая запись выше — **последняя** полная запись. Поставляемый `boot.scr`
+поддерживает два цикла итерации, которые не затрагивают GPT и область U-Boot:
+
+#### Загрузка по TFTP (рекомендуется для стендовой работы)
+
+С `kei_netboot=1` (по умолчанию в `armbianEnv.txt`) U-Boot получает ядро, DTB и
+initramfs по TFTP и при недоступности сервера возвращается к копии на SD-карте.
+
+Разовая настройка на сборочном хосте:
+
+```bash
+# Serve /srv/tftp, e.g. with tftpd-hpa:
+sudo apt install tftpd-hpa
+sudo install -d -o "$USER" /srv/tftp/kei
+```
+
+Настройки на стороне платы (поставляются по умолчанию в
+`configs/board/nanopi-r3s/armbianEnv.txt`):
+
+```
+kei_netboot=1
+kei_tftp_prefix=kei
+serverip=192.0.2.74   # build host running the TFTP server — adjust to your LAN
+```
+
+Цикл итерации:
+
+```bash
+python3 scripts/build.py nanopi-r3s   # rebuild kernel + DTB
+scripts/push_netboot.sh               # copy artifacts into the TFTP root
+# reset the board — U-Boot fetches kei over TFTP
+```
+
+Чтобы отправлять на удалённый TFTP-сервер вместо локального каталога:
+
+```bash
+KEI_TFTP_DEST=user@host:/srv/tftp scripts/push_netboot.sh
+```
+
+#### Обновление SD-карты на месте (офлайн)
+
+Если плата не в сборочной LAN, обновите существующую карту (или образ) на месте —
+заменяются только файлы под `/boot/`:
+
+```bash
+scripts/update_sdcard_kernel.sh --image target/output/nanopi-r3s/sdcard.img
+# or, with the card in a reader on this host:
+sudo scripts/update_sdcard_kernel.sh --device /dev/sdX
 ```
 
 ### Проверка загрузки
@@ -178,5 +233,5 @@ flowchart TB
 | Нет вывода в последовательный порт | Неверная скорость | Используйте 1500000, а не 115200 |
 | Сбой инициализации GICv3 | Тип машины QEMU | Используйте `virt,gic-version=3` |
 | Сбой SMP | Отсутствует PSCI в DTB | Проверьте узел `/cpus` в дереве устройств |
-| Kernel panic | Ошибка в коде архитектурного слоя | Проверьте `ostd/src/arch/aarch64/` |
+| Kernel panic | Ошибка в коде архитектурного слоя | Проверьте `packages/ostd/src/arch/aarch64/` |
 | U-Boot не находит ядро | Неверное смещение раздела | Проверьте смещение в `boot.scr` |

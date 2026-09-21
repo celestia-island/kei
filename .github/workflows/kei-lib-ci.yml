@@ -1,12 +1,12 @@
 name: Kei Library CI
 on:
   push:
-    branches: [dev, main]
+    branches: [master]
     paths:
       - "packages/kei/**"
       - ".github/workflows/kei-lib-ci.yml"
   pull_request:
-    branches: [dev, main]
+    branches: [master]
     paths:
       - "packages/kei/**"
       - ".github/workflows/kei-lib-ci.yml"
@@ -25,6 +25,7 @@ defaults:
 jobs:
   test:
     runs-on: [self-hosted, linux, x64, local]
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -32,6 +33,7 @@ jobs:
 
   no_std-check:
     runs-on: [self-hosted, linux, x64, local]
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -41,6 +43,7 @@ jobs:
 
   no_std-riscv:
     runs-on: [self-hosted, linux, x64, local]
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -50,6 +53,7 @@ jobs:
 
   fmt:
     runs-on: [self-hosted, linux, x64, local]
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -59,15 +63,21 @@ jobs:
 
   clippy:
     runs-on: [self-hosted, linux, x64, local]
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - run: cargo clippy --all-features -- -D warnings
+      # --all-targets is required: without it the gate silently skips tests,
+      # examples and benches, which is how a broken example survived here
+      # unnoticed (measured 2026-09-16: examples/embassy_node.rs had a
+      # stray-doc-comment error that the plain clippy gate never saw).
+      - run: cargo clippy --all-features --all-targets -- -D warnings
 
   bench-check:
     runs-on: [self-hosted, linux, x64, local]
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable

@@ -54,7 +54,7 @@ default: list-arch
 env-check:
     {{python_cmd}} scripts/check_env.py
 
-# ── Vendoring (Apple LLVM model: pin + periodically absorb) ──
+# ── Setup ───────────────────────────────────────────────────
 
 setup:
     {{python_cmd}} scripts/setup.py

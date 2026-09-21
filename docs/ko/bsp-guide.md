@@ -25,7 +25,7 @@ description = "My SoC Board Support Package for Asterinas/kei"
 
 [dependencies]
 # When built in the kernel workspace, depend on ostd
-# ostd = { path = "../../vendor/asterinas/ostd" }
+# ostd = { path = "../../ostd", default-features = false }
 ```
 
 ### 3. 드라이버 모듈 구현
@@ -67,7 +67,7 @@ soc = "mysoc"
 arch = "aarch64"
 
 [kernel]
-asterinas_version = "0.18.0"
+asterinas_baseline = "0.18.0"
 bsp_crate = "bsp-mysoc"
 dtb = "mysoc-myboard"
 features = ["aarch64"]

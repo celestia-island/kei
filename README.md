@@ -2,7 +2,7 @@
 
 <h1 align="center">KEI</h1>
 
-<p align="center"><strong>A Rust OS kernel for industrial IoT edge devices.</strong></p>
+<p align="center"><strong>A Rust kernel for industrial edge gateways — Linux syscall ABI, ARM64 and RISC-V.</strong></p>
 
 <div align="center">
 
@@ -28,33 +28,52 @@
 
 ## What is KEI?
 
-KEI is a Rust OS kernel for ARM64 and RISC-V edge devices. It also ships a
-`#![no_std]` library for embassy sensor nodes.
+KEI is a Rust kernel for ARM64 and RISC-V **edge gateways**. It implements the
+**Linux syscall ABI**, so gateway services written for Linux run unmodified, and
+it requires an MMU. It is **not** an RTOS and has no microcontroller target.
 
-KEI is derived from [Asterinas](https://github.com/asterinas/asterinas),
-a Rust framekernel. It adds ARM64 board support, virtio-gpu display, industrial
-drivers, and a sensor-node wire protocol — while staying independent of upstream
-release cycles.
+The microcontroller tier is served separately by the `kei` library
+(`packages/kei/`), a `#![no_std]` crate for embassy sensor nodes. Both tiers
+share one contract: the same hardware manifest and the same wire protocol.
+
+KEI began as a fork of [Asterinas](https://github.com/asterinas/asterinas) and
+now carries its own vendored tree. It no longer tracks upstream.
 
 ```mermaid
 flowchart TB
-    subgraph Gateway["KEI kernel"]
-        KERN["RTOS-grade kernel\nARM64 / RISC-V"]
-        NET["Network stack\nMQTT · WebSocket · HTTP"]
-        DRV["Industrial drivers\nModbus · CAN · S7comm"]
+    subgraph Gateway["KEI kernel — gateway tier"]
+        KERN["Linux syscall ABI\nARM64 / RISC-V"]
+        NET["Network stack\nsmoltcp"]
     end
-    subgraph Sensors["Sensor nodes"]
-        EMB["embassy MCU firmware\nusing kei no_std library"]
+    subgraph Sensors["Sensor nodes — MCU tier"]
+        EMB["embassy firmware\nusing the kei no_std library"]
     end
-    SENSORS -->|"kei wire protocol\n(UART / RS-485)"| Gateway
+    Sensors -->|"kei wire protocol\n(UART / RS-485)"| Gateway
     Gateway -->|"WebSocket / MQTT"| CLOUD["Cloud platform"]
 ```
+
+The kernel carries no industrial protocol drivers. Modbus, S7comm and the rest
+live in gateway user space, above the syscall ABI.
+
+## Status
+
+KEI is a **research kernel**. No shipped Celestia service runs on it, and the kernel
+has no product consumer.
+
+- **Real-time support is planned, not present.** High-resolution timers and page
+  locking are recorded as outstanding work. The kernel is not an RTOS and does not
+  claim bounded latency.
+- **The driver contract has not been proven on kei yet.** `evernight-appliance`'s rig
+  runs one ABI suite against Linux (the recorded oracle) and against kei; only the
+  Linux oracle exists so far.
+
+The part with production consumers is the `kei` library under `packages/kei/`.
 
 ## What's in this repo?
 
 | Component | Location | What it does |
 |-----------|----------|-------------|
-| **KEI kernel** | workspace root | Rust OS kernel for ARM64/RISC-V. Syscall ABI, virtio-gpu, framebuffer, network stack. |
+| **KEI kernel** | workspace root | Rust kernel for ARM64/RISC-V gateways. Linux syscall ABI (MMU required), virtio-gpu, framebuffer, network stack. Not an RTOS; no MCU target. |
 | **kei library** | `packages/kei/` | `#![no_std]` library for embassy sensor nodes: wire protocol, manifest schema, HAL traits. |
 
 ## Quick start

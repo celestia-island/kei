@@ -2,9 +2,15 @@ name: Deploy Documentation
 
 on:
   push:
-    branches: [master, dev]
+    branches: [master]
     paths:
       - 'docs/**'
+      # The English landing page IS the repository-root README: docs/en/README.md is
+      # a symlink (mode 120000) to ../../README.md, so a change to the root README
+      # alters the rendered site without touching anything under docs/. Without this
+      # entry such a change left the published page stale until some other docs file
+      # happened to change.
+      - 'README.md'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 
@@ -24,7 +30,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo install --git https://github.com/celestia-island/lagrange --branch dev lagrange-library --locked
+      - run: cargo install --git https://github.com/celestia-island/lagrange --branch master lagrange-library --locked
       - run: lagrange build --src docs --out _site
 
       - uses: actions/upload-pages-artifact@v5

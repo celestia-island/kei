@@ -1,15 +1,32 @@
 name: Multi-Architecture QEMU Boot Test
 on:
   push:
-    branches: [master, dev, main]
+    branches: [master]
+    # Three jobs of up to 60 minutes each must not be spent on a documentation
+    # change. `paths-ignore` rather than `paths` on purpose: an allow-list that
+    # missed one kernel input would let a real kernel change skip the boot test,
+    # which is worse than running it needlessly. `docs/**` is provably inert here
+    # (no Rust `include_str!` and no script reads it), whereas `**/*.md` would be
+    # wrong — `packages/ostd/src/lib.rs` and four of its libs do
+    # `#![doc = include_str!("../README.md")]`.
+    paths-ignore:
+      - "docs/**"
   pull_request:
-    branches: [master, dev, main]
+    branches: [master]
+    types: [opened, reopened, ready_for_review]
+    paths-ignore:
+      - "docs/**"
   workflow_dispatch:
 
 jobs:
   test-aarch64:
     runs-on: [self-hosted, linux, x64, local]
-    timeout-minutes: 25
+    # 25 was too tight: measured on run 35054305470 (2026-09-16), the aarch64 job
+    # took 25m26s and was killed by this bound *after* `Boot test aarch64` had
+    # already succeeded, while the post-job rust-cache save was still running —
+    # so a passing boot test was reported as `cancelled`. The budget has to cover
+    # `cargo install --path packages/osdk` plus the kernel build and the cache save.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
       # Keep in sync with rust-toolchain.toml (nightly-2026-05-01).
@@ -43,7 +60,7 @@ jobs:
 
   test-x86_64:
     runs-on: [self-hosted, linux, x64, local]
-    timeout-minutes: 25
+    timeout-minutes: 60
     env:
       VDSO_LIBRARY_DIR: ${{ github.workspace }}/tests/vdso
     steps:
@@ -70,7 +87,7 @@ jobs:
 
   test-riscv64:
     runs-on: [self-hosted, linux, x64, local]
-    timeout-minutes: 25
+    timeout-minutes: 60
     continue-on-error: true
     env:
       VDSO_LIBRARY_DIR: ${{ github.workspace }}/tests/vdso

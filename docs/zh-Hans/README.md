@@ -2,7 +2,7 @@
 
 <h1 align="center">KEI</h1>
 
-<p align="center"><strong>面向工业物联网边缘设备的 Rust OS 内核。</strong></p>
+<p align="center"><strong>面向工业边缘网关的 Rust 内核 —— Linux 系统调用 ABI，ARM64 与 RISC-V。</strong></p>
 
 <div align="center">
 
@@ -28,29 +28,39 @@
 
 ## 简介
 
-KEI 是面向 ARM64 和 RISC-V 边缘设备的 Rust OS 内核。同时附带面向 embassy 传感器节点的 `#![no_std]` 库。
+KEI 是面向 ARM64 与 RISC-V **边缘网关**的 Rust 内核。它实现 **Linux 系统调用 ABI**，为 Linux 编写的网关服务可原样运行，但**需要 MMU**。它**不是 RTOS**，也没有微控制器目标。
 
-KEI 源自 [Asterinas（星绽）](https://github.com/asterinas/asterinas)，一个 Rust 框架内核。KEI 在其基础上增加了 ARM64 板级支持、virtio-gpu 显示、工业驱动和传感器节点通信协议——同时保持独立于上游的发布周期。
+微控制器一侧由 `kei` 库（`packages/kei/`）单独承担——面向 embassy 传感器节点的 `#![no_std]` 库。两层共用同一份契约：同一个硬件 manifest 与同一套 wire 协议。
+
+KEI 起初 fork 自 [Asterinas（星绽）](https://github.com/asterinas/asterinas)，现已持有自己的 vendored 代码树，**不再跟随上游**。
 
 ```mermaid
 flowchart TB
-    subgraph Gateway["KEI 内核"]
-        KERN["RTOS 级内核\nARM64 / RISC-V"]
-        NET["网络栈\nMQTT · WebSocket · HTTP"]
-        DRV["工业驱动\nModbus · CAN · S7comm"]
+    subgraph Gateway["KEI 内核 —— 网关层"]
+        KERN["Linux 系统调用 ABI\nARM64 / RISC-V"]
+        NET["网络栈\nsmoltcp"]
     end
-    subgraph Sensors["传感器节点"]
-        EMB["embassy MCU 固件\n使用 kei no_std 库"]
+    subgraph Sensors["传感器节点 —— MCU 层"]
+        EMB["embassy 固件\n使用 kei no_std 库"]
     end
-    SENSORS -->|"kei 通信协议\n(UART / RS-485)"| Gateway
+    Sensors -->|"kei 通信协议\n(UART / RS-485)"| Gateway
     Gateway -->|"WebSocket / MQTT"| CLOUD["云平台"]
 ```
+
+## 状态
+
+KEI 是一个**研究型内核**：目前没有任何已交付的 Celestia 服务运行在它上面，内核也没有产品消费方。
+
+- **实时能力是计划项，尚未实现。** 高精度定时器与页锁定仍记为待偿债务；本内核不是 RTOS，也不声明有界延迟。
+- **驱动契约尚未在 kei 上验证过。** `evernight-appliance` 的 rig 用同一套 ABI 测试分别跑 Linux（基准）与 kei，但**至今只录得 Linux 基准**。
+
+有生产消费方的是 `packages/kei/` 下的 `kei` 库。
 
 ## 仓库内容
 
 | 组件 | 位置 | 说明 |
 |------|------|------|
-| **KEI 内核** | workspace root | ARM64/RISC-V Rust OS 内核。syscall ABI、virtio-gpu、帧缓冲、网络栈。 |
+| **KEI 内核** | workspace root | 面向 ARM64/RISC-V 边缘网关的 Rust 内核。Linux 系统调用 ABI（需 MMU）、virtio-gpu、帧缓冲、网络栈。不是 RTOS，无 MCU 目标。 |
 | **kei 库** | `packages/kei/` | 面向 embassy 传感器节点的 `#![no_std]` 库 |
 
 ## 快速开始

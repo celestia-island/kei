@@ -40,6 +40,22 @@ ARCH_TO_SCHEME = {
 }
 
 
+def pinned_toolchain() -> str:
+    """The toolchain this repository pins, read from rust-toolchain.toml.
+
+    Read rather than copied: that file is the single source of truth for the
+    toolchain, and a stale copy here does not merely age — it silently selects
+    the wrong compiler whenever the copy's toolchain happens to be installed
+    alongside the pinned one. Returns "" if the file cannot be read, in which
+    case callers fall back to the ambient toolchain / system tools.
+    """
+    try:
+        with open(PROJECT_ROOT / "rust-toolchain.toml", "rb") as f:
+            return str(tomllib.load(f)["toolchain"]["channel"])
+    except (OSError, KeyError, TypeError, tomllib.TOMLDecodeError):
+        return ""
+
+
 def find_nightly_cargo() -> list[str]:
     """Build the cargo command with the correct nightly toolchain.
 
@@ -48,24 +64,29 @@ def find_nightly_cargo() -> list[str]:
     nightly toolchain's bin directory to PATH so OSDK's internal cargo picks
     up the nightly compiler.
     """
-    toolchain = "nightly-2026-04-03"
+    toolchain = pinned_toolchain()
     host_triple = "x86_64-unknown-linux-gnu"
-    rustup_home = Path(os.environ.get("RUSTUP_HOME", os.path.expanduser("~/.rustup")))
-    nightly_bin = rustup_home / "toolchains" / f"{toolchain}-{host_triple}" / "bin"
-    if nightly_bin.exists():
-        env = dict(os.environ)
-        env["PATH"] = str(nightly_bin) + ":" + env.get("PATH", "")
-        return env
+    if toolchain:
+        rustup_home = Path(os.environ.get("RUSTUP_HOME", os.path.expanduser("~/.rustup")))
+        nightly_bin = rustup_home / "toolchains" / f"{toolchain}-{host_triple}" / "bin"
+        if nightly_bin.exists():
+            env = dict(os.environ)
+            env["PATH"] = str(nightly_bin) + ":" + env.get("PATH", "")
+            return env
     return dict(os.environ)
 
 
 def find_llvm_objcopy() -> str | None:
-    """Locate llvm-objcopy from the nightly toolchain."""
-    toolchain = "nightly-2026-04-03"
+    """Locate llvm-objcopy, preferring the pinned toolchain's copy."""
+    toolchain = pinned_toolchain()
     host_triple = "x86_64-unknown-linux-gnu"
     rustup_home = Path(os.environ.get("RUSTUP_HOME", os.path.expanduser("~/.rustup")))
-    candidates = [
-        rustup_home / "toolchains" / f"{toolchain}-{host_triple}" / "lib" / "rustlib" / host_triple / "bin" / "llvm-objcopy",
+    candidates = []
+    if toolchain:
+        candidates.append(
+            rustup_home / "toolchains" / f"{toolchain}-{host_triple}" / "lib" / "rustlib" / host_triple / "bin" / "llvm-objcopy"
+        )
+    candidates += [
         shutil.which("llvm-objcopy"),
         shutil.which("aarch64-linux-gnu-objcopy"),
         shutil.which("objcopy"),
@@ -148,7 +169,7 @@ def main() -> int:
     if result.returncode != 0:
         cf.fail("Kernel build failed")
         cf.info("  TIP: verify ostd/src/arch/aarch64/ exists")
-        cf.info("  TIP: ensure nightly-2026-04-03 toolchain is installed")
+        cf.info(f"  TIP: ensure the {pinned_toolchain() or 'pinned'} toolchain is installed")
         return 1
 
     cf.blank()

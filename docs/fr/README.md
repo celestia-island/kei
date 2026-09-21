@@ -2,7 +2,7 @@
 
 <h1 align="center">KEI</h1>
 
-<p align="center"><strong>Un noyau OS en Rust pour les appareils edge IoT industriels.</strong></p>
+<p align="center"><strong>Un noyau Rust pour les passerelles edge industrielles — ABI d'appels système Linux, ARM64 et RISC-V.</strong></p>
 
 <div align="center">
 
@@ -28,15 +28,24 @@
 
 ## Introduction
 
-KEI est un noyau OS Rust pour appareils edge ARM64 et RISC-V. Il inclut aussi une bibliothèque `#![no_std]` pour les nœuds capteurs embassy.
+KEI est un noyau Rust pour les **passerelles** edge ARM64 et RISC-V, implémentant l'**ABI des appels système Linux** (MMU requise). Ce n'est **pas** un RTOS et il n'a pas de cible microcontrôleur. La couche microcontrôleur est assurée séparément par la bibliothèque `kei` (`packages/kei/`).
 
-KEI est dérivé d'[Asterinas](https://github.com/asterinas/asterinas), un framekernel Rust.
+KEI a commencé comme fork d'[Asterinas](https://github.com/asterinas/asterinas) et porte désormais son propre arbre vendored : il **ne suit plus l'amont**.
+
+## État
+
+KEI est un **noyau de recherche**. Aucun service Celestia livré ne l'exécute, et le noyau n'a pas de consommateur en production.
+
+- **Le temps réel est prévu, pas présent.** Les minuteries haute résolution et le verrouillage de pages sont enregistrés comme travaux en attente. Ce noyau n'est pas un RTOS et ne revendique aucune latence bornée.
+- **Le contrat de pilotes n'a pas encore été prouvé sur kei.** Le rig d'`evernight-appliance` exécute la même suite d'ABI sur Linux (l'oracle) et sur kei ; **seul l'oracle Linux est enregistré à ce jour**.
+
+La partie qui a des consommateurs en production est la bibliothèque `kei` sous `packages/kei/`.
 
 ## Contenu
 
 | Composant | Emplacement | Description |
 |-----------|-------------|-------------|
-| **Noyau KEI** | racine workspace | Noyau OS Rust ARM64/RISC-V |
+| **Noyau KEI** | racine workspace | Noyau Rust pour passerelles edge ARM64/RISC-V. ABI d'appels système Linux (MMU requise). Pas un RTOS. |
 | **Bibliothèque kei** | `packages/kei/` | Bibliothèque `#![no_std]` pour embassy |
 
 ## Démarrage rapide

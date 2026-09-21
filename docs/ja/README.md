@@ -2,7 +2,7 @@
 
 <h1 align="center">KEI</h1>
 
-<p align="center"><strong>産業用 IoT エッジデバイス向けの Rust OS カーネル。</strong></p>
+<p align="center"><strong>産業用エッジゲートウェイ向けの Rust カーネル — Linux システムコール ABI、ARM64 / RISC-V。</strong></p>
 
 <div align="center">
 
@@ -28,15 +28,24 @@
 
 ## 概要
 
-KEI は ARM64 および RISC-V エッジデバイス向けの Rust OS カーネルです。embassy センサーノード向けの `#![no_std]` ライブラリも同梱しています。
+KEI は ARM64 / RISC-V のエッジ**ゲートウェイ**向け Rust カーネルで、**Linux システムコール ABI** を実装しています（MMU 必須）。**RTOS ではなく**、マイコン向けターゲットはありません。
 
-KEI は [Asterinas](https://github.com/asterinas/asterinas) から派生した Rust フレームカーネルです。
+KEI は [Asterinas](https://github.com/asterinas/asterinas) からのフォークとして始まり、現在は独自の vendored ツリーを保持しています（**上流は追跡していません**）。
+
+## ステータス
+
+KEI は**研究用カーネル**です。出荷済みの Celestia サービスはこれを動かしておらず、製品側の利用者もありません。
+
+- **リアルタイム機能は計画段階で、未実装です。** 高分解能タイマーとページロックは未解決の負債として記録されています。本カーネルは RTOS ではなく、有界レイテンシも主張しません。
+- **ドライバ契約は kei 上で未検証です。** `evernight-appliance` の rig は同一の ABI スイートを Linux（基準）と kei の両方に対して実行しますが、**記録済みなのは Linux の基準のみ**です。
+
+製品での利用者があるのは `packages/kei/` の `kei` ライブラリです。
 
 ## リポジトリ内容
 
 | コンポーネント | 場所 | 説明 |
 |---------------|------|------|
-| **KEI カーネル** | workspace root | ARM64/RISC-V Rust OS カーネル |
+| **KEI カーネル** | workspace root | ARM64/RISC-V エッジゲートウェイ向け Rust カーネル。Linux システムコール ABI（MMU 必須）。RTOS ではない。 |
 | **kei ライブラリ** | `packages/kei/` | embassy 向け `#![no_std]` ライブラリ |
 
 ## クイックスタート

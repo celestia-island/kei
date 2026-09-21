@@ -4,7 +4,7 @@ use kei::hal::{DeviceError, SensorDevice, Transport};
 use kei::manifest::{RawValue, RegisterMode, SensorUnit};
 use kei::wire::{
     decode::FrameDecoder, frame::decode_frame, Alarm, AlarmLevel, Frame, Gateway, Incoming,
-    MsgType, Nack, Node, ReadRegister, Request, StationId, Telemetry,
+    MsgType, Nack, Node, ReadRegister, Request, Telemetry,
 };
 
 #[test]
@@ -287,8 +287,8 @@ fn gateway_write_node_auto_dispatches() {
     let (gw_transport, node_transport) = PipeTransport::pair();
 
     let mut gw = Gateway::new(gw_transport);
-    let mut node = Node::new(node_transport, 7);
-    let mut sensor = TempSensor { temp: 20.0 };
+    let node = Node::new(node_transport, 7);
+    let sensor = TempSensor { temp: 20.0 };
 
     // Gateway writes 30.0 to register 0x200 (set-point).
     gw.send_write_register(7, 0x200, 30.0).unwrap();

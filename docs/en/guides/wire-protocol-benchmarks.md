@@ -26,7 +26,7 @@ cargo bench --bench wire_bench
 ## On-chip benchmarks (Cortex-M4 @ 25 MHz, release build)
 
 Measured via the CMSDK APB Timer (TIMER1) in the QEMU firmware
-(`examples/qemu-mps2/`), using `core::hint::black_box` to prevent
+(`packages/kei/qemu-mps2/`), using `core::hint::black_box` to prevent
 optimizer elimination.
 
 | Operation | Ticks | Time |

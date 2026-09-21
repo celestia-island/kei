@@ -10,8 +10,8 @@ matériel physique.
 
 ```mermaid
 flowchart LR
-    SRC["Source\nostd/ kernel/ bsp/"] -->|"cargo build\n(aarch64)"| BIN["kei-kernel.bin"]
-    BIN --> QEMU["QEMU Test\n(virt/cortex-a55)"]
+    SRC["Source\npackages/ostd, kernel, packages/bsp"] -->|"cargo osdk build\n(scripts/build.py)"| BIN["kei-kernel.bin"]
+    BIN --> QEMU["QEMU Test\n(virt/cortex-a72)"]
     QEMU -->|passes| PACK["Package\n(DTB + initramfs)"]
     PACK --> FLASH["Flash SD card"]
     FLASH --> BOARD["NanoPi R3S"]
@@ -20,19 +20,18 @@ flowchart LR
 ## Prérequis
 
 - **Hôte** : Linux x86_64 ou ARM64
-- **Rust** : 1.85+ avec la cible `aarch64-unknown-none-softfloat`
-- **QEMU** : ≥ 8.0 pour la machine virt avec cortex-a55
+- **Rust** : nightly-2026-05-01 avec la cible `aarch64-unknown-none`
+- **QEMU** : ≥ 8.0 pour la machine virt avec cortex-a72
 - **just** : `cargo install just`
 
 ## Compilation rapide
 
 ```bash
-# One-time setup
-just setup        # Configure git remotes and Rust targets
+# Stage the shared devtools recipes once (.just/ is gitignored)
+just fetch
 
-# Sync upstream sources
-just vendor       # Absorb latest upstream asterinas (squash)
-just versions     # Show upstream baseline versions
+# One-time setup
+just setup        # Configure git remotes
 
 # Build for the NanoPi R3S
 just build        # Builds kei-kernel.bin for aarch64/armv8
@@ -46,16 +45,17 @@ just test-all     # Boot-tests all supported architectures
 Pour la compilation croisée de x86_64 vers aarch64 :
 
 ```bash
-# Add the ARM64 target (one-time)
-rustup target add aarch64-unknown-none-softfloat
+# The ARM64 target is declared in rust-toolchain.toml, so rustup installs it with
+# the toolchain; adding it by hand is:
+rustup target add aarch64-unknown-none
 
 # Install GCC cross-toolchain (distribution-dependent)
 # Ubuntu / Debian:
 sudo apt install gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-# Build
-cargo build --release --target aarch64-unknown-none-softfloat \
-  -p kei-kernel
+# Build. The kernel is produced through OSDK (it needs the initramfs packed and a
+# nightly cargo on PATH), so use the build script rather than a bare `cargo build`:
+python3 scripts/build.py nanopi-r3s
 ```
 
 Le binaire du noyau est une image ARM64 brute (protocole de démarrage Linux),
@@ -69,8 +69,8 @@ Testez le noyau dans QEMU avant de déployer sur le matériel :
 flowchart TB
     subgraph Host["Machine hôte"]
         KERN["kei-kernel.bin"]
-        DTB["nanopi-r3s.dtb"]
-        QEMU["QEMU\n(virt, cortex-a55)"]
+        DTB["board.dtb"]
+        QEMU["QEMU\n(virt, cortex-a72)"]
     end
     KERN --> QEMU
     DTB --> QEMU
@@ -82,7 +82,7 @@ flowchart TB
 
 | Machine QEMU | CPU | RAM | État | Commande |
 |-------------|-----|-----|--------|---------|
-| virt | cortex-a55 | 2GB | ✅ Principal | `just test` |
+| virt | cortex-a72 | 2GB | ✅ Principal | `just test` |
 | virt | cortex-a72 | 2GB | 🔲 Prévu | — |
 | virt | max | 4GB | 🔲 Prévu | — |
 | sbsa-ref | max | 4GB | 🔲 Prévu | — |
@@ -94,9 +94,9 @@ just test
 # Manual QEMU invocation
 qemu-system-aarch64 \
   -machine virt,gic-version=3 \
-  -cpu cortex-a55 \
+  -cpu cortex-a72 \
   -m 2G \
-  -kernel output/kei-kernel.bin \
+  -kernel target/output/nanopi-r3s/kei-kernel.bin \
   -nographic
 ```
 
@@ -110,18 +110,18 @@ Déploiement de kei sur un NanoPi R3S physique :
 flowchart TB
     subgraph Build["Hôte de compilation"]
         KERN["kei-kernel.bin"]
-        DTB["nanopi-r3s.dtb"]
+        DTB["board.dtb"]
         INIT["initramfs.cpio.gz"]
     end
     subgraph Deploy["Déploiement"]
-        IMG["image.img"]
+        IMG["sdcard.img"]
         SD["Carte SD"]
         BOARD["NanoPi R3S"]
     end
     KERN --> IMG
     DTB --> IMG
     INIT --> IMG
-    IMG -->|"dd / just flash-sd"| SD
+    IMG -->|"dd / just image"| SD
     SD --> BOARD
 ```
 
@@ -129,11 +129,68 @@ flowchart TB
 
 ```bash
 # Build the complete firmware image (includes kei-kernel.bin)
-just build-board nanopi-r3s
+just build board nanopi-r3s
+
+# Assemble the SD card image (borrows U-Boot + GPT from an Armbian reference)
+just image ARMBIAN_IMG=/path/to/armbian.img
 
 # Flash to SD card
-sudo dd if=output/nanopi-r3s/image.img of=/dev/sdX bs=4M status=progress
+sudo dd if=target/output/nanopi-r3s/sdcard.img of=/dev/sdX bs=4M status=progress
 sync
+```
+
+### Itération sans reflash
+
+Le flash unique ci-dessus est le **dernier** flash complet nécessaire. Le
+`boot.scr` fourni prend en charge deux flux d'itération qui ne touchent jamais
+la GPT ni la zone U-Boot :
+
+#### Démarrage réseau TFTP (recommandé pour le travail sur banc)
+
+Avec `kei_netboot=1` (valeur par défaut dans `armbianEnv.txt`), U-Boot récupère
+le kernel, le DTB et l'initramfs par TFTP et retombe sur la copie SD lorsque le
+serveur est injoignable.
+
+Configuration unique sur l'hôte de build :
+
+```bash
+# Serve /srv/tftp, e.g. with tftpd-hpa:
+sudo apt install tftpd-hpa
+sudo install -d -o "$USER" /srv/tftp/kei
+```
+
+Réglages côté carte (fournis par défaut dans
+`configs/board/nanopi-r3s/armbianEnv.txt`) :
+
+```
+kei_netboot=1
+kei_tftp_prefix=kei
+serverip=192.0.2.74   # build host running the TFTP server — adjust to your LAN
+```
+
+Boucle d'itération :
+
+```bash
+python3 scripts/build.py nanopi-r3s   # rebuild kernel + DTB
+scripts/push_netboot.sh               # copy artifacts into the TFTP root
+# reset the board — U-Boot fetches kei over TFTP
+```
+
+Pour pousser vers un serveur TFTP distant plutôt qu'un répertoire local :
+
+```bash
+KEI_TFTP_DEST=user@host:/srv/tftp scripts/push_netboot.sh
+```
+
+#### Mise à jour de la carte SD sur place (hors ligne)
+
+Lorsque la carte n'est pas sur le LAN de build, actualisez une carte (ou une
+image) existante sur place — seuls les fichiers sous `/boot/` sont remplacés :
+
+```bash
+scripts/update_sdcard_kernel.sh --image target/output/nanopi-r3s/sdcard.img
+# or, with the card in a reader on this host:
+sudo scripts/update_sdcard_kernel.sh --device /dev/sdX
 ```
 
 ### Vérification du démarrage
@@ -178,5 +235,5 @@ flowchart TB
 | Pas de sortie série | Mauvais débit en bauds | Utilisez 1500000, pas 115200 |
 | Échec d'initialisation GICv3 | Type de machine QEMU | Utilisez `virt,gic-version=3` |
 | Échec SMP | PSCI manquant dans le DTB | Vérifiez le nœud `/cpus` dans le device tree |
-| Kernel panic | Bug de code dans la couche d'architecture | Auditez `ostd/src/arch/aarch64/` |
+| Kernel panic | Bug de code dans la couche d'architecture | Auditez `packages/ostd/src/arch/aarch64/` |
 | U-Boot ne trouve pas le noyau | Offset de partition incorrect | Vérifiez l'offset dans `boot.scr` |

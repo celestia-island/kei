@@ -9,8 +9,8 @@ covers building the kernel, testing in QEMU, and deploying to physical hardware.
 
 ```mermaid
 flowchart LR
-    SRC["Source\nostd/ kernel/ bsp/"] -->|"cargo build\n(aarch64)"| BIN["kei-kernel.bin"]
-    BIN --> QEMU["QEMU Test\n(virt/cortex-a55)"]
+    SRC["Source\npackages/ostd, kernel, packages/bsp"] -->|"cargo osdk build\n(scripts/build.py)"| BIN["kei-kernel.bin"]
+    BIN --> QEMU["QEMU Test\n(virt/cortex-a72)"]
     QEMU -->|passes| PACK["Package\n(DTB + initramfs)"]
     PACK --> FLASH["Flash SD card"]
     FLASH --> BOARD["NanoPi R3S"]
@@ -19,19 +19,18 @@ flowchart LR
 ## Prerequisites
 
 - **Host**: Linux x86_64 or ARM64
-- **Rust**: 1.85+ with `aarch64-unknown-none-softfloat` target
-- **QEMU**: ≥ 8.0 for virt machine with cortex-a55
+- **Rust**: nightly-2026-05-01 with `aarch64-unknown-none` target
+- **QEMU**: ≥ 8.0 for virt machine with cortex-a72
 - **just**: `cargo install just`
 
 ## Quick Build
 
 ```bash
-# One-time setup
-just setup        # Configure git remotes and Rust targets
+# Stage the shared devtools recipes once (.just/ is gitignored)
+just fetch
 
-# Sync upstream sources
-just vendor       # Absorb latest upstream asterinas
-just versions     # Show upstream baseline versions
+# One-time setup
+just setup        # Configure git remotes
 
 # Build for the NanoPi R3S
 just build        # Builds kei-kernel.bin for aarch64/armv8
@@ -45,16 +44,17 @@ just test-all     # Boot-tests all supported architectures
 For cross-compiling from x86_64 to aarch64:
 
 ```bash
-# Add the ARM64 target (one-time)
-rustup target add aarch64-unknown-none-softfloat
+# The ARM64 target is declared in rust-toolchain.toml, so rustup installs it with
+# the toolchain; adding it by hand is:
+rustup target add aarch64-unknown-none
 
 # Install GCC cross-toolchain (distribution-dependent)
 # Ubuntu / Debian:
 sudo apt install gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-# Build
-cargo build --release --target aarch64-unknown-none-softfloat \
-  -p kei-kernel
+# Build. The kernel is produced through OSDK (it needs the initramfs packed and a
+# nightly cargo on PATH), so use the build script rather than a bare `cargo build`:
+python3 scripts/build.py nanopi-r3s
 ```
 
 The kernel binary is a raw ARM64 Image (Linux boot protocol), not an ELF. It
@@ -68,8 +68,8 @@ Test the kernel in QEMU before deploying to hardware:
 flowchart TB
     subgraph Host["Host Machine"]
         KERN["kei-kernel.bin"]
-        DTB["nanopi-r3s.dtb"]
-        QEMU["QEMU\n(virt, cortex-a55)"]
+        DTB["board.dtb"]
+        QEMU["QEMU\n(virt, cortex-a72)"]
     end
     KERN --> QEMU
     DTB --> QEMU
@@ -81,7 +81,7 @@ flowchart TB
 
 | QEMU Machine | CPU | RAM | Status | Command |
 |-------------|-----|-----|--------|---------|
-| virt | cortex-a55 | 2GB | ✅ Primary | `just test` |
+| virt | cortex-a72 | 2GB | ✅ Primary | `just test` |
 | virt | cortex-a72 | 2GB | 🔲 Planned | — |
 | virt | max | 4GB | 🔲 Planned | — |
 | sbsa-ref | max | 4GB | 🔲 Planned | — |
@@ -93,9 +93,9 @@ just test
 # Manual QEMU invocation
 qemu-system-aarch64 \
   -machine virt,gic-version=3 \
-  -cpu cortex-a55 \
+  -cpu cortex-a72 \
   -m 2G \
-  -kernel output/kei-kernel.bin \
+  -kernel target/output/nanopi-r3s/kei-kernel.bin \
   -nographic
 ```
 
@@ -109,18 +109,18 @@ Deploying kei to a physical NanoPi R3S:
 flowchart TB
     subgraph Build["Build Host"]
         KERN["kei-kernel.bin"]
-        DTB["nanopi-r3s.dtb"]
+        DTB["board.dtb"]
         INIT["initramfs.cpio.gz"]
     end
     subgraph Deploy["Deploy"]
-        IMG["image.img"]
+        IMG["sdcard.img"]
         SD["SD Card"]
         BOARD["NanoPi R3S"]
     end
     KERN --> IMG
     DTB --> IMG
     INIT --> IMG
-    IMG -->|"dd / just flash-sd"| SD
+    IMG -->|"dd / just image"| SD
     SD --> BOARD
 ```
 
@@ -234,7 +234,7 @@ flowchart TB
 | No serial output | Wrong baud rate | Use 1500000, not 115200 |
 | GICv3 init failed | QEMU machine type | Use `virt,gic-version=3` |
 | SMP failed | Missing PSCI in DTB | Check `/cpus` node in device tree |
-| Kernel panic | Code bug in arch layer | Audit `ostd/src/arch/aarch64/` |
+| Kernel panic | Code bug in arch layer | Audit `packages/ostd/src/arch/aarch64/` |
 | U-Boot can't find kernel | Wrong partition offset | Verify offset in `boot.scr` |
 | TFTP times out, SD fallback boots | `serverip` wrong or server down | Check `kei_netboot`/`serverip` in `armbianEnv.txt`; verify tftpd serves the `kei/` prefix |
 | Old kernel boots despite netboot | TFTP fetch failed silently | Watch for `[kei] netboot:` lines on serial; check TFTP server logs |

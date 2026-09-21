@@ -2,7 +2,7 @@
 
 <h1 align="center">KEI</h1>
 
-<p align="center"><strong>Un núcleo de SO en Rust para dispositivos edge de IoT industrial.</strong></p>
+<p align="center"><strong>Un núcleo Rust para pasarelas edge industriales — ABI de llamadas al sistema Linux, ARM64 y RISC-V.</strong></p>
 
 <div align="center">
 
@@ -28,15 +28,24 @@
 
 ## Introducción
 
-KEI es un núcleo OS Rust para dispositivos edge ARM64 y RISC-V. También incluye una biblioteca `#![no_std]` para nodos sensores embassy.
+KEI es un núcleo Rust para **pasarelas** edge ARM64 y RISC-V que implementa la **ABI de llamadas al sistema de Linux** (requiere MMU). **No es un RTOS** y no tiene objetivo para microcontroladores. La capa de microcontrolador la cubre aparte la biblioteca `kei` (`packages/kei/`).
 
-KEI deriva de [Asterinas](https://github.com/asterinas/asterinas), un framekernel Rust.
+KEI comenzó como un fork de [Asterinas](https://github.com/asterinas/asterinas) y ahora mantiene su propio árbol vendored: **ya no sigue el upstream**.
+
+## Estado
+
+KEI es un **núcleo de investigación**. Ningún servicio de Celestia ya entregado se ejecuta sobre él, y el núcleo no tiene consumidores en producción.
+
+- **El tiempo real está previsto, no presente.** Los temporizadores de alta resolución y el bloqueo de páginas figuran como trabajo pendiente. Este núcleo no es un RTOS y no afirma latencia acotada.
+- **El contrato de controladores aún no se ha demostrado en kei.** El rig de `evernight-appliance` ejecuta la misma suite de ABI sobre Linux (el oráculo) y sobre kei; **hasta ahora solo existe el oráculo de Linux**.
+
+La parte con consumidores en producción es la biblioteca `kei` en `packages/kei/`.
 
 ## Contenido
 
 | Componente | Ubicación | Descripción |
 |-----------|-----------|-------------|
-| **Núcleo KEI** | raíz workspace | Núcleo OS Rust ARM64/RISC-V |
+| **Núcleo KEI** | raíz workspace | Núcleo Rust para pasarelas edge ARM64/RISC-V. ABI de llamadas al sistema Linux (requiere MMU). No es un RTOS. |
 | **Biblioteca kei** | `packages/kei/` | Biblioteca `#![no_std]` para embassy |
 
 ## Inicio rápido

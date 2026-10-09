@@ -8,7 +8,7 @@ edition.workspace = true
 [dependencies]
 
 aster-util.workspace = true
-bitflags = "2.5"
+bitflags = "^2.5"
 component.workspace = true
 inherit-methods-macro.workspace = true
 ostd.workspace = true

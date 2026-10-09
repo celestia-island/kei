@@ -10,7 +10,7 @@ edition = "2024"
 component = { path = "../../../component" }
 foo = { path = "foo" }
 
-log = "0.4"
+log = "^0.4"
 simple_logger = "^4"
 [workspace]
 members = [

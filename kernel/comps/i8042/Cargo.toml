@@ -9,7 +9,7 @@ edition.workspace = true
 
 aster-cmdline.workspace = true
 aster-input.workspace = true
-bitflags = "2.5"
+bitflags = "^2.5"
 component.workspace = true
 ostd.workspace = true
 spin.workspace = true

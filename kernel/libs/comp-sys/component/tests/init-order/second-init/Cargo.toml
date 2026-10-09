@@ -10,7 +10,7 @@ edition = "2024"
 first-init = {path = "../first-init"}
 
 component = {path="../../../../component"}
-log = "0.4"
+log = "^0.4"
 [dev-dependencies]
 
 simple_logger = "^4"

@@ -13,7 +13,7 @@ inherit-methods-macro.workspace = true
 ostd.workspace = true
 spin.workspace = true
 [target.riscv64imac-unknown-none-elf.dependencies]
-fdt = { version = "0.1.5", features = ["pretty-printing"] }
+fdt = { version = "^0.1", features = ["pretty-printing"] }
 
 [lints]
 workspace = true

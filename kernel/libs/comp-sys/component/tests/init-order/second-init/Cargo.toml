@@ -13,4 +13,4 @@ component = {path="../../../../component"}
 log = "0.4"
 [dev-dependencies]
 
-simple_logger = "4.0.0"
+simple_logger = "^4"

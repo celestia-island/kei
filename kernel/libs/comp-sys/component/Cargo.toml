@@ -13,4 +13,4 @@ inventory.workspace = true
 log.workspace = true
 [build-dependencies]
 
-json = "0.12.4"
+json = "^0.12"

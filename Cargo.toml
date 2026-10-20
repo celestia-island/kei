@@ -115,9 +115,6 @@ exclude = [
     "packages/ostd/libs/linux-bzimage/setup",
     "packages/osdk",
     "scripts/tools/sctrace",
-    # The no_std bridge library + QEMU demo are separate workspaces
-    # (different target: thumbv7em-none-eabi, not aarch64-unknown-none).
-    "packages/kei",
     # NixOS test template uses a placeholder package name; not a real crate.
     "tests/nixos/common/template",
 ]

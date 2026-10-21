@@ -198,7 +198,7 @@ pub(crate) fn make_pe_coff_header(setup_elf: &[u8]) -> Vec<u8> {
         symbols: 1, // I don't know why, Linux header.S says it's 1
         opt_hdr_size: (size_of::<Pe32PlusOptHdr>() + size_of::<Pe32PlusOptDataDirs>()) as u16,
         flags: (PeFlags::EXECUTABLE_IMAGE | PeFlags::DEBUG_STRIPPED | PeFlags::LINE_NUMS_STRIPPED)
-            .bits,
+            .bits(),
     };
 
     let sec_hdrs = build_pe_sec_headers_from(&elf);

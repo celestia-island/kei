@@ -34,17 +34,17 @@ typeflags::typeflags! {
     /// types.
     pub trait TRights: u32 {
         /// Allows duplicating a capability.
-        pub struct Dup     = Rights::DUP.bits;
+        pub struct Dup     = Rights::DUP.bits();
         /// Allows reading data from a data source (files, VM objects, etc.) or
         /// creating readable memory mappings.
-        pub struct Read     = Rights::READ.bits;
+        pub struct Read     = Rights::READ.bits();
         /// Allows writing data to a data sink (files, VM objects, etc.) or
         /// creating writable memory mappings.
-        pub struct Write    = Rights::WRITE.bits;
+        pub struct Write    = Rights::WRITE.bits();
         /// Allows creating executable memory mappings.
-        pub struct Exec     = Rights::EXEC.bits;
+        pub struct Exec     = Rights::EXEC.bits();
         /// Allows sending notifications or signals.
-        pub struct Signal   = Rights::SIGNAL.bits;
+        pub struct Signal   = Rights::SIGNAL.bits();
     }
 }
 

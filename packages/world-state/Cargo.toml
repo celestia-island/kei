@@ -1,0 +1,21 @@
+[package]
+name = "kei-world-state"
+version = "0.1.0"
+edition = "2024"
+description = "Typed world-state store for physical-consistency entity tracking (moved from plana 2026-10-27; the ingest seam awaits the kernel-interface study)"
+publish = false
+authors = ["kei contributors"]
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = "^1"
+chrono = { version = "^0.4", default-features = false, features = ["clock", "serde"] }
+serde = { version = "^1", features = ["derive"] }
+serde_json = "^1"
+tracing = "^0.1"
+tokio = { version = "^1", features = ["sync"] }
+
+[dev-dependencies]
+tokio = { version = "^1", features = ["sync", "macros", "rt"] }

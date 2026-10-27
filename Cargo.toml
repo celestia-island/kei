@@ -13,6 +13,7 @@ members = [
     "packages/osdk/deps/frame-allocator",
     "packages/osdk/deps/heap-allocator",
     "packages/osdk/deps/test-kernel",
+    "packages/world-state",
     "packages/ostd",
     "packages/ostd/libs/align_ext",
     "packages/ostd/libs/id-alloc",

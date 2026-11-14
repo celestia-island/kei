@@ -32,9 +32,11 @@ KEI is a Rust kernel for ARM64 and RISC-V **edge gateways**. It implements the
 **Linux syscall ABI**, so gateway services written for Linux run unmodified, and
 it requires an MMU. It is **not** an RTOS and has no microcontroller target.
 
-The microcontroller tier is served separately by the `kei` library
-(`packages/kei/`), a `#![no_std]` crate for embassy sensor nodes. Both tiers
-share one contract: the same hardware manifest and the same wire protocol.
+The microcontroller tier is served separately by the
+[hare](https://github.com/celestia-island/hare) library, a `#![no_std]` crate for embassy sensor nodes: the
+wire/manifest/codec contract that began as the `kei` library in
+[hare](https://github.com/celestia-island/hare) here and was split out to its own repo. Both tiers share one
+contract: the same hardware manifest and the same wire protocol.
 
 KEI began as a fork of [Asterinas](https://github.com/asterinas/asterinas) and
 now carries its own vendored tree. It no longer tracks upstream.
@@ -46,7 +48,7 @@ flowchart TB
         NET["Network stack\nsmoltcp"]
     end
     subgraph Sensors["Sensor nodes — MCU tier"]
-        EMB["embassy firmware\nusing the kei no_std library"]
+        EMB["embassy firmware\nusing the hare no_std library"]
     end
     Sensors -->|"kei wire protocol\n(UART / RS-485)"| Gateway
     Gateway -->|"WebSocket / MQTT"| CLOUD["Cloud platform"]
@@ -67,14 +69,15 @@ has no product consumer.
   runs one ABI suite against Linux (the recorded oracle) and against kei; only the
   Linux oracle exists so far.
 
-The part with production consumers is the `kei` library under `packages/kei/`.
+The part with production consumers is the wire/manifest/codec bridge — the
+[hare](https://github.com/celestia-island/hare) library, which began here as [hare](https://github.com/celestia-island/hare) and was split out.
 
 ## What's in this repo?
 
 | Component | Location | What it does |
 |-----------|----------|-------------|
 | **KEI kernel** | workspace root | Rust kernel for ARM64/RISC-V gateways. Linux syscall ABI (MMU required), virtio-gpu, framebuffer, network stack. Not an RTOS; no MCU target. |
-| **kei library** | `packages/kei/` | `#![no_std]` library for embassy sensor nodes: wire protocol, manifest schema, HAL traits. |
+| **hare library** | [separate repo](https://github.com/celestia-island/hare) | `#![no_std]` library for embassy sensor nodes: wire protocol, manifest schema, HAL traits. Began here as the `kei` library ([hare](https://github.com/celestia-island/hare)), split out to its own repo. |
 
 ## Quick start
 
@@ -85,8 +88,9 @@ just test-all     # Boot-test all architectures in QEMU
 ```
 
 **Library:**
+Clone the [hare repo](https://github.com/celestia-island/hare) alongside this one, then:
 ```bash
-cd packages/kei
+cd hare
 cargo test --all-features    # 20 tests
 cargo run --example host_demo  # Wire protocol demo
 ```

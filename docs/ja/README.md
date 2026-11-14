@@ -39,14 +39,14 @@ KEI は**研究用カーネル**です。出荷済みの Celestia サービス�
 - **リアルタイム機能は計画段階で、未実装です。** 高分解能タイマーとページロックは未解決の負債として記録されています。本カーネルは RTOS ではなく、有界レイテンシも主張しません。
 - **ドライバ契約は kei 上で未検証です。** `evernight-appliance` の rig は同一の ABI スイートを Linux（基準）と kei の両方に対して実行しますが、**記録済みなのは Linux の基準のみ**です。
 
-製品での利用者があるのは `packages/kei/` の `kei` ライブラリです。
+製品での利用者があるのは [hare](https://github.com/celestia-island/hare) の `kei` ライブラリです。
 
 ## リポジトリ内容
 
 | コンポーネント | 場所 | 説明 |
 |---------------|------|------|
 | **KEI カーネル** | workspace root | ARM64/RISC-V エッジゲートウェイ向け Rust カーネル。Linux システムコール ABI（MMU 必須）。RTOS ではない。 |
-| **kei ライブラリ** | `packages/kei/` | embassy 向け `#![no_std]` ライブラリ |
+| **kei ライブラリ** | [hare](https://github.com/celestia-island/hare) | embassy 向け `#![no_std]` ライブラリ |
 
 ## クイックスタート
 

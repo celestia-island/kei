@@ -28,7 +28,7 @@
 
 ## Introducción
 
-KEI es un núcleo Rust para **pasarelas** edge ARM64 y RISC-V que implementa la **ABI de llamadas al sistema de Linux** (requiere MMU). **No es un RTOS** y no tiene objetivo para microcontroladores. La capa de microcontrolador la cubre aparte la biblioteca `kei` (`packages/kei/`).
+KEI es un núcleo Rust para **pasarelas** edge ARM64 y RISC-V que implementa la **ABI de llamadas al sistema de Linux** (requiere MMU). **No es un RTOS** y no tiene objetivo para microcontroladores. La capa de microcontrolador la cubre aparte la biblioteca `kei` ([hare](https://github.com/celestia-island/hare)).
 
 KEI comenzó como un fork de [Asterinas](https://github.com/asterinas/asterinas) y ahora mantiene su propio árbol vendored: **ya no sigue el upstream**.
 
@@ -39,14 +39,14 @@ KEI es un **núcleo de investigación**. Ningún servicio de Celestia ya entrega
 - **El tiempo real está previsto, no presente.** Los temporizadores de alta resolución y el bloqueo de páginas figuran como trabajo pendiente. Este núcleo no es un RTOS y no afirma latencia acotada.
 - **El contrato de controladores aún no se ha demostrado en kei.** El rig de `evernight-appliance` ejecuta la misma suite de ABI sobre Linux (el oráculo) y sobre kei; **hasta ahora solo existe el oráculo de Linux**.
 
-La parte con consumidores en producción es la biblioteca `kei` en `packages/kei/`.
+La parte con consumidores en producción es la biblioteca `kei` en [hare](https://github.com/celestia-island/hare).
 
 ## Contenido
 
 | Componente | Ubicación | Descripción |
 |-----------|-----------|-------------|
 | **Núcleo KEI** | raíz workspace | Núcleo Rust para pasarelas edge ARM64/RISC-V. ABI de llamadas al sistema Linux (requiere MMU). No es un RTOS. |
-| **Biblioteca kei** | `packages/kei/` | Biblioteca `#![no_std]` para embassy |
+| **Biblioteca kei** | [hare](https://github.com/celestia-island/hare) | Biblioteca `#![no_std]` para embassy |
 
 ## Inicio rápido
 

@@ -1,5 +1,10 @@
 # Wire Protocol Benchmarks
 
+> **Moved (2026-10):** the library described here began as `packages/kei/` in this
+> repo and now lives in the [hare repo](https://github.com/celestia-island/hare). Commands below are updated to run
+> from a hare checkout cloned alongside this repo.
+
+
 Performance measurements of the kei wire protocol, both on host (x86_64)
 and on an emulated Cortex-M4 MCU (QEMU mps2-an386 @ 25 MHz).
 
@@ -19,7 +24,7 @@ and on an emulated Cortex-M4 MCU (QEMU mps2-an386 @ 25 MHz).
 
 Run with:
 ```bash
-cd packages/kei
+cd hare
 cargo bench --bench wire_bench
 ```
 

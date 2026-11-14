@@ -1,6 +1,11 @@
 # kei no_std Library
 
-The `kei` library (`packages/kei/`) is a `#![no_std]` Rust crate that provides
+> **Moved (2026-10):** the library described here began as `packages/kei/` in this
+> repo and now lives in the [hare repo](https://github.com/celestia-island/hare). Commands below are updated to run
+> from a hare checkout cloned alongside this repo.
+
+
+The `kei` library (now [hare](https://github.com/celestia-island/hare), formerly `packages/kei/`) is a `#![no_std]` Rust crate that provides
 the shared contract between embassy-based sensor nodes and the gateway broker.
 
 ## What it provides
@@ -13,7 +18,7 @@ the shared contract between embassy-based sensor nodes and the gateway broker.
 ## Quick start
 
 ```bash
-cd packages/kei
+cd hare
 cargo test --all-features              # 20 tests
 cargo bench --bench wire_bench         # criterion benchmarks
 cargo run --example host_demo          # host-side wire protocol demo
@@ -26,7 +31,7 @@ under QEMU's `mps2-an386` machine (Cortex-M4) and demonstrates the wire
 protocol end-to-end.
 
 ```bash
-cd packages/kei/qemu-mps2
+cd hare/qemu-mps2
 cargo build --release --target thumbv7em-none-eabi
 qemu-system-arm -M mps2-an386 -cpu cortex-m4 -m 16M \
     -display none -serial stdio \

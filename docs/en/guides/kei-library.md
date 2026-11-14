@@ -4,7 +4,7 @@
 > repo and now lives in the [hare repo](https://github.com/celestia-island/hare). Commands below are updated to run
 > from a hare checkout cloned alongside this repo.
 
-The `kei` library (now [hare](https://github.com/celestia-island/hare), formerly `packages/kei/`) is a `#![no_std]` Rust crate that provides
+The [hare](https://github.com/celestia-island/hare) library (which began life here as the `kei` library, `packages/kei/`) is a `#![no_std]` Rust crate that provides
 the shared contract between embassy-based sensor nodes and the gateway broker.
 
 ## What it provides
@@ -34,15 +34,22 @@ cd hare/qemu-mps2
 cargo build --release --target thumbv7em-none-eabi
 qemu-system-arm -M mps2-an386 -cpu cortex-m4 -m 16M \
     -display none -serial stdio \
-    -kernel target/thumbv7em-none-eabi/release/kei-qemu-mps2
+    -kernel ../target/thumbv7em-none-eabi/release/kei-qemu-mps2
 ```
 
-A host-side demo (`examples/host_demo.rs`) decodes the wire frames:
+(The workspace target dir lives at the hare checkout root, not next to this
+member — hence `../target/`.)
+
+A host-side gateway (`examples/host_gateway.rs` in this directory) decodes
+the wire frames from QEMU's serial output:
 
 ```bash
-cargo build --example host_demo --target x86_64-unknown-linux-gnu
-qemu-system-arm ... | target/.../debug/examples/host_demo
+cargo build -p kei-qemu-mps2 --example host_gateway --target x86_64-unknown-linux-gnu
+qemu-system-arm ... | ../target/x86_64-unknown-linux-gnu/debug/examples/host_gateway
 ```
+
+Or simply run `./run_demo.sh`, which builds both halves and wires them
+together.
 
 ## Using hare in your embassy project
 

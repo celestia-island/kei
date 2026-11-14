@@ -48,8 +48,10 @@ cargo build -p kei-qemu-mps2 --example host_gateway --target x86_64-unknown-linu
 qemu-system-arm ... | ../target/x86_64-unknown-linux-gnu/debug/examples/host_gateway
 ```
 
-Or simply run `./run_demo.sh`, which builds both halves and wires them
-together.
+The directory also ships `./run_demo.sh`, which builds both halves and
+wires them together. (Note: as of 2026-11 the script passes `-m 4M` to QEMU,
+which mps2-an386 rejects — it requires exactly 16 MiB. Until that is fixed
+in the hare repo, use the explicit commands above with `-m 16M`.)
 
 ## Using hare in your embassy project
 

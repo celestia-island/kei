@@ -1,32 +1,31 @@
-# kei no_std Library
+# hare no_std Library (formerly the `kei` library)
 
 > **Moved (2026-10):** the library described here began as `packages/kei/` in this
 > repo and now lives in the [hare repo](https://github.com/celestia-island/hare). Commands below are updated to run
 > from a hare checkout cloned alongside this repo.
-
 
 The `kei` library (now [hare](https://github.com/celestia-island/hare), formerly `packages/kei/`) is a `#![no_std]` Rust crate that provides
 the shared contract between embassy-based sensor nodes and the gateway broker.
 
 ## What it provides
 
-- **Wire protocol** (`kei::wire`) — compact binary framing (magic + length + type + payload + CRC16) for UART/USB-CDC/SPI. Includes `Node` (sensor side) and `Gateway` (broker side) high-level APIs.
-- **Manifest schema** (`kei::manifest`) — hardware descriptions: register maps, alarm rules, station configs, scale transforms (Linear / Table interpolation / Polynomial).
-- **HAL traits** (`kei::hal`) — `Transport`, `AsyncTransport`, `AddressedTransport` — embassy-implementable abstractions.
-- **Protocol type identifiers** (`kei::codec`) — `ProtocolKind` enum and `ProtocolFrame` opaque container.
+- **Wire protocol** (`hare::wire`) — compact binary framing (magic + length + type + payload + CRC16) for UART/USB-CDC/SPI. Includes `Node` (sensor side) and `Gateway` (broker side) high-level APIs.
+- **Manifest schema** (`hare::manifest`) — hardware descriptions: register maps, alarm rules, station configs, scale transforms (Linear / Table interpolation / Polynomial).
+- **HAL traits** (`hare::hal`) — `Transport`, `AsyncTransport`, `AddressedTransport` — embassy-implementable abstractions.
+- **Protocol type identifiers** (`hare::codec`) — `ProtocolKind` enum and `ProtocolFrame` opaque container.
 
 ## Quick start
 
 ```bash
 cd hare
-cargo test --all-features              # 20 tests
+cargo test --all-features              # 63 tests
 cargo bench --bench wire_bench         # criterion benchmarks
 cargo run --example host_demo          # host-side wire protocol demo
 ```
 
 ## QEMU demo (Cortex-M4)
 
-The `packages/kei/qemu-mps2/` directory contains a bare-metal firmware that runs
+The `qemu-mps2/` directory (repo root of the hare checkout) contains a bare-metal firmware that runs
 under QEMU's `mps2-an386` machine (Cortex-M4) and demonstrates the wire
 protocol end-to-end.
 
@@ -38,26 +37,26 @@ qemu-system-arm -M mps2-an386 -cpu cortex-m4 -m 16M \
     -kernel target/thumbv7em-none-eabi/release/kei-qemu-mps2
 ```
 
-A host-side gateway (`examples/host_gateway.rs`) decodes the wire frames:
+A host-side demo (`examples/host_demo.rs`) decodes the wire frames:
 
 ```bash
-cargo build --example host_gateway --target x86_64-unknown-linux-gnu
-qemu-system-arm ... | target/.../debug/examples/host_gateway
+cargo build --example host_demo --target x86_64-unknown-linux-gnu
+qemu-system-arm ... | target/.../debug/examples/host_demo
 ```
 
-## Using kei in your embassy project
+## Using hare in your embassy project
 
 Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-kei = { git = "https://github.com/celestia-island/kei.git", branch = "master", default-features = false, features = ["wire", "manifest", "hal"] }
+hare = { git = "https://github.com/celestia-island/hare.git", branch = "master", default-features = false, features = ["wire", "manifest", "hal"] }
 ```
 
 Implement `Transport` for your UART, then use `Node`:
 
 ```rust
-use kei::wire::{Node, Request};
+use hare::wire::{Node, Request};
 let mut node = Node::new(your_uart_transport, 1); // station_id = 1
 loop {
     let req = node.poll(&mut sensor);

@@ -34,8 +34,8 @@ it requires an MMU. It is **not** an RTOS and has no microcontroller target.
 
 The microcontroller tier is served separately by the
 [hare](https://github.com/celestia-island/hare) library, a `#![no_std]` crate for embassy sensor nodes: the
-wire/manifest/codec contract that began as the `kei` library in
-[hare](https://github.com/celestia-island/hare) here and was split out to its own repo. Both tiers share one
+wire/manifest/codec contract that began here as the `kei` library
+(`packages/kei/`) and was split out to its own repo. Both tiers share one
 contract: the same hardware manifest and the same wire protocol.
 
 KEI began as a fork of [Asterinas](https://github.com/asterinas/asterinas) and
@@ -70,14 +70,15 @@ has no product consumer.
   Linux oracle exists so far.
 
 The part with production consumers is the wire/manifest/codec bridge — the
-[hare](https://github.com/celestia-island/hare) library, which began here as [hare](https://github.com/celestia-island/hare) and was split out.
+[hare](https://github.com/celestia-island/hare) library, which began here as
+`packages/kei/` and was split out.
 
 ## What's in this repo?
 
 | Component | Location | What it does |
 |-----------|----------|-------------|
 | **KEI kernel** | workspace root | Rust kernel for ARM64/RISC-V gateways. Linux syscall ABI (MMU required), virtio-gpu, framebuffer, network stack. Not an RTOS; no MCU target. |
-| **hare library** | [separate repo](https://github.com/celestia-island/hare) | `#![no_std]` library for embassy sensor nodes: wire protocol, manifest schema, HAL traits. Began here as the `kei` library ([hare](https://github.com/celestia-island/hare)), split out to its own repo. |
+| **hare library** | [separate repo](https://github.com/celestia-island/hare) | `#![no_std]` library for embassy sensor nodes: wire protocol, manifest schema, HAL traits. Began here as the `kei` library (`packages/kei/`), split out to its own repo. |
 
 ## Quick start
 
@@ -91,7 +92,7 @@ just test-all     # Boot-test all architectures in QEMU
 Clone the [hare repo](https://github.com/celestia-island/hare) alongside this one, then:
 ```bash
 cd hare
-cargo test --all-features    # 20 tests
+cargo test --all-features    # 63 tests
 cargo run --example host_demo  # Wire protocol demo
 ```
 

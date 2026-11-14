@@ -1,5 +1,9 @@
 # Wire Protocol Benchmarks
 
+> **Moved (2026-10):** the library described here began as `packages/kei/` in this
+> repo and now lives in the [hare repo](https://github.com/celestia-island/hare). Commands below are updated to run
+> from a hare checkout cloned alongside this repo.
+
 Performance measurements of the kei wire protocol, both on host (x86_64)
 and on an emulated Cortex-M4 MCU (QEMU mps2-an386 @ 25 MHz).
 
@@ -19,14 +23,14 @@ and on an emulated Cortex-M4 MCU (QEMU mps2-an386 @ 25 MHz).
 
 Run with:
 ```bash
-cd packages/kei
+cd hare
 cargo bench --bench wire_bench
 ```
 
 ## On-chip benchmarks (Cortex-M4 @ 25 MHz, release build)
 
 Measured via the CMSDK APB Timer (TIMER1) in the QEMU firmware
-(`packages/kei/qemu-mps2/`), using `core::hint::black_box` to prevent
+(`qemu-mps2/` in the hare checkout), using `core::hint::black_box` to prevent
 optimizer elimination.
 
 | Operation | Ticks | Time |

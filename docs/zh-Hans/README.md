@@ -30,7 +30,7 @@
 
 KEI 是面向 ARM64 与 RISC-V **边缘网关**的 Rust 内核。它实现 **Linux 系统调用 ABI**，为 Linux 编写的网关服务可原样运行，但**需要 MMU**。它**不是 RTOS**，也没有微控制器目标。
 
-微控制器一侧由 `kei` 库（`packages/kei/`）单独承担——面向 embassy 传感器节点的 `#![no_std]` 库。两层共用同一份契约：同一个硬件 manifest 与同一套 wire 协议。
+微控制器一侧由 `kei` 库（[hare](https://github.com/celestia-island/hare)）单独承担——面向 embassy 传感器节点的 `#![no_std]` 库。两层共用同一份契约：同一个硬件 manifest 与同一套 wire 协议。
 
 KEI 起初 fork 自 [Asterinas（星绽）](https://github.com/asterinas/asterinas)，现已持有自己的 vendored 代码树，**不再跟随上游**。
 
@@ -54,14 +54,14 @@ KEI 是一个**研究型内核**：目前没有任何已交付的 Celestia 服�
 - **实时能力是计划项，尚未实现。** 高精度定时器与页锁定仍记为待偿债务；本内核不是 RTOS，也不声明有界延迟。
 - **驱动契约尚未在 kei 上验证过。** `evernight-appliance` 的 rig 用同一套 ABI 测试分别跑 Linux（基准）与 kei，但**至今只录得 Linux 基准**。
 
-有生产消费方的是 `packages/kei/` 下的 `kei` 库。
+有生产消费方的是 [hare](https://github.com/celestia-island/hare) 下的 `kei` 库。
 
 ## 仓库内容
 
 | 组件 | 位置 | 说明 |
 |------|------|------|
 | **KEI 内核** | workspace root | 面向 ARM64/RISC-V 边缘网关的 Rust 内核。Linux 系统调用 ABI（需 MMU）、virtio-gpu、帧缓冲、网络栈。不是 RTOS，无 MCU 目标。 |
-| **kei 库** | `packages/kei/` | 面向 embassy 传感器节点的 `#![no_std]` 库 |
+| **kei 库** | [hare](https://github.com/celestia-island/hare) | 面向 embassy 传感器节点的 `#![no_std]` 库 |
 
 ## 快速开始
 
@@ -73,7 +73,8 @@ just test-all     # 在 QEMU 中启动测试所有架构
 
 **库：**
 ```bash
-cd packages/kei
+git clone https://github.com/celestia-island/hare.git hare
+cd hare
 cargo test --all-features
 cargo run --example host_demo
 ```

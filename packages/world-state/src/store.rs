@@ -294,7 +294,7 @@ mod tests {
             kind,
             attributes,
             quality: Quality::Good,
-            updated_wall: chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
+            updated_wall: jiff::Timestamp::from_second(1_700_000_000).unwrap(),
             updated_mono_ns: None,
         }
     }

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use chrono::{DateTime, Datelike, Timelike};
+use jiff::{Timestamp, tz::Offset};
 use ostd::{arch::boot::DEVICE_TREE, io::IoMem, mm::VmIoOnce, warn};
 
 use crate::{rtc::Driver, SystemTime};
@@ -61,18 +61,23 @@ impl Driver for RtcGoldfish {
             last_time_high = time_high;
         };
 
-        let time = DateTime::from_timestamp_nanos(timestamp as i64).naive_utc();
-        let (is_ad, year) = time.year_ce();
-        debug_assert!(is_ad, "non-negative timestamp should always be AD");
+        let time = Offset::UTC.to_datetime(
+            Timestamp::from_nanosecond(i128::from(timestamp as i64))
+                .expect("Goldfish RTC returned a timestamp outside the representable range"),
+        );
+        debug_assert!(
+            time.year() >= 1,
+            "non-negative timestamp should always be AD"
+        );
 
         SystemTime {
-            year: year as u16,
+            year: time.year() as u16,
             month: time.month() as u8,
             day: time.day() as u8,
             hour: time.hour() as u8,
             minute: time.minute() as u8,
             second: time.second() as u8,
-            nanos: time.nanosecond() as u64,
+            nanos: time.subsec_nanosecond() as u64,
         }
     }
 }

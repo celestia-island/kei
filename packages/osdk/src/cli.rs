@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use clap::{Args, Parser, ValueEnum, crate_version};
+use jiff::ZonedDateTime;
 
 use crate::{
     arch::Arch,
@@ -311,7 +312,6 @@ impl DebugProfileOutArgs {
     /// output path to the file to override the file name.
     pub fn output_path(&self, hint: Option<&PathBuf>) -> PathBuf {
         self.output.clone().unwrap_or_else(|| {
-            use chrono::{DateTime, offset::Local};
             let file_stem = if let Some(hint) = hint {
                 format!(
                     "{}",
@@ -322,14 +322,18 @@ impl DebugProfileOutArgs {
                 )
             } else {
                 let crate_name = crate::util::get_kernel_crate().name;
-                let time_stamp = std::time::SystemTime::now();
-                let time_stamp: DateTime<Local> = time_stamp.into();
-                let time_stamp = time_stamp.format("%H%M%S");
+                let time_stamp = profile_time_stamp(ZonedDateTime::now());
                 format!("{}-profile-{}", crate_name, time_stamp)
             };
             PathBuf::from(format!("{}.{}", file_stem, self.format().file_extension()))
         })
     }
+}
+
+/// Formats `now` as the wall-clock `HHMMSS` stamp that auto-generated profile
+/// output file names embed.
+fn profile_time_stamp(now: ZonedDateTime) -> String {
+    now.strftime("%H%M%S").to_string()
 }
 
 #[derive(Debug, Parser)]
@@ -496,4 +500,36 @@ pub struct CommonArgs {
     pub encoding: Option<PayloadEncoding>,
     #[arg(long = "coverage", help = "Enable coverage", global = true)]
     pub coverage: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The auto-generated profile file name carries a local `HHMMSS` stamp.
+    /// Pin the format contract so a future date-format swap cannot silently
+    /// change the file naming shape.
+    #[test]
+    fn profile_time_stamp_is_zero_padded_hhmmss() {
+        let cases = [
+            ("2026-11-20T14:30:05+08:00[Asia/Shanghai]", "143005"),
+            ("2026-01-02T03:04:05+08:00[Asia/Shanghai]", "030405"),
+            ("2026-11-20T00:00:00+08:00[Asia/Shanghai]", "000000"),
+        ];
+        for (text, expected) in cases {
+            let now: ZonedDateTime = text.parse().unwrap();
+            assert_eq!(profile_time_stamp(now), expected, "for {text}");
+        }
+    }
+
+    /// The stamp must follow the zone carried by `now`, not UTC: a fixed
+    /// instant renders differently in two zones.
+    #[test]
+    fn profile_time_stamp_follows_the_zone() {
+        let instant = "2026-11-20T06:30:05Z".parse::<jiff::Timestamp>().unwrap();
+        let shanghai = instant.to_zoned_datetime(jiff::tz::TimeZone::get("Asia/Shanghai").unwrap());
+        let utc = instant.to_zoned_datetime(jiff::tz::TimeZone::UTC);
+        assert_eq!(profile_time_stamp(shanghai), "143005");
+        assert_eq!(profile_time_stamp(utc), "063005");
+    }
 }

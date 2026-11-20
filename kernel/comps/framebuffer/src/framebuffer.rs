@@ -433,10 +433,10 @@ impl FrameBuffer {
     /// Callers should invoke this after modifying pixels via
     /// [`write_bytes_at`] / [`write_pixel_at`] to make the changes visible.
     pub fn flush(&self, x: usize, y: usize, width: usize, height: usize) {
-        if let FrameBufferBackend::Blit(b) = &self.backend {
-            if let Some(flush) = b.flush {
-                flush(b, x, y, width, height);
-            }
+        if let FrameBufferBackend::Blit(b) = &self.backend
+            && let Some(flush) = b.flush
+        {
+            flush(b, x, y, width, height);
         }
     }
 

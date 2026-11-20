@@ -2,8 +2,6 @@
 
 use alloc::{sync::Arc, vec::Vec};
 
-use ostd::mm::HasSize;
-
 use crate::{
     ansi_escape::{EraseInDisplay, EscapeFsm, EscapeOp},
     font::BitmapFont,

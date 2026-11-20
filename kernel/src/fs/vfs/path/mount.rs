@@ -607,10 +607,9 @@ impl Mount {
                 .read()
                 .get(&mount_point.key())
                 .cloned();
-            if let Some(child_mount) = child_mount {
+            {
+                let child_mount = child_mount?;
                 target_mount = child_mount;
-            } else {
-                return None;
             }
         }
 

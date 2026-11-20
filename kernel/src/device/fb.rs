@@ -5,7 +5,7 @@ use aster_framebuffer::{
     pixel::PixelFormat,
 };
 use device_id::{DeviceId, MajorId, MinorId};
-use ostd::mm::{FallibleVmRead, HasPaddr, HasSize, VmIo, VmReader, VmWriter};
+use ostd::mm::{HasPaddr, HasSize, VmIo};
 
 use super::{Device, DeviceType, DevtmpfsInodeMeta, registry::char};
 use crate::{
@@ -476,7 +476,7 @@ impl FileOps for FbHandle {
             let avail = writer.avail().min(buf.len());
             // SAFETY: writer.cursor() points to a valid userspace buffer of
             // at least `avail` bytes for the duration of this call.
-            #[allow(unsafe_code)]
+            #[expect(unsafe_code)]
             unsafe {
                 core::ptr::copy_nonoverlapping(buf.as_ptr(), writer.cursor(), avail);
             }

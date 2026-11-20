@@ -60,7 +60,7 @@ fn do_rt_sigprocmask(
         // SIGKILL(9) and SIGSTOP(19) cannot be blocked (POSIX/Linux guarantee).
         let kill_stop: u64 = (1u64 << 8) | (1u64 << 18);
         let effective_bits = match mask_op {
-            MaskOp::Block => (old_bits | (new_bits & !kill_stop)),
+            MaskOp::Block => old_bits | (new_bits & !kill_stop),
             MaskOp::Unblock => old_bits & !new_bits,
             MaskOp::SetMask => new_bits & !kill_stop,
         };

@@ -7,7 +7,7 @@
 use core::ops::Range;
 
 use bus::MmioBus;
-use ostd::{debug, io::IoMem, irq::IrqLine, sync::SpinLock};
+use ostd::{io::IoMem, irq::IrqLine, sync::SpinLock};
 
 use crate::transport::mmio::bus::common_device::{
     MmioCommonDevice, mmio_check_magic, mmio_read_device_id,

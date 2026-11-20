@@ -80,7 +80,7 @@ unsafe fn find_vga_framebuffer() -> Option<usize> {
 
         let class_code = unsafe { pci_read32(0, dev, 0, 0x08) };
         let base_class = (class_code >> 24) & 0xFF;
-        let sub_class = (class_code >> 16) & 0xFF;
+        let _sub_class = (class_code >> 16) & 0xFF;
 
         // VGA compatible controller (class 0x03, subclass 0x00)
         if base_class == 0x03 {

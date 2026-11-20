@@ -7,11 +7,9 @@
 //! function that works across architectures. Each target architecture
 //! implements the trait for its native musl TLS layout.
 
-use core::marker::PhantomData;
-
 use align_ext::AlignExt;
 
-use super::{elf_file::ElfHeaders, relocate::RelocatedRange};
+use super::elf_file::ElfHeaders;
 use crate::{prelude::*, vm::perms::VmPerms, vm::vmar::Vmar};
 
 /// Describes the TLS layout used by the statically-linked C runtime (musl).
@@ -41,9 +39,9 @@ pub trait TlsLayout: Sized {
     /// Returns the total page-aligned allocation size for a given TLS payload.
     fn total_alloc(tls_data_size: usize, tls_align: usize) -> usize {
         let tls_data_aligned = (tls_data_size + tls_align.max(16) - 1) & !(tls_align.max(16) - 1);
-        let dtv_bytes = Self::dtv_entry_count() * core::mem::size_of::<u64>();
+        let dtv_bytes = Self::dtv_entry_count() * size_of::<u64>();
         let needed = tls_data_aligned + Self::gap_above_tp() + Self::pthread_size() + dtv_bytes;
-        needed.align_up(ostd::mm::PAGE_SIZE)
+        needed.align_up(PAGE_SIZE)
     }
 
     /// Computes the thread-pointer value from the layout bases.
@@ -83,7 +81,7 @@ pub trait TlsLayout: Sized {
 /// Write a u64 value to the given virtual address in the target VMAR.
 fn write_u64_at(vmar: &Vmar, addr: Vaddr, value: u64) {
     let bytes = value.to_le_bytes();
-    let mut reader = ostd::mm::VmReader::from(&bytes[..]).to_fallible();
+    let mut reader = VmReader::from(&bytes[..]).to_fallible();
     let _ = vmar.write_alien(addr, &mut reader);
 }
 
@@ -184,7 +182,7 @@ pub fn setup_tls<L: TlsLayout>(
         // No PT_TLS: still allocate a minimal block for the TCB so that
         // musl's __pthread_self() doesn't dereference NULL.
         let min_tcb = L::pthread_size() + L::gap_above_tp() + L::dtv_entry_count() * 8;
-        min_tcb.align_up(ostd::mm::PAGE_SIZE)
+        min_tcb.align_up(PAGE_SIZE)
     };
 
     let tls_base = vmar
@@ -216,12 +214,12 @@ pub fn setup_tls<L: TlsLayout>(
         let copy_ok = vmar
             .read_alien(
                 template_va,
-                &mut ostd::mm::VmWriter::from(buf.as_mut_slice()).to_fallible(),
+                &mut VmWriter::from(buf.as_mut_slice()).to_fallible(),
             )
             .is_ok();
 
         if copy_ok {
-            let mut reader = ostd::mm::VmReader::from(buf.as_slice()).to_fallible();
+            let mut reader = VmReader::from(buf.as_slice()).to_fallible();
             let _ = vmar.write_alien(tls_base, &mut reader);
         }
 
@@ -240,12 +238,12 @@ pub fn setup_tls<L: TlsLayout>(
         let copy_ok = vmar
             .read_alien(
                 tls_phdr_vaddr,
-                &mut ostd::mm::VmWriter::from(buf.as_mut_slice()).to_fallible(),
+                &mut VmWriter::from(buf.as_mut_slice()).to_fallible(),
             )
             .is_ok();
 
         if copy_ok {
-            let mut reader = ostd::mm::VmReader::from(buf.as_slice()).to_fallible();
+            let mut reader = VmReader::from(buf.as_slice()).to_fallible();
             let _ = vmar.write_alien(tls_base, &mut reader);
         }
 

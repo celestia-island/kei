@@ -4,7 +4,7 @@
 
 use int_to_c_enum::TryFromInt;
 use ostd::{
-    Error, Result, info,
+    Error, Result,
     io::IoMem,
     irq::IrqLine,
     mm::{HasPaddr, VmIoOnce},

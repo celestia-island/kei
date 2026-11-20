@@ -283,7 +283,7 @@ impl EarlyFrameAllocator {
             }
         };
         #[cfg(not(target_arch = "aarch64"))]
-        let kernel_phys_range: Option<core::ops::Range<Paddr>> = None;
+        let kernel_phys_range: Option<Range<Paddr>> = None;
 
         let mut under_4g_range = 0..0;
         let mut max_range = 0..0;
@@ -320,10 +320,10 @@ impl EarlyFrameAllocator {
                 // Skip the kernel's own physical memory to avoid overwriting
                 // the running kernel code during early allocations.
                 let mut start = under_4g_range.start;
-                if let Some(ref kr) = kernel_phys_range {
-                    if start < kr.end {
-                        start = kr.end.align_up(PAGE_SIZE);
-                    }
+                if let Some(ref kr) = kernel_phys_range
+                    && start < kr.end
+                {
+                    start = kr.end.align_up(PAGE_SIZE);
                 }
                 start
             },

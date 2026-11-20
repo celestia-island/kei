@@ -467,7 +467,7 @@ pub(crate) unsafe fn init() -> Segment<MetaPageMeta> {
             .iter()
             .filter(|r| {
                 if cfg!(target_arch = "aarch64") {
-                    r.typ() == crate::boot::memory_region::MemoryRegionType::Usable
+                    r.typ() == MemoryRegionType::Usable
                 } else if cfg!(target_arch = "x86_64") {
                     // Firmware may place ACPI tables in a Reserved region
                     // above the last Usable one (with 2 GiB of RAM SeaBIOS
@@ -479,8 +479,7 @@ pub(crate) unsafe fn init() -> Segment<MetaPageMeta> {
                     r.typ().is_physical()
                         || matches!(
                             r.typ(),
-                            crate::boot::memory_region::MemoryRegionType::Reserved
-                                | crate::boot::memory_region::MemoryRegionType::NonVolatileSleep
+                            MemoryRegionType::Reserved | MemoryRegionType::NonVolatileSleep
                         )
                 } else {
                     r.typ().is_physical()

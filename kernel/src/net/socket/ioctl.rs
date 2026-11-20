@@ -5,7 +5,6 @@
 //! Implements the interface-configuration ioctls (SIOCSIFADDR family) that
 //! userspace (e.g. `ifconfig`) issues on a datagram socket.
 
-use core::ffi::CStr;
 use core::net::Ipv4Addr;
 
 use crate::{

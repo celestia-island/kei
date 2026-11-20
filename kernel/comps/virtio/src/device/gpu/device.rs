@@ -206,7 +206,7 @@ impl GpuDevice {
             &self.control_queue,
             hdr,
             &body,
-            frames_of(core::mem::size_of::<RespGeneric>()),
+            frames_of(size_of::<RespGeneric>()),
         ) {
             ostd::warn!("virtio-gpu: TRANSFER_TO_HOST_2D failed: {:?}", e);
         }
@@ -241,7 +241,7 @@ impl<'a> ProbeCtx<'a> {
             self.control_queue,
             hdr,
             &0u32,
-            frames_of(core::mem::size_of::<RespDisplayInfo>()),
+            frames_of(size_of::<RespDisplayInfo>()),
         )?;
 
         if resp.hdr_type != RespType::Ok as u32 && resp.hdr_type != RespType::OkNodata as u32 {
@@ -273,7 +273,7 @@ impl<'a> ProbeCtx<'a> {
             self.control_queue,
             hdr,
             &body,
-            frames_of(core::mem::size_of::<RespGeneric>()),
+            frames_of(size_of::<RespGeneric>()),
         )?;
         check_ok(resp.hdr_type, "RESOURCE_CREATE_2D")
     }
@@ -304,8 +304,7 @@ impl<'a> ProbeCtx<'a> {
             w.write_val(&hdr)
                 .map_err(|_| VirtioDeviceError::UnsupportedConfig)?;
         }
-        let body_size =
-            core::mem::size_of::<ResourceAttachBacking>() + core::mem::size_of::<MemEntry>();
+        let body_size = size_of::<ResourceAttachBacking>() + size_of::<MemEntry>();
         let body_dma = DmaCoherent::alloc(frames_of(body_size), false)
             .map_err(VirtioDeviceError::ResourceAlloc)?;
         {
@@ -315,11 +314,11 @@ impl<'a> ProbeCtx<'a> {
             w.write_val(&body)
                 .map_err(|_| VirtioDeviceError::UnsupportedConfig)?;
             // skip returns &mut Self, so chain directly.
-            w.skip(core::mem::size_of::<ResourceAttachBacking>())
+            w.skip(size_of::<ResourceAttachBacking>())
                 .write_val(&entry)
                 .map_err(|_| VirtioDeviceError::UnsupportedConfig)?;
         }
-        let resp_dma = DmaCoherent::alloc(frames_of(core::mem::size_of::<RespGeneric>()), false)
+        let resp_dma = DmaCoherent::alloc(frames_of(size_of::<RespGeneric>()), false)
             .map_err(VirtioDeviceError::ResourceAlloc)?;
 
         let token = {
@@ -358,7 +357,7 @@ impl<'a> ProbeCtx<'a> {
             self.control_queue,
             hdr,
             &body,
-            frames_of(core::mem::size_of::<RespGeneric>()),
+            frames_of(size_of::<RespGeneric>()),
         )?;
         check_ok(resp.hdr_type, "SET_SCANOUT")
     }
@@ -395,7 +394,7 @@ fn send_ctrl_hdr<Body: Pod, Resp: Pod>(
         w.write_val(&hdr)
             .map_err(|_| VirtioDeviceError::UnsupportedConfig)?;
     }
-    let body_dma = DmaCoherent::alloc(frames_of(core::mem::size_of::<Body>()), false)
+    let body_dma = DmaCoherent::alloc(frames_of(size_of::<Body>()), false)
         .map_err(VirtioDeviceError::ResourceAlloc)?;
     {
         let mut w = body_dma.writer();
@@ -443,16 +442,16 @@ fn poll_response<T: Pod>(
 ) -> Result<T, VirtioDeviceError> {
     for _ in 0..POLL_ITERS {
         let mut q = control_queue.lock();
-        if let Ok((used_token, _len)) = q.pop_used() {
-            if used_token == token {
-                return resp_dma
-                    .reader()
-                    .read_val::<T>()
-                    .map_err(|_| VirtioDeviceError::UnsupportedConfig);
-            }
-            // Non-matching token: a stale response from a previous
-            // fire-and-forget command. Drop it and keep polling.
+        if let Ok((used_token, _len)) = q.pop_used()
+            && used_token == token
+        {
+            return resp_dma
+                .reader()
+                .read_val::<T>()
+                .map_err(|_| VirtioDeviceError::UnsupportedConfig);
         }
+        // Non-matching token: a stale response from a previous
+        // fire-and-forget command. Drop it and keep polling.
     }
     Err(VirtioDeviceError::UnsupportedConfig)
 }
@@ -461,7 +460,7 @@ fn poll_response<T: Pod>(
 
 /// Computes the number of 4 KiB frames needed to hold `bytes`.
 fn frames_of(bytes: usize) -> usize {
-    (bytes + ostd::mm::PAGE_SIZE - 1) / ostd::mm::PAGE_SIZE
+    bytes.div_ceil(ostd::mm::PAGE_SIZE)
 }
 
 /// Checks that a response `hdr_type` is `OK`, logging + erroring otherwise.

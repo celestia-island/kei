@@ -20,7 +20,7 @@ use core::mem::offset_of;
 
 use aster_util::safe_ptr::SafePtr;
 use bitflags::bitflags;
-#[allow(unused_imports)]
+#[expect(unused_imports)]
 use ostd_pod::Pod;
 
 use crate::transport::{ConfigManager, VirtioTransport};

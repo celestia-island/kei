@@ -22,7 +22,7 @@ pub use inventory::submit;
 // This crate intentionally uses the `log` crate directly (not `ostd::log`)
 // because it is a standalone framework crate that does not depend on OSTD.
 // Messages are forwarded to the OSTD logger via the `LogCrateBridge`.
-use log::{debug, error, info};
+use log::{debug, info};
 
 /// The initialization stages of the component system.
 ///
@@ -197,12 +197,13 @@ fn percent_decode_path(path: &str) -> String {
         }
     };
     while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let (Some(h), Some(l)) = (hex_val(bytes[i + 1]), hex_val(bytes[i + 2])) {
-                out.push((h << 4) | l);
-                i += 3;
-                continue;
-            }
+        if bytes[i] == b'%'
+            && i + 2 < bytes.len()
+            && let (Some(h), Some(l)) = (hex_val(bytes[i + 1]), hex_val(bytes[i + 2]))
+        {
+            out.push((h << 4) | l);
+            i += 3;
+            continue;
         }
         out.push(bytes[i]);
         i += 1;
@@ -294,7 +295,7 @@ fn match_and_call(
     infos.sort();
 
     // Count how many registry entries we found
-    let reg_count: usize = inventory::iter::<ComponentRegistry>().count();
+    let _reg_count: usize = inventory::iter::<ComponentRegistry>().count();
     // Cannot use early_println here (no ostd dep).
     // Let the caller's panic handler print instead.
 

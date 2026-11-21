@@ -84,23 +84,14 @@ const TSM_INBLOB_MAX: usize = 64;
 
 /// The state machine of a report directory.
 ///
-/// The states and their transitions are summarized in the table below.
+/// The state machine is summarized in the diagram below; per-state details live on the variants.
 ///
-/// ```text
-/// ┌────────────────┐
-/// │InblobNeeded    │
-/// │(initial)       │
-/// └────────┬───────┘
-///          │
-///          │ write inblob
-/// ┌────────▼───────┐
-/// │InblobProvided  ◄─────────┐
-/// └────────┬───────┘         │
-///          │                 │
-///          │ read outblob    │ write inblob
-/// ┌────────▼───────┐         │
-/// │OutblobGenerated├─────────┘
-/// └────────────────┘
+/// ```mermaid
+/// stateDiagram-v2
+///     [*] --> InblobNeeded
+///     InblobNeeded --> InblobProvided: write inblob
+///     InblobProvided --> OutblobGenerated: read outblob
+///     OutblobGenerated --> InblobProvided: write inblob
 /// ```
 #[derive(Debug)]
 enum TsmProviderState {

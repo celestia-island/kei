@@ -30,10 +30,6 @@ const VBE_DISPI_INDEX_Y_OFFSET: u16 = 9;
 const VBE_DISPI_DISABLED: u16 = 0x00;
 const VBE_DISPI_ENABLED: u16 = 0x01;
 const VBE_DISPI_LFB_ENABLED: u16 = 0x40;
-const VBE_DISPI_NOCLEARMEM: u16 = 0x80;
-
-/// QEMU Bochs VGA PCI device info
-const BOCHS_VGA_PCI_ADDR: u32 = 0x80000000; // PCI config address port base
 
 /// Linear Frame Buffer address on QEMU (PCI BAR0 of VGA device)
 /// QEMU's `-vga std` maps this at 0xFD000000 or 0xE0000000

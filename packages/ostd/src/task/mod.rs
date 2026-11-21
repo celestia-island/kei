@@ -71,7 +71,6 @@ pub(crate) fn call_pre_user_run_handler(guard: &DisabledLocalIrqGuard) {
 /// execute user code. Multiple tasks can share a single user space.
 #[derive(Debug)]
 pub struct Task {
-    #[expect(clippy::type_complexity)]
     func: ForceSync<Cell<Option<Box<dyn FnOnce() + Send>>>>,
 
     data: Box<dyn Any + Send + Sync>,

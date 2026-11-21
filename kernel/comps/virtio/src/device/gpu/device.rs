@@ -102,7 +102,7 @@ impl GpuDevice {
         // 2. Query scanout geometry using a transient command context (no
         //    backing buffer allocated yet — GET_DISPLAY_INFO needs none).
         let probe = ProbeCtx {
-            transport: &transport,
+            transport: &*transport,
             control_queue: &control_queue,
         };
         let _num_scanouts = {
@@ -226,7 +226,7 @@ impl GpuDevice {
 /// A transient command-sending context borrowing the transport and queue
 /// during probe, before the final `GpuDevice` is assembled.
 struct ProbeCtx<'a> {
-    transport: &'a Box<dyn VirtioTransport>,
+    transport: &'a dyn VirtioTransport,
     control_queue: &'a SpinLock<VirtQueue>,
 }
 

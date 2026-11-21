@@ -280,7 +280,6 @@ fn get_sig_action(ctx: &Context, sig_num: SigNum) -> SigAction {
     sig_dispositions.get(sig_num)
 }
 
-#[expect(clippy::too_many_arguments)]
 pub fn handle_user_signal(
     ctx: &Context,
     sig_num: SigNum,

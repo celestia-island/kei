@@ -117,7 +117,7 @@ fn parse_memory_regions(mb2_info: &BootInformation) -> MemoryRegionArray {
     for region in memory_regions_tag.memory_areas() {
         let start = region.start_address();
         let end = region.end_address();
-        let area_typ: MemoryRegionType = MemoryAreaType::from(region.typ()).into();
+        let area_typ: MemoryRegionType = region.typ().into();
         let region = MemoryRegion::new(
             start.try_into().unwrap(),
             (end - start).try_into().unwrap(),

@@ -51,10 +51,8 @@ bitflags! {
         /// instead, so this is optional.
         const EDID = 1 << 1;
         /// Resource UUID assignment (unused in 2D mode).
-        #[expect(dead_code)]
         const RESOURCE_UUID = 1 << 2;
         /// Blob resources (unused in 2D mode).
-        #[expect(dead_code)]
         const RESOURCE_BLOB = 1 << 3;
     }
 }
@@ -69,7 +67,6 @@ pub enum VirtioGpuFormat {
     /// 32bpp BGRX (X = unused alpha). Matches the kei `BgrReserved` format.
     B8G8R8X8 = 2,
     /// 32bpp BGRA (A = alpha).
-    #[expect(dead_code)]
     B8G8R8A8 = 6,
 }
 
@@ -84,28 +81,22 @@ pub enum CmdType {
     /// `RESOURCE_CREATE_2D` — create a host-side 2D resource.
     ResourceCreate2d = 0x0101,
     /// `RESOURCE_UNREF` — destroy a host-side resource.
-    #[expect(dead_code)]
     ResourceUnref = 0x0102,
     /// `SET_SCANOUT` — bind a resource to a scanout.
     SetScanout = 0x0103,
     /// `RESOURCE_FLUSH` — flush a region of a host resource to its scanout.
-    #[expect(dead_code)]
     ResourceFlush = 0x0104,
     /// `TRANSFER_TO_HOST_2D` — copy guest pixels into a host resource region.
     TransferToHost2d = 0x0105,
     /// `RESOURCE_ATTACH_BACKING` — attach guest DMA storage to a resource.
     ResourceAttachBacking = 0x0106,
     /// `RESOURCE_DETACH_BACKING` — detach guest DMA storage.
-    #[expect(dead_code)]
     ResourceDetachBacking = 0x0107,
     /// `GET_CAPSET_INFO` — query available capability sets (virgl).
-    #[expect(dead_code)]
     GetCapsetInfo = 0x0108,
     /// `GET_CAPSET` — fetch a capability set (virgl).
-    #[expect(dead_code)]
     GetCapset = 0x0109,
     /// `RESOURCE_ASSIGN_UUID` — assign a UUID to a resource.
-    #[expect(dead_code)]
     ResourceAssignUuid = 0x010b,
 }
 

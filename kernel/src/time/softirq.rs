@@ -5,7 +5,6 @@ use alloc::{boxed::Box, vec, vec::Vec};
 use aster_softirq::{SoftIrqLine, softirq_id::TIMER_SOFTIRQ_ID};
 use ostd::{sync::RcuOption, timer};
 
-#[expect(clippy::type_complexity)]
 static TIMER_SOFTIRQ_CALLBACKS: RcuOption<Box<Vec<fn()>>> = RcuOption::new_none();
 
 pub(super) fn init() {

@@ -84,7 +84,7 @@ const TSM_INBLOB_MAX: usize = 64;
 
 /// The state machine of a report directory.
 ///
-/// The states and their transitions are summarized in the table below.
+/// The state machine is summarized in the diagram below; per-state details live on the variants.
 ///
 /// ```mermaid
 /// stateDiagram-v2

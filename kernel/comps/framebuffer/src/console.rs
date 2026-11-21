@@ -339,7 +339,7 @@ impl ConsoleState {
 
         // Advance cursor past the image height (in font-cell units).
         let font_h = self.font.height();
-        let cells_h = (img_h + font_h - 1) / font_h;
+        let cells_h = img_h.div_ceil(font_h);
         let new_y = self.y_pos + cells_h * font_h;
         if new_y >= fb_h {
             // Scroll up if the image went past the bottom.

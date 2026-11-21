@@ -34,7 +34,6 @@ pub enum SysNodeType {
 }
 
 /// A trait that represents a branching node in a `SysTree`.
-#[expect(clippy::type_complexity)]
 pub trait SysBranchNode: SysNode {
     /// Visits a child node with the given name using a closure.
     ///

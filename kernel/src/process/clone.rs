@@ -854,7 +854,6 @@ fn clone_ns_proxy(
     parent_ns_proxy.new_clone(user_ns, process, posix_thread, clone_flags)
 }
 
-#[expect(clippy::too_many_arguments)]
 fn create_child_process(
     pid: Pid,
     vmar: Arc<Vmar>,

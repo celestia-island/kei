@@ -5,7 +5,6 @@
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-const VGA_PA: usize = 0xB8000;
 /// On x86_64 with 48-bit VA, LINEAR_MAPPING_BASE_VADDR = 0xFFFF_8000_0000_0000
 /// So VGA virtual address = LINEAR_MAPPING_BASE_VADDR + 0xB8000
 const VGA_VA: usize = 0xFFFF_8000_000B_8000;

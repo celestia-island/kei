@@ -59,7 +59,6 @@ pub struct ThreadLocal {
 }
 
 impl ThreadLocal {
-    #[expect(clippy::too_many_arguments)]
     pub(super) fn new(
         set_child_tid: Vaddr,
         clear_child_tid: Vaddr,

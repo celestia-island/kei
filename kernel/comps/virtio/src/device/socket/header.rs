@@ -71,10 +71,6 @@ pub struct VirtioVsockHdr {
 
 impl VirtioVsockHdr {
     /// Creates a stream-type virtio-vsock header.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "the wire header fields map directly to the virtio-vsock specification"
-    )]
     pub const fn new(
         src_cid: u64,
         dst_cid: u64,

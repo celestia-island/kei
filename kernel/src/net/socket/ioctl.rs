@@ -19,7 +19,7 @@ use crate::{
 /// (a `sockaddr`, a short flags value, or a pointer depending on the command).
 #[repr(C)]
 #[derive(Clone, Copy, Pod)]
-struct IfReq {
+pub(crate) struct IfReq {
     ifr_name: [u8; 16],
     ifr_union: [u8; 16],
 }

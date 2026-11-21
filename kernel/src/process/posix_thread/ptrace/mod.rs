@@ -463,7 +463,6 @@ impl TraceeStatus {
         self.do_ptrace_stop(state, tracer, signal, wait_status, None, ctx, user_ctx)
     }
 
-    #[expect(clippy::too_many_arguments)]
     fn do_ptrace_stop(
         &self,
         mut state: MutexGuard<'_, TraceeState>,

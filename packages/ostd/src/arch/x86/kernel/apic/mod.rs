@@ -171,7 +171,6 @@ enum ApicType {
 pub struct Icr(u64);
 
 impl Icr {
-    #[expect(clippy::too_many_arguments)]
     pub fn new(
         destination: ApicId,
         destination_shorthand: DestinationShorthand,

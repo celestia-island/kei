@@ -86,21 +86,12 @@ const TSM_INBLOB_MAX: usize = 64;
 ///
 /// The states and their transitions are summarized in the table below.
 ///
-/// ```text
-/// ┌────────────────┐
-/// │InblobNeeded    │
-/// │(initial)       │
-/// └────────┬───────┘
-///          │
-///          │ write inblob
-/// ┌────────▼───────┐
-/// │InblobProvided  ◄─────────┐
-/// └────────┬───────┘         │
-///          │                 │
-///          │ read outblob    │ write inblob
-/// ┌────────▼───────┐         │
-/// │OutblobGenerated├─────────┘
-/// └────────────────┘
+/// ```mermaid
+/// stateDiagram-v2
+///     [*] --> InblobNeeded
+///     InblobNeeded --> InblobProvided: write inblob
+///     InblobProvided --> OutblobGenerated: read outblob
+///     OutblobGenerated --> InblobProvided: write inblob
 /// ```
 #[derive(Debug)]
 enum TsmProviderState {
